@@ -45,6 +45,19 @@ int mac_get_thread_info(struct timeval &utime, struct timeval &stime) {
     return -1;
 }
 
+uint64_t our_get_thread_id() {
+    uint64_t thread_id;
+    pthread_threadid_np(NULL, &thread_id);
+    return thread_id;
+}
+
+#else
+
+// Linux
+__pid_t our_get_thread_id() {
+    return gettid();
+}
+
 #endif
 
 // Necessary on macOS
@@ -224,7 +237,7 @@ namespace {
                    COMMA
                    KV("pid", SLOW(getpid()))
                    COMMA
-                   KV("tid", SLOW(pthread_self()))
+                   KV("tid", SLOW(our_get_thread_id()))
                    COMMA
                    KV("r", ATOM(t))
                    COMMA
@@ -378,7 +391,7 @@ namespace evobench {
         std::string &out = local_buffer.string;
         
         OBJ(KV("KeyValue",
-               OBJ(KV("tid", SLOW(pthread_self()))
+               OBJ(KV("tid", SLOW(our_get_thread_id()))
                    COMMA
                    KV("k", ATOM(key))
                    COMMA
