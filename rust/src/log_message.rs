@@ -56,7 +56,7 @@ pub struct Timing {
     pub pn: KString,
     pub pid: ProcessId,
     pub tid: ThreadId,
-    pub t: NanoTime,
+    pub r: NanoTime,
     pub u: MicroTime,
     pub s: MicroTime,
     // These are `long int`, which could be i64, hence always use that

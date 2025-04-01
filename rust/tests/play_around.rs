@@ -52,7 +52,7 @@ fn wr<T: serde::Serialize>(val: &T) -> Result<()> {
 //         .into(),
 //     }))?;
 //     wr(&LogMessage::T {
-//         t: RealTime {
+//         r: RealTime {
 //             sec: 1743028469,
 //             nsec: 123213123,
 //         },
@@ -66,7 +66,7 @@ fn wr<T: serde::Serialize>(val: &T) -> Result<()> {
 //         },
 //     })?;
 //     wr(&LogMessage::T {
-//         t: RealTime {
+//         r: RealTime {
 //             sec: 1743028469,
 //             nsec: 423213123,
 //         },

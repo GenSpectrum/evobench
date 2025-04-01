@@ -184,7 +184,7 @@ namespace {
                    COMMA
                    KV("tid", SLOW(pthread_self()))
                    COMMA
-                   KV("t", ATOM(t))
+                   KV("r", ATOM(t))
                    COMMA
                    KV("u", ATOM(r.ru_utime))
                    COMMA

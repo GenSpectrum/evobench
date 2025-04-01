@@ -58,7 +58,7 @@ fn main() -> Result<()> {
             let data = LogData::read_file(path)?;
             let byscope = ByScope::from_logdata(&data)?;
             // dbg!(byscope);
-            all3stats(&byscope, "real time", |timing: &Timing| timing.t.to_nsec());
+            all3stats(&byscope, "real time", |timing: &Timing| timing.r.to_nsec());
             all3stats(&byscope, "cpu time", |timing: &Timing| timing.u.to_nsec());
             all3stats(&byscope, "sys time", |timing: &Timing| timing.s.to_nsec());
         }
