@@ -1,0 +1,38 @@
+#!/bin/bash
+set -meuo pipefail
+IFS=
+
+usage() {
+    echo "$0 version_tag"
+    echo "  Changes the version files included with the library "
+    echo "  and command line program, commits, and tags with the "
+    echo "  given version tag, which should start with a 'v' then "
+    echo "  a semantic version number."
+    exit 1
+}
+
+if [ $# -ne 1 ]; then
+    usage
+fi
+
+if [ "$1" = -h -o "$1" = --help ]; then
+    usage
+fi
+
+version_tag="$1"
+
+version_regex='^v[0-9]\.[0-9]'
+
+if ! printf '%s' "$version_tag" | egrep -q "$version_regex"; then
+    echo "Given version tag '$version_tag' is not matching the regex $version_regex"
+    echo "(Note that the regex is open at the end, you can add a patch version etc.)"
+    exit 1
+fi
+
+echo '#define EVOBENCH_VERSION "'"$version_tag"'"' > cpp/include/evobench_version.hpp
+echo 'const EVOBENCH_VERSION: &str = "'"$version_tag"'";' > rust/include/evobench_version.rs
+
+git commit -m "Release $version_tag" \
+    cpp/include/evobench_version.hpp rust/include/evobench_version.rs
+
+echo "todo: create signed or annotated tag?"
