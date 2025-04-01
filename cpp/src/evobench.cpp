@@ -23,6 +23,15 @@
 #include <limits.h>
 #include <sys/utsname.h>
 
+// Necessary on macOS
+#ifndef HOST_NAME_MAX
+#define HOST_NAME_MAX 512
+#endif
+#ifndef LOGIN_NAME_MAX
+#define LOGIN_NAME_MAX 512
+#endif
+
+
 #define STRINGIFY(x) #x
 #define TOSTRING(x) STRINGIFY(x)
 
