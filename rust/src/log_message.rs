@@ -60,14 +60,15 @@ pub struct Timing {
     pub u: MicroTime,
     pub s: MicroTime,
     // These are `long int`, which could be i64, hence always use that
-    // since we don't know the width of the machine in question.
-    pub maxrss: i64,
-    pub minflt: i64,
-    pub majflt: i64,
-    pub inblock: i64,
-    pub oublock: i64,
-    pub nvcsw: i64,
-    pub nivcsw: i64,
+    // since we don't know the width of the machine in question. Also,
+    // Option since I don't know how to get those numbers on macOS.
+    pub maxrss: Option<i64>,
+    pub minflt: Option<i64>,
+    pub majflt: Option<i64>,
+    pub inblock: Option<i64>,
+    pub oublock: Option<i64>,
+    pub nvcsw: Option<i64>,
+    pub nivcsw: Option<i64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
