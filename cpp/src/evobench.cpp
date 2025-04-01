@@ -23,6 +23,30 @@
 #include <limits.h>
 #include <sys/utsname.h>
 
+// Getting thread statistics on macOS
+#ifdef __MACH__
+#include <mach/mach.h>
+
+int mac_get_thread_info(struct timeval &utime, struct timeval &stime) {
+    thread_basic_info tinfo;
+    mach_msg_type_number_t count = THREAD_BASIC_INFO_COUNT;
+    kern_return_t kr = thread_info(mach_thread_self(),
+                                   THREAD_BASIC_INFO,
+                                   (thread_info_t)&tinfo,
+                                   &count);
+    if (kr == KERN_SUCCESS) {
+        utime.tv_sec = tinfo.user_time.seconds;
+        utime.tv_usec = tinfo.user_time.microseconds;
+        stime.tv_sec = tinfo.system_time.seconds;
+        stime.tv_usec = tinfo.system_time.microseconds;
+        return 0;
+    }
+    // Does thread_info set errno?
+    return -1;
+}
+
+#endif
+
 // Necessary on macOS
 #ifndef HOST_NAME_MAX
 #define HOST_NAME_MAX 512
@@ -183,8 +207,17 @@ namespace {
                             std::string &out) {
         struct timespec t;
         ERRCHECK( clock_gettime(CLOCK_REALTIME, &t) );
+
+        struct timeval utime;
+        struct timeval stime;
+#ifdef __MACH__
+        ERRCHECK(mac_get_thread_info(utime, stime));
+#else
         struct rusage r;
         ERRCHECK( getrusage(RUSAGE_THREAD, &r) );
+        utime = r.ru_utime;
+        stime = r.ru_stime;
+#endif
 
         OBJ(KV(point_kind_name[kind],
                OBJ(KV("pn", ATOM(module_and_action))
@@ -195,9 +228,10 @@ namespace {
                    COMMA
                    KV("r", ATOM(t))
                    COMMA
-                   KV("u", ATOM(r.ru_utime))
+                   KV("u", ATOM(utime))
                    COMMA
-                   KV("s", ATOM(r.ru_stime))
+                   KV("s", ATOM(stime))
+#ifndef __MACH__
                    COMMA
                    // Some of these are per process, but when do we
                    // want to know, still per thread action?
@@ -228,6 +262,7 @@ namespace {
                    KV("nvcsw", SLOW(r.ru_nvcsw))
                    COMMA
                    KV("nivcsw", SLOW(r.ru_nivcsw))
+#endif
                    )));
         NEWLINE;
     }
