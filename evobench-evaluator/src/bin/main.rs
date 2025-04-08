@@ -2,15 +2,15 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::Parser;
-use evobench::get_terminal_width::get_terminal_width;
-use evobench::log_file::LogData;
-use evobench::log_message::Timing;
-use evobench::pn_summary::{ByScope, Scope};
-use evobench::stats::Stats;
+use evobench_evaluator::get_terminal_width::get_terminal_width;
+use evobench_evaluator::log_file::LogData;
+use evobench_evaluator::log_message::Timing;
+use evobench_evaluator::pn_summary::{ByScope, Scope};
+use evobench_evaluator::stats::Stats;
 
 include!("../../include/evobench_version.rs");
 
-const PROGRAM_NAME: &str = "evobench";
+const PROGRAM_NAME: &str = "evobench-evaluator";
 
 #[derive(clap::Parser, Debug)]
 #[clap(next_line_help = true)]

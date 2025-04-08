@@ -2,8 +2,8 @@ use std::io::stdout;
 use std::io::Write;
 
 use anyhow::Result;
-use evobench::log_message::Metadata;
-use evobench::{
+use evobench_evaluator::log_message::Metadata;
+use evobench_evaluator::{
     git::GitGraph,
     log_message::{ExecutionTimings, LogMessage, ThreadId},
 };
@@ -97,7 +97,7 @@ fn graph() -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    println!("evobench tool, version {EVOBENCH_VERSION}");
+    println!("evobench_evaluator tool, version {EVOBENCH_VERSION}");
     // ser()?;
 
     Ok(())

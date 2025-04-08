@@ -29,10 +29,10 @@ if ! printf '%s' "$version_tag" | egrep -q "$version_regex"; then
     exit 1
 fi
 
-echo '#define EVOBENCH_VERSION "'"$version_tag"'"' > cpp/include/evobench_version.hpp
+echo '#define EVOBENCH_VERSION "'"$version_tag"'"' > evobench-evaluator/include/evobench_version.hpp
 echo 'const EVOBENCH_VERSION: &str = "'"$version_tag"'";' > rust/include/evobench_version.rs
 
 git commit -m "Release $version_tag" \
-    cpp/include/evobench_version.hpp rust/include/evobench_version.rs
+    evobench-evaluator/include/evobench_version.hpp rust/include/evobench_version.rs
 
 echo "todo: create signed or annotated tag?"
