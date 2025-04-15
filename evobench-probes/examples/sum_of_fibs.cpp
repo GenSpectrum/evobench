@@ -1,6 +1,6 @@
 #include <iostream>
 
-#include "../src/evobench.cpp" // XXX
+#include "../src/evobench/evobench.cpp" // XXX
 
 long long fib(long long n) {
     // EVOBENCH_SCOPE("fib", "fib");

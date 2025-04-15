@@ -3,7 +3,7 @@
 #endif
 
 // XX add -I
-#include "../include/evobench.hpp"
+#include "../../include/evobench/evobench.hpp"
 
 #include <string_view>
 #include <cstring>

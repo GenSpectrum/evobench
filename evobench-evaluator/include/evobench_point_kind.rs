@@ -1,1 +1,1 @@
-../../evobench-probes/include/_evobench_point_kind.hpp
+../../evobench-probes/include/evobench/_evobench_point_kind.hpp
