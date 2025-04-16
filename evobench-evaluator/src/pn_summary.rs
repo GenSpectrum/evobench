@@ -10,6 +10,8 @@ use crate::{
 
 #[derive(Debug)]
 pub struct ByScope<'t> {
+    /// For a probe name of a scoped probe, all the Scope { start, end
+    /// } values in sequence.
     pub by_pn: HashMap<&'t str, Vec<Scope<'t>>>,
 }
 
