@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use std::path::PathBuf;
 
 use anyhow::Result;
@@ -31,20 +32,31 @@ enum Command {
     Read { path: PathBuf },
 }
 
-fn scopestats(scopes: &[Scope], extract: impl Fn(&Timing) -> u64) -> Stats {
+fn scopestats<T: Into<u64> + From<u64>>(
+    scopes: &[Scope],
+    extract: impl Fn(&Timing) -> T,
+) -> Stats<T> {
     let vals: Vec<_> = scopes
         .into_iter()
-        .map(|scope| extract(&scope.end) - extract(&scope.start))
+        .map(|scope| -> u64 { extract(&scope.end).into() - extract(&scope.start).into() })
         .collect();
-    Stats::from_values(vals)
+    Stats::from_values(vals, 11)
 }
 
-fn stats(byscope: &ByScope, pn: &str, extract: impl Fn(&Timing) -> u64) {
-    let s = scopestats(byscope.scopes_by_pn(pn).unwrap(), extract);
-    println!("{pn:?} => {s:?}");
+fn stats<T: Into<u64> + From<u64> + Display>(
+    byscope: &ByScope,
+    pn: &str,
+    extract: impl Fn(&Timing) -> T,
+) {
+    let s: Stats<T> = scopestats(byscope.scopes_by_pn(pn).unwrap(), extract);
+    println!("{pn:?} => {s}");
 }
 
-fn stats_all_probes(byscope: &ByScope, extract_name: &str, extract: impl Fn(&Timing) -> u64) {
+fn stats_all_probes<T: Into<u64> + From<u64> + Display>(
+    byscope: &ByScope,
+    extract_name: &str,
+    extract: impl Fn(&Timing) -> T,
+) {
     println!("----{extract_name}-----------------------------------------------------------------------------------");
     for pn in byscope.probe_names() {
         stats(byscope, pn, &extract);
@@ -59,9 +71,9 @@ fn main() -> Result<()> {
             let data = LogData::read_file(path)?;
             let byscope = ByScope::from_logdata(&data)?;
             // dbg!(byscope);
-            stats_all_probes(&byscope, "real time", |timing: &Timing| timing.r.to_nsec());
-            stats_all_probes(&byscope, "cpu time", |timing: &Timing| timing.u.to_nsec());
-            stats_all_probes(&byscope, "sys time", |timing: &Timing| timing.s.to_nsec());
+            stats_all_probes(&byscope, "real time", |timing: &Timing| timing.r);
+            stats_all_probes(&byscope, "cpu time", |timing: &Timing| timing.u);
+            stats_all_probes(&byscope, "sys time", |timing: &Timing| timing.s);
         }
     }
 

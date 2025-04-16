@@ -1,7 +1,25 @@
+use std::fmt::Display;
 use std::ops::{Add, Sub};
 
 use num_traits::CheckedSub;
 use serde::{Deserialize, Serialize};
+
+fn print_milli_micro(f: &mut std::fmt::Formatter<'_>, milli: u32, micro: u32) -> std::fmt::Result {
+    write!(f, "{milli}.{micro:03} ms")
+}
+
+fn print_milli_micro_nano(
+    f: &mut std::fmt::Formatter<'_>,
+    milli: u32,
+    micro: u32,
+    nano: u32,
+) -> std::fmt::Result {
+    write!(f, "{milli}.{micro:03}_{nano:03} ms")
+}
+
+fn print_micro_nano(f: &mut std::fmt::Formatter<'_>, micro: u32, nano: u32) -> std::fmt::Result {
+    write!(f, "{micro}.{nano:03} us")
+}
 
 macro_rules! define_time {
     { $_Time:ident, $_sec:tt, $max__sec:tt } => {
@@ -81,8 +99,54 @@ macro_rules! define_time {
 define_time!(MicroTime, usec, 1_000_000);
 
 impl MicroTime {
+    pub fn to_usec(self) -> u64 {
+        self.sec as u64 * 1_000_000 + (self.usec as u64)
+    }
+    pub fn from_usec(useconds: u64) -> Option<Self> {
+        let sec = useconds / 1_000_000;
+        let usec = useconds % 1_000_000;
+        Some(Self {
+            sec: sec.try_into().ok()?,
+            usec: usec.try_into().expect("always in range"),
+        })
+    }
+
     pub fn to_nsec(self) -> u64 {
         self.sec as u64 * 1_000_000_000 + (self.usec as u64 * 1000)
+    }
+}
+
+/// Assumes microseconds. Panics for values outside the representable
+/// range!
+impl From<u64> for MicroTime {
+    fn from(value: u64) -> Self {
+        Self::from_usec(value).expect("outside representable range")
+    }
+}
+
+/// Into microseconds.
+impl From<MicroTime> for u64 {
+    fn from(value: MicroTime) -> Self {
+        value.to_usec()
+    }
+}
+
+fn milli_micro(usec: u32) -> (u32, u32) {
+    (usec / 1000, usec % 1000)
+}
+
+impl Display for MicroTime {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self { sec, usec } = *self;
+        if sec >= 1 {
+            let (milli, micro) = milli_micro(usec);
+            write!(f, "{sec}.{milli:03}_{micro:03} s")
+        } else if usec >= 1_000 {
+            let (milli, micro) = milli_micro(usec);
+            print_milli_micro(f, milli, micro)
+        } else {
+            write!(f, "{usec} us")
+        }
     }
 }
 
@@ -109,6 +173,47 @@ impl From<MicroTime> for NanoTime {
         NanoTime {
             sec: value.sec,
             nsec: value.usec * 1000,
+        }
+    }
+}
+
+/// Assumes nanoseconds. Panics for values outside the representable
+/// range!
+impl From<u64> for NanoTime {
+    fn from(value: u64) -> Self {
+        Self::from_nsec(value).expect("outside representable range")
+    }
+}
+
+/// Into nanoseconds.
+impl From<NanoTime> for u64 {
+    fn from(value: NanoTime) -> Self {
+        value.to_nsec()
+    }
+}
+
+fn milli_micro_nano(nsec: u32) -> (u32, u32, u32) {
+    let usec = nsec / 1000;
+    let nano = nsec % 1000;
+    let (milli, micro) = milli_micro(usec);
+    (milli, micro, nano)
+}
+
+impl Display for NanoTime {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self { sec, nsec } = *self;
+        if sec >= 1 {
+            let (milli, micro, nano) = milli_micro_nano(nsec);
+            write!(f, "{sec}.{milli:03}_{micro:03}_{nano:03} s")
+        } else {
+            let (milli, micro, nano) = milli_micro_nano(nsec);
+            if milli > 0 {
+                print_milli_micro_nano(f, milli, micro, nano)
+            } else if micro > 0 {
+                print_micro_nano(f, micro, nano)
+            } else {
+                write!(f, "{nsec} ns")
+            }
         }
     }
 }
