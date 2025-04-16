@@ -1,35 +1,12 @@
 use std::collections::{hash_map::Entry, HashMap};
 
-use anyhow::{bail, Result};
+use anyhow::Result;
 
 use crate::{
     log_file::LogData,
     log_message::{DataMessage, PointKind, ThreadId, Timing},
+    scope::Scope,
 };
-
-#[derive(Debug)]
-pub struct Scope<'t> {
-    // pub pn: &'t str, -- redundant since it's in Timing
-    pub start: &'t Timing,
-    pub end: &'t Timing,
-}
-
-impl<'t> Scope<'t> {
-    pub fn new(start: &'t Timing, end: &'t Timing) -> Result<Self> {
-        if start.pn == end.pn {
-            Ok(Self { start, end })
-        } else {
-            bail!(
-                "timings not from the same probe name: {:?} vs. {:?}",
-                start.pn,
-                end.pn
-            )
-        }
-    }
-    pub fn pn(&self) -> &'t str {
-        &self.start.pn
-    }
-}
 
 #[derive(Debug)]
 pub struct ByScope<'t> {

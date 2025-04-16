@@ -5,7 +5,8 @@ use clap::Parser;
 use evobench_evaluator::get_terminal_width::get_terminal_width;
 use evobench_evaluator::log_file::LogData;
 use evobench_evaluator::log_message::Timing;
-use evobench_evaluator::pn_summary::{ByScope, Scope};
+use evobench_evaluator::pn_summary::ByScope;
+use evobench_evaluator::scope::Scope;
 use evobench_evaluator::stats::Stats;
 
 include!("../../include/evobench_version.rs");
