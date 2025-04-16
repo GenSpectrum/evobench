@@ -43,9 +43,9 @@ fn stats(byscope: &ByScope, pn: &str, extract: impl Fn(&Timing) -> u64) {
     println!("{pn:?} => {s:?}");
 }
 
-fn all3stats(byscope: &ByScope, extract_name: &str, extract: impl Fn(&Timing) -> u64) {
-    println!("----{extract_name}--------------------------------------------------------------------------------------------");
-    for pn in ["main|fib", "main|sum_of_fibs", "main|main"] {
+fn stats_all_probes(byscope: &ByScope, extract_name: &str, extract: impl Fn(&Timing) -> u64) {
+    println!("----{extract_name}-----------------------------------------------------------------------------------");
+    for pn in byscope.probe_names() {
         stats(byscope, pn, &extract);
     }
 }
@@ -58,9 +58,9 @@ fn main() -> Result<()> {
             let data = LogData::read_file(path)?;
             let byscope = ByScope::from_logdata(&data)?;
             // dbg!(byscope);
-            all3stats(&byscope, "real time", |timing: &Timing| timing.r.to_nsec());
-            all3stats(&byscope, "cpu time", |timing: &Timing| timing.u.to_nsec());
-            all3stats(&byscope, "sys time", |timing: &Timing| timing.s.to_nsec());
+            stats_all_probes(&byscope, "real time", |timing: &Timing| timing.r.to_nsec());
+            stats_all_probes(&byscope, "cpu time", |timing: &Timing| timing.u.to_nsec());
+            stats_all_probes(&byscope, "sys time", |timing: &Timing| timing.s.to_nsec());
         }
     }
 

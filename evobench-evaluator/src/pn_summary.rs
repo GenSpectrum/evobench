@@ -90,6 +90,12 @@ impl<'t> ByScope<'t> {
         Ok(Self { by_pn })
     }
 
+    pub fn probe_names(&self) -> Vec<&'t str> {
+        let mut probe_names: Vec<&'t str> = self.by_pn.keys().copied().collect();
+        probe_names.sort();
+        probe_names
+    }
+
     pub fn scopes_by_pn(&self, pn: &str) -> Option<&Vec<Scope>> {
         self.by_pn.get(pn)
     }
