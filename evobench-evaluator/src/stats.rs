@@ -1,8 +1,9 @@
 use std::fmt::Display;
+use std::io::Write;
 use std::marker::PhantomData;
 
 #[derive(Debug)]
-pub struct Stats<ViewType: From<u64>> {
+pub struct Stats<ViewType> {
     view_type: PhantomData<fn() -> ViewType>,
     pub num_values: usize,
     pub sum: u128,
@@ -13,7 +14,7 @@ pub struct Stats<ViewType: From<u64>> {
     pub tiles: Vec<u64>,
 }
 
-impl<ViewType: From<u64>> Stats<ViewType> {
+impl<ViewType> Stats<ViewType> {
     /// `tiles_count` is how many 'tiles' to build, for percentiles
     /// give the number 101.
     pub fn from_values(mut vals: Vec<u64>, tiles_count: usize) -> Self {
@@ -49,6 +50,35 @@ impl<ViewType: From<u64>> Stats<ViewType> {
         assert!(0 == self.tiles.len() % 2);
         self.tiles[self.tiles.len() / 2]
     }
+
+    pub fn print_tsv_header(mut out: impl Write, key_names: &[&str]) -> Result<(), std::io::Error> {
+        for key_name in key_names {
+            write!(out, "{key_name}\t")?;
+        }
+        writeln!(out, "n\tsum\tavg\tmedian\ttiles")
+    }
+    pub fn print_tsv_line(&self, mut out: impl Write, keys: &[&str]) -> Result<(), std::io::Error>
+    where
+        ViewType: Display + From<u64>,
+    {
+        let Self {
+            view_type: _,
+            num_values,
+            sum,
+            average,
+            tiles,
+        } = self;
+        for key in keys {
+            write!(out, "{key}\t")?;
+        }
+        writeln!(
+            out,
+            "{num_values}\t{}\t{}\t{}\t{tiles:?}",
+            ViewType::from(u64::try_from(*sum).expect("sum is larger than u64: {sum}")),
+            ViewType::from(*average),
+            ViewType::from(self.median())
+        )
+    }
 }
 
 impl<ViewType: From<u64> + Display> Display for Stats<ViewType> {
@@ -60,7 +90,7 @@ impl<ViewType: From<u64> + Display> Display for Stats<ViewType> {
             average,
             tiles: _,
         } = self;
-        writeln!(
+        write!(
             f,
             " {num_values} values \t sum {} \t average {} \t median {}",
             ViewType::from(u64::try_from(*sum).expect("sum is larger than u64: {sum}")),

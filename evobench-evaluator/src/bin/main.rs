@@ -1,4 +1,5 @@
 use std::fmt::Display;
+use std::io::{stdout, Write};
 use std::path::PathBuf;
 
 use anyhow::Result;
@@ -45,25 +46,32 @@ fn scopestats<T: Into<u64> + From<u64>>(
 
 fn stats<T: Into<u64> + From<u64> + Display>(
     byscope: &ByScope,
+    extract_name: &str,
     pn: &str,
     extract: impl Fn(&Timing) -> T,
-) {
+    mut out: impl Write,
+) -> Result<()> {
     let s: Stats<T> = scopestats(byscope.scopes_by_pn(pn).unwrap(), extract);
-    println!("{pn:?} => {s}");
+    // println!("{pn:?} => {s}");
+    s.print_tsv_line(&mut out, &[extract_name, pn])?;
+    Ok(())
 }
 
 fn stats_all_probes<T: Into<u64> + From<u64> + Display>(
+    mut out: impl Write,
     byscope: &ByScope,
     extract_name: &str,
     extract: impl Fn(&Timing) -> T,
-) {
-    println!("----{extract_name}-----------------------------------------------------------------------------------");
+) -> Result<()> {
+    // println!("----{extract_name}-----------------------------------------------------------------------------------");
     for pn in byscope.probe_names() {
-        stats(byscope, pn, &extract);
+        stats(byscope, extract_name, pn, &extract, &mut out)?;
     }
+    Ok(())
 }
 
 fn main() -> Result<()> {
+    let mut out = stdout().lock();
     let opts: Opts = Opts::parse();
     match &opts.command {
         Command::Version => println!("{PROGRAM_NAME} version {EVOBENCH_VERSION}"),
@@ -71,9 +79,10 @@ fn main() -> Result<()> {
             let data = LogData::read_file(path)?;
             let byscope = ByScope::from_logdata(&data)?;
             // dbg!(byscope);
-            stats_all_probes(&byscope, "real time", |timing: &Timing| timing.r);
-            stats_all_probes(&byscope, "cpu time", |timing: &Timing| timing.u);
-            stats_all_probes(&byscope, "sys time", |timing: &Timing| timing.s);
+            Stats::<bool>::print_tsv_header(&mut out, &["field", "probe name"])?;
+            stats_all_probes(&mut out, &byscope, "real time", |timing: &Timing| timing.r)?;
+            stats_all_probes(&mut out, &byscope, "cpu time", |timing: &Timing| timing.u)?;
+            stats_all_probes(&mut out, &byscope, "sys time", |timing: &Timing| timing.s)?;
         }
     }
 
