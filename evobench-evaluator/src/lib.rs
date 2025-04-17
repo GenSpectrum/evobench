@@ -6,3 +6,4 @@ pub mod pn_summary;
 pub mod scope;
 pub mod stats;
 pub mod times;
+pub mod via_polars;
