@@ -10,6 +10,7 @@ use evobench_evaluator::log_message::Timing;
 use evobench_evaluator::pn_summary::ByScope;
 use evobench_evaluator::scope::Scope;
 use evobench_evaluator::stats::Stats;
+use evobench_evaluator::times::ToStringMilliseconds;
 
 include!("../../include/evobench_version.rs");
 
@@ -33,37 +34,39 @@ enum Command {
     Read { path: PathBuf },
 }
 
+const TILE_COUNT: usize = 11;
+
 fn scopestats<T: Into<u64> + From<u64>>(
     scopes: &[Scope],
     extract: impl Fn(&Timing) -> T,
-) -> Stats<T> {
+) -> Stats<T, TILE_COUNT> {
     let vals: Vec<_> = scopes
         .into_iter()
         .map(|scope| -> u64 { extract(&scope.end).into() - extract(&scope.start).into() })
         .collect();
-    Stats::from_values(vals, 11)
+    Stats::from_values(vals)
 }
 
-fn stats<T: Into<u64> + From<u64> + Display>(
+fn stats<T: Into<u64> + From<u64> + ToStringMilliseconds + Display>(
     byscope: &ByScope,
     extract_name: &str,
     pn: &str,
     extract: impl Fn(&Timing) -> T,
     mut out: impl Write,
 ) -> Result<()> {
-    let s: Stats<T> = scopestats(byscope.scopes_by_pn(pn).unwrap(), extract);
-    // println!("{pn:?} => {s}");
+    let s: Stats<T, TILE_COUNT> = scopestats(byscope.scopes_by_pn(pn).unwrap(), extract);
+    eprintln!("{pn:?} => {s}");
     s.print_tsv_line(&mut out, &[extract_name, pn])?;
     Ok(())
 }
 
-fn stats_all_probes<T: Into<u64> + From<u64> + Display>(
+fn stats_all_probes<T: Into<u64> + From<u64> + ToStringMilliseconds + Display>(
     mut out: impl Write,
     byscope: &ByScope,
     extract_name: &str,
     extract: impl Fn(&Timing) -> T,
 ) -> Result<()> {
-    // println!("----{extract_name}-----------------------------------------------------------------------------------");
+    eprintln!("----{extract_name}-----------------------------------------------------------------------------------");
     for pn in byscope.probe_names() {
         stats(byscope, extract_name, pn, &extract, &mut out)?;
     }
@@ -79,7 +82,7 @@ fn main() -> Result<()> {
             let data = LogData::read_file(path)?;
             let byscope = ByScope::from_logdata(&data)?;
             // dbg!(byscope);
-            Stats::<bool>::print_tsv_header(&mut out, &["field", "probe name"])?;
+            Stats::<bool, TILE_COUNT>::print_tsv_header(&mut out, &["field", "probe name"])?;
             stats_all_probes(&mut out, &byscope, "real time", |timing: &Timing| timing.r)?;
             stats_all_probes(&mut out, &byscope, "cpu time", |timing: &Timing| timing.u)?;
             stats_all_probes(&mut out, &byscope, "sys time", |timing: &Timing| timing.s)?;

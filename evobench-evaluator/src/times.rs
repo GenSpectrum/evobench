@@ -4,6 +4,10 @@ use std::ops::{Add, Sub};
 use num_traits::CheckedSub;
 use serde::{Deserialize, Serialize};
 
+pub trait ToStringMilliseconds {
+    fn to_string_ms(&self) -> String;
+}
+
 fn print_milli_micro(f: &mut std::fmt::Formatter<'_>, milli: u32, micro: u32) -> std::fmt::Result {
     write!(f, "{milli}.{micro:03} ms")
 }
@@ -215,6 +219,22 @@ impl Display for NanoTime {
                 write!(f, "{nsec} ns")
             }
         }
+    }
+}
+
+impl ToStringMilliseconds for MicroTime {
+    fn to_string_ms(&self) -> String {
+        let ms = self.sec * 1000 + self.usec / 1_000;
+        let usec_rest = self.usec % 1_000;
+        format!("{ms}.{usec_rest:06}")
+    }
+}
+
+impl ToStringMilliseconds for NanoTime {
+    fn to_string_ms(&self) -> String {
+        let ms = self.sec * 1000 + self.nsec / 1_000_000;
+        let nsec_rest = self.nsec % 1_000_000;
+        format!("{ms}.{nsec_rest:09}")
     }
 }
 

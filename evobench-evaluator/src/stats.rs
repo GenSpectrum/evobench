@@ -2,8 +2,10 @@ use std::fmt::Display;
 use std::io::Write;
 use std::marker::PhantomData;
 
+use crate::times::ToStringMilliseconds;
+
 #[derive(Debug)]
-pub struct Stats<ViewType> {
+pub struct Stats<ViewType, const TILES_COUNT: usize> {
     view_type: PhantomData<fn() -> ViewType>,
     pub num_values: usize,
     pub sum: u128,
@@ -14,10 +16,10 @@ pub struct Stats<ViewType> {
     pub tiles: Vec<u64>,
 }
 
-impl<ViewType> Stats<ViewType> {
+impl<ViewType, const TILES_COUNT: usize> Stats<ViewType, TILES_COUNT> {
     /// `tiles_count` is how many 'tiles' to build, for percentiles
     /// give the number 101.
-    pub fn from_values(mut vals: Vec<u64>, tiles_count: usize) -> Self {
+    pub fn from_values(mut vals: Vec<u64>) -> Self {
         let num_values = vals.len();
         let sum: u128 = vals.iter().map(|v| u128::from(*v)).sum();
         let average = sum / (num_values as u128);
@@ -25,8 +27,8 @@ impl<ViewType> Stats<ViewType> {
 
         let flen = (num_values - 1) as f64;
         let mut tiles = Vec::new();
-        let tiles_max = tiles_count as f64;
-        for i in 0..=tiles_count {
+        let tiles_max = TILES_COUNT as f64;
+        for i in 0..TILES_COUNT {
             let index = i as f64 / tiles_max * flen;
             let val = vals[index as usize];
             tiles.push(val);
@@ -47,19 +49,27 @@ impl<ViewType> Stats<ViewType> {
     /// Uses the values from `tiles`; panics if you gave an even
     /// tiles_count (must be odd so the middle is present)
     pub fn median(&self) -> u64 {
-        assert!(0 == self.tiles.len() % 2);
+        assert!(0 != self.tiles.len() % 2);
         self.tiles[self.tiles.len() / 2]
     }
+
+    const UNIT: &str = "ms";
 
     pub fn print_tsv_header(mut out: impl Write, key_names: &[&str]) -> Result<(), std::io::Error> {
         for key_name in key_names {
             write!(out, "{key_name}\t")?;
         }
-        writeln!(out, "n\tsum\tavg\tmedian\ttiles")
+        let unit = Self::UNIT;
+        write!(out, "n\tsum {unit}\tavg {unit}\tmedian {unit}")?;
+        for i in 0..TILES_COUNT {
+            write!(out, "\ttile {i} ({unit})")?
+        }
+        writeln!(out, "")?;
+        Ok(())
     }
     pub fn print_tsv_line(&self, mut out: impl Write, keys: &[&str]) -> Result<(), std::io::Error>
     where
-        ViewType: Display + From<u64>,
+        ViewType: ToStringMilliseconds + From<u64>,
     {
         let Self {
             view_type: _,
@@ -71,17 +81,25 @@ impl<ViewType> Stats<ViewType> {
         for key in keys {
             write!(out, "{key}\t")?;
         }
-        writeln!(
+        write!(
             out,
-            "{num_values}\t{}\t{}\t{}\t{tiles:?}",
-            ViewType::from(u64::try_from(*sum).expect("sum is larger than u64: {sum}")),
-            ViewType::from(*average),
-            ViewType::from(self.median())
-        )
+            "{num_values}\t{}\t{}\t{}",
+            ViewType::from(u64::try_from(*sum).expect("sum is larger than u64: {sum}"))
+                .to_string_ms(),
+            ViewType::from(*average).to_string_ms(),
+            ViewType::from(self.median()).to_string_ms()
+        )?;
+        for val in tiles {
+            write!(out, "\t{}", ViewType::from(*val).to_string_ms())?;
+        }
+        writeln!(out, "")?;
+        Ok(())
     }
 }
 
-impl<ViewType: From<u64> + Display> Display for Stats<ViewType> {
+impl<ViewType: From<u64> + Display, const TILES_COUNT: usize> Display
+    for Stats<ViewType, TILES_COUNT>
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self {
             view_type: _,
