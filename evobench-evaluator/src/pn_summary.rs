@@ -24,7 +24,7 @@ impl<'t> ByScope<'t> {
         for message in &data.messages {
             match message.data_message() {
                 DataMessage::KeyValue(kv) => {
-                    println!("XX keyvalue {kv:?}");
+                    // println!("XX keyvalue {kv:?}");
                 }
                 DataMessage::Timing(kind, timing) => {
                     match kind {
