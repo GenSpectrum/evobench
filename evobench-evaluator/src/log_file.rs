@@ -9,7 +9,7 @@ use kstring::KString;
 
 use crate::log_message::{LogMessage, Metadata};
 
-const MAX_FILE_SIZE: u64 = 100_000_000;
+const MAX_FILE_SIZE: u64 = 300_000_000;
 
 #[derive(Debug)]
 pub struct LogData {
