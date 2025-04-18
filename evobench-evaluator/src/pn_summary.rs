@@ -1,6 +1,5 @@
 use std::{
     collections::{hash_map::Entry, HashMap},
-    io::Write,
 };
 
 use anyhow::Result;
