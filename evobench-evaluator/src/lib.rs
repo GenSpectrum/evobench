@@ -1,3 +1,4 @@
+pub mod digit_num;
 pub mod get_terminal_width;
 pub mod git;
 pub mod log_file;

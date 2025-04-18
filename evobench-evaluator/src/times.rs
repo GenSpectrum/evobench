@@ -8,6 +8,19 @@ pub trait ToStringMilliseconds {
     fn to_string_ms(&self) -> String;
 }
 
+pub trait FromMicroseconds: Sized {
+    fn from_usec(useconds: u64) -> Option<Self>;
+}
+
+pub trait ToNanoseconds {
+    fn to_nsec(self) -> u64;
+}
+
+/// To nsec or usec depending on the type
+pub trait ToIncrements {
+    fn to_increments(self) -> u64;
+}
+
 fn print_milli_micro(f: &mut std::fmt::Formatter<'_>, milli: u32, micro: u32) -> std::fmt::Result {
     write!(f, "{milli}.{micro:03} ms")
 }
@@ -52,6 +65,12 @@ macro_rules! define_time {
                 }  else {
                     None
                 }
+            }
+        }
+
+        impl ToIncrements for $_Time {
+            fn to_increments(self) -> u64 {
+                u64::from(self.sec) * $max__sec + u64::from(self.$_sec)
             }
         }
 
@@ -103,10 +122,13 @@ macro_rules! define_time {
 define_time!(MicroTime, usec, 1_000_000);
 
 impl MicroTime {
-    pub fn to_usec(self) -> u64 {
+    fn to_usec(self) -> u64 {
         self.sec as u64 * 1_000_000 + (self.usec as u64)
     }
-    pub fn from_usec(useconds: u64) -> Option<Self> {
+}
+
+impl FromMicroseconds for MicroTime {
+    fn from_usec(useconds: u64) -> Option<Self> {
         let sec = useconds / 1_000_000;
         let usec = useconds % 1_000_000;
         Some(Self {
@@ -114,8 +136,10 @@ impl MicroTime {
             usec: usec.try_into().expect("always in range"),
         })
     }
+}
 
-    pub fn to_nsec(self) -> u64 {
+impl ToNanoseconds for MicroTime {
+    fn to_nsec(self) -> u64 {
         self.sec as u64 * 1_000_000_000 + (self.usec as u64 * 1000)
     }
 }
@@ -139,17 +163,30 @@ fn milli_micro(usec: u32) -> (u32, u32) {
     (usec / 1000, usec % 1000)
 }
 
+fn format_integer_with_undercores(digits: &str) -> String {
+    digits
+        .as_bytes()
+        .rchunks(3)
+        .rev()
+        .map(std::str::from_utf8)
+        .collect::<Result<Vec<&str>, _>>()
+        .unwrap()
+        .join("_")
+}
+
 impl Display for MicroTime {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self { sec, usec } = *self;
         if sec >= 1 {
             let (milli, micro) = milli_micro(usec);
-            write!(f, "{sec}.{milli:03}_{micro:03} s")
+            let sec_str = format_integer_with_undercores(&sec.to_string());
+            write!(f, "{sec_str}.{milli:03}_{micro:03} s")
         } else if usec >= 1_000 {
             let (milli, micro) = milli_micro(usec);
             print_milli_micro(f, milli, micro)
         } else {
-            write!(f, "{usec} us")
+            let usec_str = format_integer_with_undercores(&usec.to_string());
+            write!(f, "{usec_str} us")
         }
     }
 }
@@ -159,9 +196,6 @@ impl Display for MicroTime {
 define_time!(NanoTime, nsec, 1_000_000_000);
 
 impl NanoTime {
-    pub fn to_nsec(self) -> u64 {
-        self.sec as u64 * 1_000_000_000 + self.nsec as u64
-    }
     pub fn from_nsec(nseconds: u64) -> Option<Self> {
         let sec = nseconds / 1_000_000_000;
         let nsec = nseconds % 1_000_000_000;
@@ -169,6 +203,19 @@ impl NanoTime {
             sec: sec.try_into().ok()?,
             nsec: nsec.try_into().expect("always in range"),
         })
+    }
+}
+
+impl FromMicroseconds for NanoTime {
+    fn from_usec(useconds: u64) -> Option<Self> {
+        let nsec = useconds.checked_mul(1000)?;
+        Self::from_nsec(nsec)
+    }
+}
+
+impl ToNanoseconds for NanoTime {
+    fn to_nsec(self) -> u64 {
+        self.sec as u64 * 1_000_000_000 + self.nsec as u64
     }
 }
 
@@ -208,7 +255,8 @@ impl Display for NanoTime {
         let Self { sec, nsec } = *self;
         if sec >= 1 {
             let (milli, micro, nano) = milli_micro_nano(nsec);
-            write!(f, "{sec}.{milli:03}_{micro:03}_{nano:03} s")
+            let sec_str = format_integer_with_undercores(&sec.to_string());
+            write!(f, "{sec_str}.{milli:03}_{micro:03}_{nano:03} s")
         } else {
             let (milli, micro, nano) = milli_micro_nano(nsec);
             if milli > 0 {
@@ -216,7 +264,8 @@ impl Display for NanoTime {
             } else if micro > 0 {
                 print_micro_nano(f, micro, nano)
             } else {
-                write!(f, "{nsec} ns")
+                let nsec_str = format_integer_with_undercores(&nsec.to_string());
+                write!(f, "{nsec_str} ns")
             }
         }
     }
@@ -226,7 +275,7 @@ impl ToStringMilliseconds for MicroTime {
     fn to_string_ms(&self) -> String {
         let ms = self.sec * 1000 + self.usec / 1_000;
         let usec_rest = self.usec % 1_000;
-        format!("{ms}.{usec_rest:06}")
+        format!("{ms}.{usec_rest:03}")
     }
 }
 
@@ -234,12 +283,18 @@ impl ToStringMilliseconds for NanoTime {
     fn to_string_ms(&self) -> String {
         let ms = self.sec * 1000 + self.nsec / 1_000_000;
         let nsec_rest = self.nsec % 1_000_000;
-        format!("{ms}.{nsec_rest:09}")
+        format!("{ms}.{nsec_rest:06}")
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::fmt::Debug;
+
+    use rand::Rng;
+
+    use crate::digit_num::{Digit, DigitNum, DigitNumFormat};
+
     use super::*;
 
     #[test]
@@ -306,5 +361,138 @@ mod tests {
             NanoTime::from_nsec(u(8, 30).to_nsec()).unwrap(),
             n(8, 30_000)
         );
+    }
+
+    fn test_stringification<
+        const DIGITS_BELOW_MS: usize,
+        const DIGITS_BELOW_S: usize,
+        Time: ToStringMilliseconds
+            + FromMicroseconds
+            + From<u64>
+            + Display
+            + ToNanoseconds
+            + Debug
+            + Copy,
+    >() {
+        let mut num: DigitNum<DIGITS_BELOW_MS> = DigitNum::new();
+        let digits_above_ms = 10; // 10 is the max possible for just creating nums
+        let num_digits_to_test = DIGITS_BELOW_MS + digits_above_ms;
+        for _ in 0..num_digits_to_test {
+            let num_u64: u64 = (&num).try_into().unwrap();
+            let time = Time::from(num_u64);
+
+            // Test `to_string_ms()`
+            assert_eq!(
+                time.to_string_ms(),
+                num.to_string_with_params(DigitNumFormat {
+                    underscores: false,
+                    omit_trailing_dot: false
+                })
+            );
+
+            // Test `Display`
+            let time_str = format!("{time}");
+            let parts: Vec<_> = time_str.split(' ').collect();
+            let (number, num_digits_below_seconds) = match parts.as_slice() {
+                &[number, "ns"] => (number, 9),
+                &[number, "us"] => (number, 6),
+                &[number, "ms"] => (number, 3),
+                &[number, "s"] => (number, 0),
+                _ => unreachable!(),
+            };
+            let (expect_dot, expect_digits_after_dot) =
+                if DIGITS_BELOW_S == num_digits_below_seconds {
+                    (false, 0)
+                } else {
+                    (true, DIGITS_BELOW_S - num_digits_below_seconds)
+                };
+            let parts: Vec<&str> = number.split('.').collect();
+            let digits = match parts.as_slice() {
+                [left, right] => {
+                    assert!(expect_dot);
+                    // If given ns, and DIGITS_BELOW_S is 9, then
+                    // right.len() is 0. Won't even have a dot.
+                    let right_without_underscores = right.replace("_", "");
+                    assert_eq!(right_without_underscores.len(), expect_digits_after_dot);
+                    format!("{left}_{right}")
+                }
+                [left_only] => {
+                    assert!(!expect_dot);
+                    format!("{left_only}")
+                }
+                _ => unreachable!(),
+            };
+            let num_in_lowest: DigitNum<0> = num.clone().into_changed_dot_position();
+            assert_eq!(
+                digits,
+                num_in_lowest.to_string_with_params(DigitNumFormat {
+                    underscores: true,
+                    omit_trailing_dot: true
+                })
+            );
+
+            // Test `ToNanoseconds`
+            let ns = time.to_nsec();
+            // num_u64 is in us or ns, depending on the type.
+            let num_u64_multiplicator = match DIGITS_BELOW_S {
+                6 => 1000,
+                9 => 1,
+                _ => unreachable!(),
+            };
+            assert_eq!(ns, num_u64 * num_u64_multiplicator);
+
+            // Test `FromMicroseconds`
+            let time2 = Time::from_usec(num_u64).expect("works for MicroTime::from, so also here");
+            let ns2 = time2.to_nsec();
+            assert_eq!(ns2, num_u64 * 1000);
+
+            num.push_lowest_digit(Digit::random());
+        }
+    }
+
+    #[test]
+    fn t_micro_time_stringification() {
+        test_stringification::<3, 6, MicroTime>();
+    }
+
+    #[test]
+    fn t_nano_time_stringification() {
+        test_stringification::<6, 9, NanoTime>();
+    }
+
+    fn test_arithmetic<Time: From<u64> + Display + Debug + Copy + Add + Sub>()
+    where
+        <Time as Add>::Output: ToIncrements,
+        <Time as Sub>::Output: ToIncrements,
+    {
+        let mut rng = rand::thread_rng();
+
+        for _ in 0..100000 {
+            // (* (- (expt 2 32) 1) 1000000 1/2)
+            let max = 2147483647500000;
+            let a: u64 = rng.gen_range(0..max);
+            let ta = Time::from(a);
+            let b: u64 = rng.gen_range(0..max);
+            let tb = Time::from(b);
+            let c = a + b;
+            let tc = ta + tb;
+            assert_eq!(c, tc.to_increments());
+            let (d, td) = if a > b {
+                (a - b, ta - tb)
+            } else {
+                (b - a, tb - ta)
+            };
+            assert_eq!(d, td.to_increments());
+        }
+    }
+
+    #[test]
+    fn t_micro_time_arithmetic() {
+        test_arithmetic::<MicroTime>();
+    }
+
+    #[test]
+    fn t_nano_time_arithmetic() {
+        test_arithmetic::<NanoTime>();
     }
 }
