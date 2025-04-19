@@ -59,8 +59,8 @@ macro_rules! define_time {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
         #[serde(deny_unknown_fields)]
         pub struct $_Time {
-            pub sec: u32,
-            pub $_sec: u32,
+            sec: u32,
+            $_sec: u32,
         }
 
         impl $_Time {
@@ -82,6 +82,9 @@ macro_rules! define_time {
                     None
                 }
             }
+
+            pub fn sec(self) -> u32 { self.sec }
+            pub fn $_sec(self) -> u32 { self.$_sec }
         }
 
         impl ToIncrements for $_Time {
