@@ -372,7 +372,8 @@ mod tests {
             + Display
             + ToNanoseconds
             + Debug
-            + Copy,
+            + Copy
+            + ToIncrements,
     >() {
         let mut num: DigitNum<DIGITS_BELOW_MS> = DigitNum::new();
         let digits_above_ms = 10; // 10 is the max possible for just creating nums
@@ -422,14 +423,18 @@ mod tests {
                 }
                 _ => unreachable!(),
             };
-            let num_in_lowest: DigitNum<0> = num.clone().into_changed_dot_position();
+            let num_in_increments: DigitNum<0> = num.clone().into_changed_dot_position();
+            assert_eq!(num_u64, u64::try_from(&num_in_increments).unwrap());
             assert_eq!(
                 digits,
-                num_in_lowest.to_string_with_params(DigitNumFormat {
+                num_in_increments.to_string_with_params(DigitNumFormat {
                     underscores: true,
                     omit_trailing_dot: true
                 })
             );
+
+            // Test `ToIncrements`
+            assert_eq!(time.to_increments(), num_u64);
 
             // Test `ToNanoseconds`
             let ns = time.to_nsec();
