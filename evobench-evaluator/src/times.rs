@@ -67,7 +67,7 @@ macro_rules! define_time {
             /// Panics if sub-second part is not within range. XX how better
             /// with serde?
             pub fn check(self) {
-                assert!(self.$_sec < $max__sec)
+                assert!(self.is_valid())
             }
 
             pub fn is_valid(self)-> bool {
@@ -75,8 +75,9 @@ macro_rules! define_time {
             }
 
             pub fn new(sec: u32, $_sec: u32) -> Option<Self> {
-                if $_sec < $max__sec {
-                    Some(Self{ sec, $_sec})
+                let slf = Self { sec, $_sec };
+                if slf.is_valid() {
+                    Some(slf)
                 }  else {
                     None
                 }
