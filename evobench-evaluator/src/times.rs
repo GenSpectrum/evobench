@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 use std::ops::{Add, Sub};
 
 use num_traits::CheckedSub;
@@ -20,6 +20,21 @@ pub trait ToNanoseconds {
 pub trait ToIncrements {
     fn to_increments(self) -> u64;
 }
+
+pub trait Time:
+    ToStringMilliseconds
+    + FromMicroseconds
+    + From<u64>
+    + Display
+    + ToNanoseconds
+    + Debug
+    + Copy
+    + ToIncrements
+{
+}
+
+impl Time for MicroTime {}
+impl Time for NanoTime {}
 
 fn print_milli_micro(f: &mut std::fmt::Formatter<'_>, milli: u32, micro: u32) -> std::fmt::Result {
     write!(f, "{milli}.{micro:03} ms")
@@ -289,13 +304,9 @@ impl ToStringMilliseconds for NanoTime {
 
 #[cfg(test)]
 mod tests {
-    use std::fmt::Debug;
-
-    use rand::Rng;
-
-    use crate::digit_num::{Digit, DigitNum, DigitNumFormat};
-
     use super::*;
+    use crate::digit_num::{Digit, DigitNum, DigitNumFormat};
+    use rand::Rng;
 
     #[test]
     fn t_micro_time() {
