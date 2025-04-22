@@ -99,6 +99,7 @@ pub enum SpanKind<'t> {
 #[derive(Debug)]
 pub struct Span<'t> {
     pub parent: Option<SpanId<'t>>,
+    pub children: Vec<SpanId<'t>>,
     pub kind: SpanKind<'t>,
 }
 
@@ -196,12 +197,19 @@ impl<'t> LogDataIndex<'t> {
                         slf.add_span(Span {
                             kind: SpanKind::KeyValue(kv),
                             parent,
+                            children: Default::default(),
                         })
                     };
                     match start_by_thread.entry(kv.tid) {
                         Entry::Occupied(mut e) => {
-                            let parent: Option<SpanId<'t>> = e.get().last().copied();
-                            e.get_mut().push(span_with_parent(parent));
+                            let opt_parent_id: Option<SpanId<'t>> = e.get().last().copied();
+                            let span_id = span_with_parent(opt_parent_id);
+                            if let Some(parent_id) = opt_parent_id {
+                                // Add us, span_id, to the parent's child list.
+                                let parent = parent_id.get_mut_from_db(&mut slf);
+                                parent.children.push(span_id);
+                            }
+                            e.get_mut().push(span_id);
                         }
                         Entry::Vacant(_e) => {
                             bail!("KeyValue must be below some span (but creating a thread counts, too)")
@@ -220,6 +228,7 @@ impl<'t> LogDataIndex<'t> {
                                         end: None,
                                     },
                                     parent,
+                                    children: Default::default(),
                                 })
                             };
                             match start_by_thread.entry(timing.tid) {
