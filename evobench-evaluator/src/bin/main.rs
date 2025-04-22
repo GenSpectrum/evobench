@@ -33,7 +33,7 @@ enum Command {
     Read { path: PathBuf },
 }
 
-const TILE_COUNT: usize = 11;
+const TILE_COUNT: usize = 101;
 
 fn scopestats<T: Into<u64> + From<u64>>(
     log_data_index: &LogDataIndex,
