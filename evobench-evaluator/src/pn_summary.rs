@@ -138,6 +138,38 @@ impl<'t> Span<'t> {
         }
     }
 
+    pub fn path_string(&self, db: &LogDataIndex<'t>) -> String {
+        let mut out = if let Some(parent_id) = self.parent {
+            let parent = parent_id.get_from_db(db);
+            let mut out = parent.path_string(db);
+            out.push_str(" > ");
+            out
+        } else {
+            String::new()
+        };
+        match &self.kind {
+            SpanKind::Scope {
+                kind,
+                start,
+                end: _,
+            } => {
+                match kind {
+                    ScopeKind::Process => out.push_str("P:"),
+                    ScopeKind::Thread => out.push_str("T:"),
+                    ScopeKind::Scope => (),
+                }
+                let pn = &start.pn;
+                out.push_str(pn);
+            }
+            SpanKind::KeyValue(KeyValue { tid: _, k, v }) => {
+                out.push_str(k);
+                out.push_str("=");
+                out.push_str(v);
+            }
+        }
+        out
+    }
+
     pub fn start_and_end(&self) -> Option<(&'t Timing, &'t Timing)> {
         match &self.kind {
             SpanKind::Scope {
