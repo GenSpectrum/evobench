@@ -7,8 +7,7 @@ use clap::Parser;
 use evobench_evaluator::get_terminal_width::get_terminal_width;
 use evobench_evaluator::log_file::LogData;
 use evobench_evaluator::log_message::Timing;
-use evobench_evaluator::pn_summary::ByScope;
-use evobench_evaluator::scope::Scope;
+use evobench_evaluator::pn_summary::{LogDataIndex, ScopeId};
 use evobench_evaluator::stats::Stats;
 use evobench_evaluator::times::ToStringMilliseconds;
 
@@ -37,24 +36,32 @@ enum Command {
 const TILE_COUNT: usize = 11;
 
 fn scopestats<T: Into<u64> + From<u64>>(
-    scopes: &[Scope],
+    log_data_index: &LogDataIndex,
+    scopes: &[ScopeId],
     extract: impl Fn(&Timing) -> T,
 ) -> Stats<T, TILE_COUNT> {
     let vals: Vec<_> = scopes
         .into_iter()
-        .map(|scope| -> u64 { extract(&scope.end).into() - extract(&scope.start).into() })
+        .map(|scope_id| -> u64 {
+            let scope = scope_id.get_from_db(log_data_index);
+            extract(scope.end()).into() - extract(scope.start()).into()
+        })
         .collect();
     Stats::from_values(vals)
 }
 
 fn stats<T: Into<u64> + From<u64> + ToStringMilliseconds + Display>(
-    byscope: &ByScope,
+    log_data_index: &LogDataIndex,
     extract_name: &str,
     pn: &str,
     extract: impl Fn(&Timing) -> T,
     mut out: impl Write,
 ) -> Result<()> {
-    let s: Stats<T, TILE_COUNT> = scopestats(byscope.scopes_by_pn(pn).unwrap(), extract);
+    let s: Stats<T, TILE_COUNT> = scopestats(
+        log_data_index,
+        log_data_index.scopes_by_pn(&pn).unwrap(),
+        extract,
+    );
     eprintln!("{pn:?} => {s}");
     s.print_tsv_line(&mut out, &[extract_name, pn])?;
     Ok(())
@@ -62,13 +69,13 @@ fn stats<T: Into<u64> + From<u64> + ToStringMilliseconds + Display>(
 
 fn stats_all_probes<T: Into<u64> + From<u64> + ToStringMilliseconds + Display>(
     mut out: impl Write,
-    byscope: &ByScope,
+    log_data_index: &LogDataIndex,
     extract_name: &str,
     extract: impl Fn(&Timing) -> T,
 ) -> Result<()> {
     eprintln!("----{extract_name}-----------------------------------------------------------------------------------");
-    for pn in byscope.probe_names() {
-        stats(byscope, extract_name, pn, &extract, &mut out)?;
+    for pn in log_data_index.probe_names() {
+        stats(log_data_index, extract_name, pn, &extract, &mut out)?;
     }
     Ok(())
 }
@@ -80,12 +87,18 @@ fn main() -> Result<()> {
         Command::Version => println!("{PROGRAM_NAME} version {EVOBENCH_VERSION}"),
         Command::Read { path } => {
             let data = LogData::read_file(path)?;
-            let byscope = ByScope::from_logdata(&data)?;
+            let log_data_index = LogDataIndex::from_logdata(&data)?;
             // dbg!(byscope);
             Stats::<bool, TILE_COUNT>::print_tsv_header(&mut out, &["field", "probe name"])?;
-            stats_all_probes(&mut out, &byscope, "real time", |timing: &Timing| timing.r)?;
-            stats_all_probes(&mut out, &byscope, "cpu time", |timing: &Timing| timing.u)?;
-            stats_all_probes(&mut out, &byscope, "sys time", |timing: &Timing| timing.s)?;
+            stats_all_probes(&mut out, &log_data_index, "real time", |timing: &Timing| {
+                timing.r
+            })?;
+            stats_all_probes(&mut out, &log_data_index, "cpu time", |timing: &Timing| {
+                timing.u
+            })?;
+            stats_all_probes(&mut out, &log_data_index, "sys time", |timing: &Timing| {
+                timing.s
+            })?;
         }
     }
 
