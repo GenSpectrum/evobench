@@ -292,6 +292,14 @@ impl<'t> LogDataIndex<'t> {
         probe_names
     }
 
+    pub fn spans(&self) -> &[Span<'t>] {
+        &self.spans
+    }
+
+    pub fn span_ids(&self) -> impl Iterator<Item = SpanId<'t>> {
+        (1..self.spans.len()).map(SpanId::new)
+    }
+
     pub fn spans_by_pn(&self, pn: &str) -> Option<&Vec<SpanId<'t>>> {
         self.spans_by_pn.get(pn)
     }

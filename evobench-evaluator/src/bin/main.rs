@@ -7,8 +7,9 @@ use clap::Parser;
 use evobench_evaluator::get_terminal_width::get_terminal_width;
 use evobench_evaluator::log_file::LogData;
 use evobench_evaluator::log_message::Timing;
+use evobench_evaluator::path_summary::IndexByCallPath;
 use evobench_evaluator::pn_summary::{LogDataIndex, SpanId};
-use evobench_evaluator::stats::Stats;
+use evobench_evaluator::stats::{Stats, StatsError};
 use evobench_evaluator::times::ToStringMilliseconds;
 
 include!("../../include/evobench_version.rs");
@@ -39,13 +40,13 @@ fn scopestats<T: Into<u64> + From<u64>>(
     log_data_index: &LogDataIndex,
     spans: &[SpanId],
     extract: impl Fn(&Timing) -> T,
-) -> Stats<T, TILE_COUNT> {
+) -> Result<Stats<T, TILE_COUNT>, StatsError> {
     let vals: Vec<_> = spans
         .into_iter()
-        .map(|span_id| -> u64 {
+        .filter_map(|span_id| -> Option<u64> {
             let span = span_id.get_from_db(log_data_index);
-            let (start, end) = span.start_and_end().unwrap();
-            extract(end).into() - extract(start).into()
+            let (start, end) = span.start_and_end()?;
+            Some(extract(end).into() - extract(start).into())
         })
         .collect();
     Stats::from_values(vals)
@@ -53,31 +54,55 @@ fn scopestats<T: Into<u64> + From<u64>>(
 
 fn stats<T: Into<u64> + From<u64> + ToStringMilliseconds + Display>(
     log_data_index: &LogDataIndex,
+    spans: &[SpanId],
     extract_name: &str,
     pn: &str,
     extract: impl Fn(&Timing) -> T,
     mut out: impl Write,
 ) -> Result<()> {
-    let s: Stats<T, TILE_COUNT> = scopestats(
-        log_data_index,
-        log_data_index.spans_by_pn(&pn).unwrap(),
-        extract,
-    );
-    eprintln!("{pn:?} => {s}");
-    s.print_tsv_line(&mut out, &[extract_name, pn])?;
+    let s: Result<Stats<T, TILE_COUNT>, StatsError> = scopestats(log_data_index, spans, extract);
+    if let Ok(s) = &s {
+        eprintln!("{pn:?} => {s}");
+        s.print_tsv_line(&mut out, &[extract_name, pn])?;
+    } else {
+        // XX more generic? print_tsv_line directly on Result? Or evil
+        // anyway? Actually showing counts here now, evil too.
+        let count = spans.len();
+        writeln!(&mut out, "{extract_name}\t{pn}\t{count}")?;
+    }
     Ok(())
 }
 
 fn stats_all_probes<T: Into<u64> + From<u64> + ToStringMilliseconds + Display>(
     mut out: impl Write,
     log_data_index: &LogDataIndex,
+    index_by_call_path: &IndexByCallPath,
     extract_name: &str,
     extract: impl Fn(&Timing) -> T,
 ) -> Result<()> {
     eprintln!("----{extract_name}-----------------------------------------------------------------------------------");
     for pn in log_data_index.probe_names() {
-        stats(log_data_index, extract_name, pn, &extract, &mut out)?;
+        stats(
+            log_data_index,
+            log_data_index.spans_by_pn(&pn).unwrap(),
+            extract_name,
+            pn,
+            &extract,
+            &mut out,
+        )?;
     }
+
+    for call_path in index_by_call_path.call_paths() {
+        stats(
+            log_data_index,
+            index_by_call_path.spans_by_call_path(call_path).unwrap(),
+            extract_name,
+            call_path,
+            &extract,
+            &mut out,
+        )?;
+    }
+
     Ok(())
 }
 
@@ -89,17 +114,31 @@ fn main() -> Result<()> {
         Command::Read { path } => {
             let data = LogData::read_file(path)?;
             let log_data_index = LogDataIndex::from_logdata(&data)?;
-            // dbg!(byscope);
+
+            let index_by_call_path = IndexByCallPath::from_logdataindex(&log_data_index);
+
             Stats::<bool, TILE_COUNT>::print_tsv_header(&mut out, &["field", "probe name"])?;
-            stats_all_probes(&mut out, &log_data_index, "real time", |timing: &Timing| {
-                timing.r
-            })?;
-            stats_all_probes(&mut out, &log_data_index, "cpu time", |timing: &Timing| {
-                timing.u
-            })?;
-            stats_all_probes(&mut out, &log_data_index, "sys time", |timing: &Timing| {
-                timing.s
-            })?;
+            stats_all_probes(
+                &mut out,
+                &log_data_index,
+                &index_by_call_path,
+                "real time",
+                |timing: &Timing| timing.r,
+            )?;
+            stats_all_probes(
+                &mut out,
+                &log_data_index,
+                &index_by_call_path,
+                "cpu time",
+                |timing: &Timing| timing.u,
+            )?;
+            stats_all_probes(
+                &mut out,
+                &log_data_index,
+                &index_by_call_path,
+                "sys time",
+                |timing: &Timing| timing.s,
+            )?;
         }
     }
 

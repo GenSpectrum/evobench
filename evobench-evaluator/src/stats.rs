@@ -2,6 +2,8 @@ use std::fmt::Display;
 use std::io::Write;
 use std::marker::PhantomData;
 
+use num_traits::Zero;
+
 use crate::times::ToStringMilliseconds;
 
 #[derive(Debug)]
@@ -16,11 +18,20 @@ pub struct Stats<ViewType, const TILES_COUNT: usize> {
     pub tiles: Vec<u64>,
 }
 
+#[derive(thiserror::Error, Debug)]
+pub enum StatsError {
+    #[error("no inputs given")]
+    NoInputs,
+}
+
 impl<ViewType, const TILES_COUNT: usize> Stats<ViewType, TILES_COUNT> {
     /// `tiles_count` is how many 'tiles' to build, for percentiles
     /// give the number 101.
-    pub fn from_values(mut vals: Vec<u64>) -> Self {
+    pub fn from_values(mut vals: Vec<u64>) -> Result<Self, StatsError> {
         let num_values = vals.len();
+        if num_values.is_zero() {
+            return Err(StatsError::NoInputs);
+        }
         let sum: u128 = vals.iter().map(|v| u128::from(*v)).sum();
         let average = sum / (num_values as u128);
         vals.sort();
@@ -37,13 +48,13 @@ impl<ViewType, const TILES_COUNT: usize> Stats<ViewType, TILES_COUNT> {
         // dbg!(vals.first());
         // dbg!(vals.last());
 
-        Stats {
+        Ok(Stats {
             view_type: PhantomData::default(),
             num_values,
             sum,
             average: average.try_into().expect("always fit"),
             tiles,
-        }
+        })
     }
 
     /// Uses the values from `tiles`; panics if you gave an even
