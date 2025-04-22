@@ -74,9 +74,9 @@ pub struct Timing {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct KeyValue {
-    tid: ThreadId,
-    k: KString,
-    v: KString,
+    pub tid: ThreadId,
+    pub k: KString,
+    pub v: KString,
 }
 
 include! {"../include/evobench_point_kind.rs"}

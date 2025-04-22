@@ -4,28 +4,28 @@
 //! (`Vec<LogMessage>`), the index just references into those.
 
 //! `LogDataIndex::from_logdata` both pairs the start and end timings
-//! and builds up a tree of all scopes.
+//! and builds up a tree of all spans.
 
 use std::{
     collections::{hash_map::Entry, HashMap},
     marker::PhantomData,
 };
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 
 use crate::{
     log_file::LogData,
-    log_message::{DataMessage, PointKind, ThreadId, Timing},
+    log_message::{DataMessage, KeyValue, PointKind, ThreadId, Timing},
 };
 
 #[derive(Debug, Default)]
 pub struct LogDataIndex<'t> {
-    scopes: Vec<Scope<'t>>,
-    /// For a probe name, all the `Scope`s in sequence as occurring in
+    spans: Vec<Span<'t>>,
+    /// For a probe name, all the spans in sequence as occurring in
     /// the log file (which isn't necessarily by time when multiple
     /// threads are running), regardless of thread and their `parent`
     /// inside the thread.
-    scopes_by_pn: HashMap<&'t str, Vec<ScopeId<'t>>>,
+    spans_by_pn: HashMap<&'t str, Vec<SpanId<'t>>>,
 }
 
 macro_rules! def_log_data_index_id {
@@ -69,34 +69,84 @@ macro_rules! def_log_data_index_id {
     }
 }
 
-def_log_data_index_id! {{ScopeId<'t>} | Scope | scopes | add_scope }
+def_log_data_index_id! {{SpanId<'t>} | Span | spans | add_span }
 
-#[derive(Debug)]
-pub struct Scope<'t> {
-    pub parent: Option<ScopeId<'t>>,
-    pub start: &'t Timing,
-    /// Option just because we allocate the Scope before we get the
-    /// closing Timing, as we need it as parent for inner scopes. All
-    /// `end` fields should be set by the time `from_logdata`
-    /// finishes.
-    pub end: Option<&'t Timing>,
+#[derive(Debug, Clone, Copy)]
+pub enum ScopeKind {
+    Process,
+    Thread,
+    Scope,
 }
 
-impl<'t> Scope<'t> {
-    pub fn start(&self) -> &'t Timing {
-        self.start
-    }
-    /// Panics if `.end` is not set
-    pub fn end(&self) -> &'t Timing {
-        self.end.expect("`from_logdata` properly finished")
+#[derive(Debug, Clone, Copy)]
+pub enum SpanKind<'t> {
+    /// Process and tread creation and destruction, as well as
+    /// `EVOBENCH_SCOPE`, end by message from destructor
+    Scope {
+        kind: ScopeKind,
+        start: &'t Timing,
+        /// Option just because we allocate the Scope before we get the
+        /// closing Timing, as we need it as parent for inner scopes. All
+        /// `end` fields should be set by the time `from_logdata`
+        /// finishes.
+        end: Option<&'t Timing>,
+    },
+    /// `EVOBENCH_KEY_VALUE`, scoped from issue to the next end of a
+    /// `EVOBENCH_SCOPE`
+    KeyValue(&'t KeyValue),
+}
+
+#[derive(Debug)]
+pub struct Span<'t> {
+    pub parent: Option<SpanId<'t>>,
+    pub kind: SpanKind<'t>,
+}
+
+impl<'t> Span<'t> {
+    pub fn end_mut(&mut self) -> Option<&mut Option<&'t Timing>> {
+        match &mut self.kind {
+            SpanKind::Scope {
+                kind: _,
+                start: _,
+                end,
+            } => Some(end),
+            SpanKind::KeyValue(_) => None,
+        }
     }
 
     pub fn check(&self) {
-        assert_eq!(self.start().pn, self.end().pn)
+        match &self.kind {
+            SpanKind::Scope {
+                kind: _,
+                start,
+                end,
+            } => {
+                assert_eq!(start.pn, end.unwrap().pn)
+            }
+            SpanKind::KeyValue(_) => todo!(),
+        }
     }
 
-    pub fn pn(&self) -> &'t str {
-        &self.start.pn
+    pub fn pn(&self) -> Option<&'t str> {
+        match &self.kind {
+            SpanKind::Scope {
+                kind: _,
+                start,
+                end: _,
+            } => Some(&start.pn),
+            SpanKind::KeyValue(_) => None,
+        }
+    }
+
+    pub fn start_and_end(&self) -> Option<(&'t Timing, &'t Timing)> {
+        match &self.kind {
+            SpanKind::Scope {
+                kind: _,
+                start,
+                end,
+            } => Some((*start, end.expect("properly balanced spans"))),
+            SpanKind::KeyValue(_) => None,
+        }
     }
 }
 
@@ -104,62 +154,88 @@ impl<'t> LogDataIndex<'t> {
     pub fn from_logdata(data: &'t LogData) -> Result<Self> {
         let mut slf = Self::default();
         // XXX ThreadId needs local id for safety
-        let mut start_by_thread: HashMap<ThreadId, Vec<ScopeId<'t>>> = HashMap::new();
+        let mut start_by_thread: HashMap<ThreadId, Vec<SpanId<'t>>> = HashMap::new();
 
         for message in &data.messages {
             match message.data_message() {
                 DataMessage::KeyValue(kv) => {
-                    // println!("XX keyvalue {kv:?}");
+                    // Make it a Span
+                    let mut span_with_parent = |parent| -> SpanId<'t> {
+                        slf.add_span(Span {
+                            kind: SpanKind::KeyValue(kv),
+                            parent,
+                        })
+                    };
+                    match start_by_thread.entry(kv.tid) {
+                        Entry::Occupied(mut e) => {
+                            let parent: Option<SpanId<'t>> = e.get().last().copied();
+                            e.get_mut().push(span_with_parent(parent));
+                        }
+                        Entry::Vacant(_e) => {
+                            bail!("KeyValue must be below some span (but creating a thread counts, too)")
+                        }
+                    }
                 }
                 DataMessage::Timing(kind, timing) => {
                     match kind {
-                        PointKind::TStart => (), // XX
-                        PointKind::T => (),      // XX
-                        PointKind::TS => match start_by_thread.entry(timing.tid) {
-                            Entry::Occupied(mut e) => {
-                                let parent: Option<ScopeId<'t>> = e.get().last().copied();
-                                let scope_id: ScopeId<'t> = slf.add_scope(Scope {
+                        // Scope start
+                        PointKind::TS => {
+                            let mut scope_with_parent = |parent| -> SpanId<'t> {
+                                slf.add_span(Span {
+                                    kind: SpanKind::Scope {
+                                        kind: ScopeKind::Scope,
+                                        start: timing,
+                                        end: None,
+                                    },
                                     parent,
-                                    start: timing,
-                                    end: None,
-                                });
-                                e.get_mut().push(scope_id);
+                                })
+                            };
+                            match start_by_thread.entry(timing.tid) {
+                                Entry::Occupied(mut e) => {
+                                    let parent: Option<SpanId<'t>> = e.get().last().copied();
+                                    e.get_mut().push(scope_with_parent(parent));
+                                }
+                                Entry::Vacant(e) => {
+                                    e.insert(vec![scope_with_parent(None)]);
+                                }
                             }
-                            Entry::Vacant(e) => {
-                                let scope_id: ScopeId<'t> = slf.add_scope(Scope {
-                                    parent: None,
-                                    start: timing,
-                                    end: None,
-                                });
-                                e.insert(vec![scope_id]);
-                            }
-                        },
+                        }
+
+                        // Scope end
                         PointKind::TE => match start_by_thread.entry(timing.tid) {
-                            Entry::Occupied(mut e) => {
-                                let scope_id = e
+                            Entry::Occupied(mut e) => loop {
+                                let span_id = e
                                     .get_mut()
                                     .pop()
                                     .expect("always have TS before TE for the same thread");
-                                let scope = scope_id.get_mut_from_db(&mut slf);
-                                scope.end = Some(timing);
-                                scope.check();
+                                let span = span_id.get_mut_from_db(&mut slf);
+                                if let Some(end) = span.end_mut() {
+                                    *end = Some(timing);
+                                    span.check();
 
-                                let pn = scope.pn();
-                                match slf.scopes_by_pn.entry(pn) {
-                                    Entry::Occupied(mut e) => {
-                                        e.get_mut().push(scope_id);
+                                    let pn = span.pn().expect("scopes have a pn");
+                                    match slf.spans_by_pn.entry(pn) {
+                                        Entry::Occupied(mut e) => {
+                                            e.get_mut().push(span_id);
+                                        }
+                                        Entry::Vacant(e) => {
+                                            e.insert(vec![span_id]);
+                                        }
                                     }
-                                    Entry::Vacant(e) => {
-                                        e.insert(vec![scope_id]);
-                                    }
+
+                                    break;
                                 }
-                            }
+                            },
                             Entry::Vacant(_e) => {
                                 panic!("should never happen as TS comes before TE")
                             }
                         },
+
+                        PointKind::T => (), // XX
+
                         PointKind::TThreadStart => (), // XX safety ThreadId
                         PointKind::TThreadEnd => (),   // XX safety ThreadId
+                        PointKind::TStart => (),       // XX
                         PointKind::TEnd => (),         // XX
                         PointKind::TIO => (),          // XX
                     }
@@ -170,12 +246,12 @@ impl<'t> LogDataIndex<'t> {
     }
 
     pub fn probe_names(&self) -> Vec<&'t str> {
-        let mut probe_names: Vec<&'t str> = self.scopes_by_pn.keys().copied().collect();
+        let mut probe_names: Vec<&'t str> = self.spans_by_pn.keys().copied().collect();
         probe_names.sort();
         probe_names
     }
 
-    pub fn scopes_by_pn(&self, pn: &str) -> Option<&Vec<ScopeId<'t>>> {
-        self.scopes_by_pn.get(pn)
+    pub fn spans_by_pn(&self, pn: &str) -> Option<&Vec<SpanId<'t>>> {
+        self.spans_by_pn.get(pn)
     }
 }

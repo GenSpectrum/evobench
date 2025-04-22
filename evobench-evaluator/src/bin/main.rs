@@ -7,7 +7,7 @@ use clap::Parser;
 use evobench_evaluator::get_terminal_width::get_terminal_width;
 use evobench_evaluator::log_file::LogData;
 use evobench_evaluator::log_message::Timing;
-use evobench_evaluator::pn_summary::{LogDataIndex, ScopeId};
+use evobench_evaluator::pn_summary::{LogDataIndex, SpanId};
 use evobench_evaluator::stats::Stats;
 use evobench_evaluator::times::ToStringMilliseconds;
 
@@ -37,14 +37,15 @@ const TILE_COUNT: usize = 101;
 
 fn scopestats<T: Into<u64> + From<u64>>(
     log_data_index: &LogDataIndex,
-    scopes: &[ScopeId],
+    spans: &[SpanId],
     extract: impl Fn(&Timing) -> T,
 ) -> Stats<T, TILE_COUNT> {
-    let vals: Vec<_> = scopes
+    let vals: Vec<_> = spans
         .into_iter()
-        .map(|scope_id| -> u64 {
-            let scope = scope_id.get_from_db(log_data_index);
-            extract(scope.end()).into() - extract(scope.start()).into()
+        .map(|span_id| -> u64 {
+            let span = span_id.get_from_db(log_data_index);
+            let (start, end) = span.start_and_end().unwrap();
+            extract(end).into() - extract(start).into()
         })
         .collect();
     Stats::from_values(vals)
@@ -59,7 +60,7 @@ fn stats<T: Into<u64> + From<u64> + ToStringMilliseconds + Display>(
 ) -> Result<()> {
     let s: Stats<T, TILE_COUNT> = scopestats(
         log_data_index,
-        log_data_index.scopes_by_pn(&pn).unwrap(),
+        log_data_index.spans_by_pn(&pn).unwrap(),
         extract,
     );
     eprintln!("{pn:?} => {s}");
