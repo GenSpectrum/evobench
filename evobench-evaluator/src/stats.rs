@@ -61,6 +61,10 @@ impl<ViewType, const TILES_COUNT: usize> Stats<ViewType, TILES_COUNT> {
         }
         let unit = Self::UNIT;
         write!(out, "n\tsum {unit}\tavg {unit}\tmedian {unit}")?;
+
+        // Add empty column before tiles:
+        write!(out, "\t")?;
+
         for i in 0..TILES_COUNT {
             write!(out, "\ttile {i} ({unit})")?
         }
@@ -89,6 +93,11 @@ impl<ViewType, const TILES_COUNT: usize> Stats<ViewType, TILES_COUNT> {
             ViewType::from(*average).to_string_ms(),
             ViewType::from(self.median()).to_string_ms()
         )?;
+
+        // Add empty column before tiles:
+        write!(out, "\t")?;
+
+        // *tiles
         for val in tiles {
             write!(out, "\t{}", ViewType::from(*val).to_string_ms())?;
         }
