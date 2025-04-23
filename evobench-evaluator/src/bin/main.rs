@@ -60,15 +60,18 @@ fn stats<T: Into<u64> + From<u64> + ToStringMilliseconds + Display>(
     extract: impl Fn(&Timing) -> T,
     mut out: impl Write,
 ) -> Result<()> {
-    let s: Result<Stats<T, TILE_COUNT>, StatsError> = scopestats(log_data_index, spans, extract);
-    if let Ok(s) = &s {
-        eprintln!("{pn:?} => {s}");
-        s.print_tsv_line(&mut out, &[extract_name, pn])?;
-    } else {
-        // XX more generic? print_tsv_line directly on Result? Or evil
-        // anyway? Actually showing counts here now, evil too.
-        let count = spans.len();
-        writeln!(&mut out, "{extract_name}\t{pn}\t{count}")?;
+    let r: Result<Stats<T, TILE_COUNT>, StatsError> = scopestats(log_data_index, spans, extract);
+    match r {
+        Ok(s) => {
+            eprintln!("{pn:?} => {s}");
+            s.print_tsv_line(&mut out, &[extract_name, pn])?;
+        }
+        Err(StatsError::NoInputs) => {
+            // XX more generic? print_tsv_line directly on Result? Or evil
+            // anyway? Actually showing counts here now, evil too.
+            let count = spans.len();
+            writeln!(&mut out, "{extract_name}\t{pn}\t{count}")?;
+        }
     }
     Ok(())
 }
