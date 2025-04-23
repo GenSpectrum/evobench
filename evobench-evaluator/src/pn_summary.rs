@@ -297,7 +297,7 @@ impl<'t> LogDataIndex<'t> {
     }
 
     pub fn span_ids(&self) -> impl Iterator<Item = SpanId<'t>> {
-        (1..self.spans.len()).map(SpanId::new)
+        (1..=self.spans.len()).map(SpanId::new)
     }
 
     pub fn spans_by_pn(&self, pn: &str) -> Option<&Vec<SpanId<'t>>> {
