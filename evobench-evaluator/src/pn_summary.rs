@@ -9,6 +9,7 @@
 use std::{
     collections::{hash_map::Entry, HashMap},
     marker::PhantomData,
+    num::NonZeroU32,
 };
 
 use anyhow::{bail, Result};
@@ -33,18 +34,19 @@ macro_rules! def_log_data_index_id {
         #[derive(Debug, Clone, Copy)]
         pub struct $TId $($TIdLifetime)* {
             t: PhantomData<fn() -> $T $($TIdLifetime)* >,
-            id: u32,
+            id: NonZeroU32,
         }
 
         impl $($TIdLifetime)* $TId $($TIdLifetime)* {
             fn new(index: usize) -> Self {
                 let id: u32 = index.try_into().expect("index not outside u32 range");
+                let id: NonZeroU32 = id.try_into().expect("index 1-based");
                 Self { id, t: PhantomData::default() }
             }
 
             // We use len after insertion as the id, so that id 0 is
             // never used, so that Option is cheap.
-            fn index(self) -> usize { usize::try_from(self.id).unwrap() - 1 }
+            fn index(self) -> usize { usize::try_from(u32::from(self.id)).unwrap() - 1 }
 
             pub fn get_from_db<'d>(self, db: &'d LogDataIndex<'t>) -> &'d $T$($TIdLifetime)*
                 // XX are these even required or helpful?:
