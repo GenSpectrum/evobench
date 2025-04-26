@@ -5,7 +5,7 @@ use std::collections::{hash_map::Entry, HashMap};
 
 use itertools::Itertools;
 
-use crate::pn_summary::{LogDataIndex, SpanId};
+use crate::log_data_index::{LogDataIndex, SpanId};
 
 #[derive(Debug, Default)]
 pub struct IndexByCallPath<'t> {

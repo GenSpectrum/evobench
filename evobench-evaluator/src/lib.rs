@@ -1,10 +1,10 @@
 pub mod digit_num;
 pub mod get_terminal_width;
 pub mod git;
+pub mod log_data_index;
 pub mod log_file;
 pub mod log_message;
 pub mod path_summary;
-pub mod pn_summary;
 pub mod stats;
 pub mod times;
 pub mod via_polars;
