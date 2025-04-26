@@ -1,4 +1,5 @@
 #include <iostream>
+#include <unistd.h>
 
 #include "../include/evobench/evobench.hpp"
 
@@ -28,6 +29,7 @@ long long sum_of_fibs(long long n) {
 
 int main() {
     EVOBENCH_SCOPE("main", "main");
+    sleep(1);
     for (long long i = 0; i < 40; i++) {
         std::cout << "sum_of_fibs(" << i << ") = " << sum_of_fibs(i) << "\n";
     }

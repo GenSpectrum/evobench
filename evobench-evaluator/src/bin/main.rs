@@ -41,7 +41,7 @@ fn scopestats<T: Into<u64> + From<u64>>(
     spans: &[SpanId],
     extract: impl Fn(&Timing) -> T,
 ) -> Result<Stats<T, TILE_COUNT>, StatsError> {
-    let vals: Vec<_> = spans
+    let vals: Vec<u64> = spans
         .into_iter()
         .filter_map(|span_id| -> Option<u64> {
             let span = span_id.get_from_db(log_data_index);
