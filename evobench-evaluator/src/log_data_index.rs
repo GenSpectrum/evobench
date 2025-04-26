@@ -12,7 +12,7 @@ use std::{
     num::NonZeroU32,
 };
 
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 
 use crate::{
     log_file::LogData,
@@ -73,11 +73,52 @@ macro_rules! def_log_data_index_id {
 
 def_log_data_index_id! {{SpanId<'t>} | Span | spans | add_span }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ScopeKind {
     Process,
     Thread,
     Scope,
+}
+
+/// How a point log message should be handled
+enum PointDispatch {
+    Scope { kind: ScopeKind, is_ending: bool },
+    T,
+    TIO,
+}
+
+impl PointDispatch {
+    pub fn from_point_kind(kind: PointKind) -> Self {
+        use ScopeKind::*;
+        match kind {
+            PointKind::TStart => PointDispatch::Scope {
+                kind: Process,
+                is_ending: false,
+            },
+            PointKind::T => PointDispatch::T,
+            PointKind::TS => PointDispatch::Scope {
+                kind: Scope,
+                is_ending: false,
+            },
+            PointKind::TE => PointDispatch::Scope {
+                kind: Scope,
+                is_ending: true,
+            },
+            PointKind::TThreadStart => PointDispatch::Scope {
+                kind: Thread,
+                is_ending: false,
+            },
+            PointKind::TThreadEnd => PointDispatch::Scope {
+                kind: Thread,
+                is_ending: true,
+            },
+            PointKind::TEnd => PointDispatch::Scope {
+                kind: Process,
+                is_ending: true,
+            },
+            PointKind::TIO => PointDispatch::TIO,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -113,13 +154,15 @@ pub struct PathStringOptions {
 }
 
 impl<'t> Span<'t> {
-    pub fn end_mut(&mut self) -> Option<&mut Option<&'t Timing>> {
+    /// Also returns the `ScopeKind`, since you want to verify that at
+    /// the same time as mutating the `end` field.
+    pub fn end_mut(&mut self) -> Option<(&mut Option<&'t Timing>, ScopeKind)> {
         match &mut self.kind {
             SpanKind::Scope {
-                kind: _,
+                kind,
                 start: _,
                 end,
-            } => Some(end),
+            } => Some((end, *kind)),
             SpanKind::KeyValue(_) => None,
         }
     }
@@ -248,13 +291,16 @@ impl<'t> LogDataIndex<'t> {
                     }
                 }
                 DataMessage::Timing(kind, timing) => {
-                    match kind {
-                        // Scope start
-                        PointKind::TS => {
+                    match PointDispatch::from_point_kind(kind) {
+                        // Process / thread / scope start
+                        PointDispatch::Scope {
+                            kind,
+                            is_ending: false,
+                        } => {
                             let mut scope_with_parent = |parent| -> SpanId<'t> {
                                 slf.add_span(Span {
                                     kind: SpanKind::Scope {
-                                        kind: ScopeKind::Scope,
+                                        kind,
                                         start: timing,
                                         end: None,
                                     },
@@ -273,15 +319,28 @@ impl<'t> LogDataIndex<'t> {
                             }
                         }
 
-                        // Scope end
-                        PointKind::TE => match start_by_thread.entry(timing.tid) {
+                        // Process / thread / scope end
+                        PointDispatch::Scope {
+                            kind,
+                            is_ending: true,
+                        } => match start_by_thread.entry(timing.tid) {
                             Entry::Occupied(mut e) => loop {
-                                let span_id = e
-                                    .get_mut()
-                                    .pop()
-                                    .expect("always have TS before TE for the same thread");
+                                let span_id = e.get_mut().pop().ok_or_else(|| {
+                                    anyhow!("missing messages incl. TS before TE for thread")
+                                })?;
                                 let span = span_id.get_mut_from_db(&mut slf);
-                                if let Some(end) = span.end_mut() {
+
+                                if let Some((end, opening_scope_kind)) = span.end_mut() {
+                                    if opening_scope_kind != kind {
+                                        // XX line location report
+                                        bail!(
+                                            "expected closing of scope kind \
+                                             {opening_scope_kind:?}, \
+                                             but got {kind:?} ({span:?} vs. message \
+                                             {message:?})"
+                                        )
+                                    }
+
                                     *end = Some(timing);
                                     span.check();
 
@@ -297,19 +356,18 @@ impl<'t> LogDataIndex<'t> {
 
                                     break;
                                 }
+                                // else: it was no Scope, go on pop
+                                // the next frame in the next loop
+                                // iteration.
                             },
                             Entry::Vacant(_e) => {
-                                panic!("should never happen as TS comes before TE")
+                                // XX line location report
+                                bail!("should never happen as TS comes before TE")
                             }
                         },
 
-                        PointKind::T => (), // XX
-
-                        PointKind::TThreadStart => (), // XX safety ThreadId
-                        PointKind::TThreadEnd => (),   // XX safety ThreadId
-                        PointKind::TStart => (),       // XX
-                        PointKind::TEnd => (),         // XX
-                        PointKind::TIO => (),          // XX
+                        PointDispatch::T => (),   // XX
+                        PointDispatch::TIO => (), // XX
                     }
                 }
             }
