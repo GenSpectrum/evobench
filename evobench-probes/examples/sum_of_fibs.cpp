@@ -1,5 +1,6 @@
 #include <iostream>
 #include <unistd.h>
+#include <time.h>
 
 #include "../include/evobench/evobench.hpp"
 
@@ -22,6 +23,11 @@ long long sum_of_fibs(long long n) {
     long long z = 0;
     for (long long i = 0; i < n; i++) {
         EVOBENCH_SCOPE("main", "fib");
+        struct timespec req = {
+            .tv_sec = 0,
+            .tv_nsec = 10000000,
+        };
+        nanosleep(&req, NULL);
         z += fib(i);
     }
     return z;
