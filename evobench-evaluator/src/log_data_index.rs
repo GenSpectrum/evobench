@@ -201,12 +201,12 @@ impl<'t> Span<'t> {
             } => match kind {
                 ScopeKind::Process => {
                     if opts.ignore_process {
-                        return String::new();
+                        return format!("process");
                     }
                 }
                 ScopeKind::Thread => {
                     if opts.ignore_thread {
-                        return String::new();
+                        return format!("thread");
                     }
                 }
                 ScopeKind::Scope => (),
