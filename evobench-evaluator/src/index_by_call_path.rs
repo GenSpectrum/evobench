@@ -5,7 +5,7 @@ use std::collections::{hash_map::Entry, HashMap};
 
 use itertools::Itertools;
 
-use crate::log_data_index::{LogDataIndex, SpanId};
+use crate::log_data_index::{LogDataIndex, PathStringOptions, SpanId};
 
 #[derive(Debug, Default)]
 pub struct IndexByCallPath<'t> {
@@ -16,10 +16,14 @@ pub struct IndexByCallPath<'t> {
 
 impl<'t> IndexByCallPath<'t> {
     pub fn from_logdataindex(db: &LogDataIndex<'t>) -> Self {
+        let path_string_opts = PathStringOptions {
+            ignore_process: true,
+            ignore_thread: true,
+        };
         let mut slf = Self::default();
         for span_id in db.span_ids() {
             let span = span_id.get_from_db(db);
-            let path = span.path_string(db);
+            let path = span.path_string(&path_string_opts, db);
             match slf.spans_by_call_path.entry(path) {
                 Entry::Occupied(mut e) => {
                     e.get_mut().push(span_id);

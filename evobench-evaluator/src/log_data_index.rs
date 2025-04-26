@@ -105,6 +105,13 @@ pub struct Span<'t> {
     pub kind: SpanKind<'t>,
 }
 
+pub struct PathStringOptions {
+    /// Stop when reaching a `ScopeKind::Process`
+    pub ignore_process: bool,
+    /// Stop when reaching a `ScopeKind::Thread`
+    pub ignore_thread: bool,
+}
+
 impl<'t> Span<'t> {
     pub fn end_mut(&mut self) -> Option<&mut Option<&'t Timing>> {
         match &mut self.kind {
@@ -141,10 +148,32 @@ impl<'t> Span<'t> {
         }
     }
 
-    pub fn path_string(&self, db: &LogDataIndex<'t>) -> String {
+    pub fn path_string(&self, opts: &PathStringOptions, db: &LogDataIndex<'t>) -> String {
+        // Stop recursion via opts?
+        match &self.kind {
+            SpanKind::Scope {
+                kind,
+                start: _,
+                end: _,
+            } => match kind {
+                ScopeKind::Process => {
+                    if opts.ignore_process {
+                        return String::new();
+                    }
+                }
+                ScopeKind::Thread => {
+                    if opts.ignore_thread {
+                        return String::new();
+                    }
+                }
+                ScopeKind::Scope => (),
+            },
+            SpanKind::KeyValue(_) => (),
+        }
+
         let mut out = if let Some(parent_id) = self.parent {
             let parent = parent_id.get_from_db(db);
-            let mut out = parent.path_string(db);
+            let mut out = parent.path_string(opts, db);
             out.push_str(" > ");
             out
         } else {
