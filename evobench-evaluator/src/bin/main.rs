@@ -5,10 +5,10 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::Parser;
 use evobench_evaluator::get_terminal_width::get_terminal_width;
+use evobench_evaluator::index_by_call_path::IndexByCallPath;
 use evobench_evaluator::log_data_index::{LogDataIndex, SpanId};
 use evobench_evaluator::log_file::LogData;
 use evobench_evaluator::log_message::Timing;
-use evobench_evaluator::path_summary::IndexByCallPath;
 use evobench_evaluator::stats::{Stats, StatsError};
 use evobench_evaluator::times::ToStringMilliseconds;
 
