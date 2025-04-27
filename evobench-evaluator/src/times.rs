@@ -21,6 +21,8 @@ pub trait ToIncrements {
     fn to_increments(self) -> u64;
 }
 
+/// (Only used in tests, should not be treated as important, or
+/// ToStringMilliseconds removed?)
 pub trait Time:
     ToStringMilliseconds
     + FromMicroseconds

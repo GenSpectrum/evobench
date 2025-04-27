@@ -4,7 +4,40 @@ use std::marker::PhantomData;
 
 use num_traits::Zero;
 
-use crate::times::ToStringMilliseconds;
+use crate::times::{MicroTime, NanoTime, ToStringMilliseconds};
+
+/// Convert a value to a string in a unit and corresponding
+/// representation suitable for the stats here.
+pub trait ToStatsString {
+    const UNIT_SHORT: &str;
+
+    fn to_stats_string(&self) -> String;
+}
+
+impl ToStatsString for MicroTime {
+    const UNIT_SHORT: &str = "ms";
+
+    fn to_stats_string(&self) -> String {
+        self.to_string_ms()
+    }
+}
+
+impl ToStatsString for NanoTime {
+    const UNIT_SHORT: &str = "ms";
+
+    fn to_stats_string(&self) -> String {
+        self.to_string_ms()
+    }
+}
+
+// XX define a Count ? Count<const &str>?
+impl ToStatsString for u64 {
+    const UNIT_SHORT: &str = "count";
+
+    fn to_stats_string(&self) -> String {
+        self.to_string()
+    }
+}
 
 #[derive(Debug)]
 pub struct Stats<ViewType, const TILES_COUNT: usize> {
@@ -64,13 +97,14 @@ impl<ViewType, const TILES_COUNT: usize> Stats<ViewType, TILES_COUNT> {
         self.tiles[self.tiles.len() / 2]
     }
 
-    const UNIT: &str = "ms";
-
-    pub fn print_tsv_header(mut out: impl Write, key_names: &[&str]) -> Result<(), std::io::Error> {
+    pub fn print_tsv_header(mut out: impl Write, key_names: &[&str]) -> Result<(), std::io::Error>
+    where
+        ViewType: ToStatsString,
+    {
         for key_name in key_names {
             write!(out, "{key_name}\t")?;
         }
-        let unit = Self::UNIT;
+        let unit = ViewType::UNIT_SHORT;
         write!(out, "n\tsum {unit}\tavg {unit}\tmedian {unit}")?;
 
         // Add empty column before tiles:
@@ -82,9 +116,10 @@ impl<ViewType, const TILES_COUNT: usize> Stats<ViewType, TILES_COUNT> {
         writeln!(out, "")?;
         Ok(())
     }
+
     pub fn print_tsv_line(&self, mut out: impl Write, keys: &[&str]) -> Result<(), std::io::Error>
     where
-        ViewType: ToStringMilliseconds + From<u64>,
+        ViewType: ToStatsString + From<u64>,
     {
         let Self {
             view_type: _,
@@ -100,9 +135,9 @@ impl<ViewType, const TILES_COUNT: usize> Stats<ViewType, TILES_COUNT> {
             out,
             "{num_values}\t{}\t{}\t{}",
             ViewType::from(u64::try_from(*sum).expect("sum is larger than u64: {sum}"))
-                .to_string_ms(),
-            ViewType::from(*average).to_string_ms(),
-            ViewType::from(self.median()).to_string_ms()
+                .to_stats_string(),
+            ViewType::from(*average).to_stats_string(),
+            ViewType::from(self.median()).to_stats_string()
         )?;
 
         // Add empty column before tiles:
@@ -110,7 +145,7 @@ impl<ViewType, const TILES_COUNT: usize> Stats<ViewType, TILES_COUNT> {
 
         // *tiles
         for val in tiles {
-            write!(out, "\t{}", ViewType::from(*val).to_string_ms())?;
+            write!(out, "\t{}", ViewType::from(*val).to_stats_string())?;
         }
         writeln!(out, "")?;
         Ok(())

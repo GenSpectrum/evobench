@@ -9,8 +9,7 @@ use evobench_evaluator::index_by_call_path::IndexByCallPath;
 use evobench_evaluator::log_data_index::{LogDataIndex, SpanId};
 use evobench_evaluator::log_file::LogData;
 use evobench_evaluator::log_message::Timing;
-use evobench_evaluator::stats::{Stats, StatsError};
-use evobench_evaluator::times::ToStringMilliseconds;
+use evobench_evaluator::stats::{Stats, StatsError, ToStatsString};
 
 include!("../../include/evobench_version.rs");
 
@@ -48,25 +47,25 @@ const TILE_COUNT: usize = 101;
 fn scopestats<T: Into<u64> + From<u64>>(
     log_data_index: &LogDataIndex,
     spans: &[SpanId],
-    extract: impl Fn(&Timing) -> T,
+    extract: impl Fn(&Timing) -> Option<T>,
 ) -> Result<Stats<T, TILE_COUNT>, StatsError> {
     let vals: Vec<u64> = spans
         .into_iter()
         .filter_map(|span_id| -> Option<u64> {
             let span = span_id.get_from_db(log_data_index);
             let (start, end) = span.start_and_end()?;
-            Some(extract(end).into() - extract(start).into())
+            Some(extract(end)?.into() - extract(start)?.into())
         })
         .collect();
     Stats::from_values(vals)
 }
 
-fn stats<T: Into<u64> + From<u64> + ToStringMilliseconds + Display>(
+fn stats<T: Into<u64> + From<u64> + ToStatsString + Display>(
     log_data_index: &LogDataIndex,
     spans: &[SpanId],
     extract_name: &str,
     pn: &str,
-    extract: impl Fn(&Timing) -> T,
+    extract: impl Fn(&Timing) -> Option<T>,
     mut out: impl Write,
 ) -> Result<()> {
     let r: Result<Stats<T, TILE_COUNT>, StatsError> = scopestats(log_data_index, spans, extract);
@@ -85,14 +84,18 @@ fn stats<T: Into<u64> + From<u64> + ToStringMilliseconds + Display>(
     Ok(())
 }
 
-fn stats_all_probes<T: Into<u64> + From<u64> + ToStringMilliseconds + Display>(
+fn stats_all_probes<T: Into<u64> + From<u64> + ToStatsString + Display>(
     mut out: impl Write,
     log_data_index: &LogDataIndex,
     index_by_call_path: &IndexByCallPath,
     extract_name: &str,
-    extract: impl Fn(&Timing) -> T,
+    extract: impl Fn(&Timing) -> Option<T>,
 ) -> Result<()> {
     eprintln!("----{extract_name}-----------------------------------------------------------------------------------");
+
+    // Separate the tables from each other in the TSV
+    writeln!(&mut out, "")?;
+    Stats::<T, TILE_COUNT>::print_tsv_header(&mut out, &["field", "probe name"])?;
     for pn in log_data_index.probe_names() {
         stats(
             log_data_index,
@@ -133,27 +136,33 @@ fn main() -> Result<()> {
             let index_by_call_path =
                 IndexByCallPath::from_logdataindex(&log_data_index, *show_thread_number);
 
-            Stats::<bool, TILE_COUNT>::print_tsv_header(&mut out, &["field", "probe name"])?;
             stats_all_probes(
                 &mut out,
                 &log_data_index,
                 &index_by_call_path,
                 "real time",
-                |timing: &Timing| timing.r,
+                |timing: &Timing| Some(timing.r),
             )?;
             stats_all_probes(
                 &mut out,
                 &log_data_index,
                 &index_by_call_path,
                 "cpu time",
-                |timing: &Timing| timing.u,
+                |timing: &Timing| Some(timing.u),
             )?;
             stats_all_probes(
                 &mut out,
                 &log_data_index,
                 &index_by_call_path,
                 "sys time",
-                |timing: &Timing| timing.s,
+                |timing: &Timing| Some(timing.s),
+            )?;
+            stats_all_probes(
+                &mut out,
+                &log_data_index,
+                &index_by_call_path,
+                "ctx switches",
+                |timing: &Timing| Some(timing.nvcsw()? + timing.nivcsw()?),
             )?;
         }
     }

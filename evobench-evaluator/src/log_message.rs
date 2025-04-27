@@ -71,6 +71,24 @@ pub struct Timing {
     pub nivcsw: Option<i64>,
 }
 
+impl Timing {
+    pub fn nvcsw(&self) -> Option<u64> {
+        Some(
+            self.nvcsw?
+                .try_into()
+                .expect("ctx switches (nvcsw) should be non-negative"),
+        )
+    }
+
+    pub fn nivcsw(&self) -> Option<u64> {
+        Some(
+            self.nivcsw?
+                .try_into()
+                .expect("ctx switches (nivcsw) should be non-negative"),
+        )
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct KeyValue {
