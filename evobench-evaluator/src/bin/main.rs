@@ -6,7 +6,7 @@ use anyhow::Result;
 use clap::Parser;
 use evobench_evaluator::get_terminal_width::get_terminal_width;
 use evobench_evaluator::index_by_call_path::IndexByCallPath;
-use evobench_evaluator::log_data_index::{LogDataIndex, SpanId};
+use evobench_evaluator::log_data_index::{LogDataIndex, PathStringOptions, SpanId};
 use evobench_evaluator::log_file::LogData;
 use evobench_evaluator::log_message::Timing;
 use evobench_evaluator::stats::{Stats, StatsError, ToStatsString};
@@ -133,8 +133,32 @@ fn main() -> Result<()> {
             let data = LogData::read_file(path)?;
             let log_data_index = LogDataIndex::from_logdata(&data)?;
 
-            let index_by_call_path =
-                IndexByCallPath::from_logdataindex(&log_data_index, *show_thread_number);
+            let index_by_call_path = {
+                // Note: it's important to give prefixes here, to
+                // avoid getting rows that have the scopes counted
+                // *twice* (currently just "main thread"). (Could
+                // handle that in `IndexByCallPath::from_logdataindex`
+                // (by using a set instead of Vec), but having 1 entry
+                // that only counts thing once, but is valid for both
+                // kinds of groups, would surely still be confusing.)
+                let mut opts = vec![PathStringOptions {
+                    ignore_process: true,
+                    ignore_thread: true,
+                    include_thread_number_in_path: false,
+                    // "across threads / added up"
+                    prefix: "A:",
+                }];
+                if *show_thread_number {
+                    opts.push(PathStringOptions {
+                        ignore_process: true,
+                        ignore_thread: true,
+                        include_thread_number_in_path: true,
+                        // "numbered threads"
+                        prefix: "N:",
+                    });
+                }
+                IndexByCallPath::from_logdataindex(&log_data_index, &opts)
+            };
 
             stats_all_probes(
                 &mut out,

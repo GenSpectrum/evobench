@@ -15,22 +15,22 @@ pub struct IndexByCallPath<'t> {
 }
 
 impl<'t> IndexByCallPath<'t> {
-    pub fn from_logdataindex(db: &LogDataIndex<'t>, include_thread_number_in_path: bool) -> Self {
-        let path_string_opts = PathStringOptions {
-            ignore_process: true,
-            ignore_thread: true,
-            include_thread_number_in_path,
-        };
+    pub fn from_logdataindex(
+        db: &LogDataIndex<'t>,
+        path_string_optss: &[PathStringOptions],
+    ) -> Self {
         let mut slf = Self::default();
         for span_id in db.span_ids() {
             let span = span_id.get_from_db(db);
-            let path = span.path_string(&path_string_opts, db);
-            match slf.spans_by_call_path.entry(path) {
-                Entry::Occupied(mut e) => {
-                    e.get_mut().push(span_id);
-                }
-                Entry::Vacant(e) => {
-                    e.insert(vec![span_id]);
+            for opts in path_string_optss {
+                let path = span.path_string(&opts, db);
+                match slf.spans_by_call_path.entry(path) {
+                    Entry::Occupied(mut e) => {
+                        e.get_mut().push(span_id);
+                    }
+                    Entry::Vacant(e) => {
+                        e.insert(vec![span_id]);
+                    }
                 }
             }
         }

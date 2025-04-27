@@ -157,6 +157,10 @@ pub struct PathStringOptions {
     pub ignore_thread: bool,
     /// Add thread number (0..) in path strings
     pub include_thread_number_in_path: bool,
+    /// A prefix to distinguish this kind of path from others (feel
+    /// free to use ""). Only used with `ignore_process` and
+    /// `ignore_thread`!
+    pub prefix: &'static str,
 }
 
 impl<'t> Span<'t> {
@@ -207,6 +211,7 @@ impl<'t> Span<'t> {
             ignore_process,
             ignore_thread,
             include_thread_number_in_path,
+            prefix,
         } = opts;
         // Stop recursion via opts?--XX how useful is this even, have
         // display below, too ("P:" etc.).
@@ -225,15 +230,15 @@ impl<'t> Span<'t> {
                         // And there is no thread start message for
                         // that thread, too, so data would be missing
                         // if not using that as main thread data.
-                        return format!("main thread");
+                        return format!("{prefix}main thread");
                     }
                 }
                 ScopeKind::Thread => {
                     if *ignore_thread {
                         return if *include_thread_number_in_path {
-                            format!("{thread_number}")
+                            format!("{prefix}{thread_number}")
                         } else {
-                            format!("thread")
+                            format!("{prefix}thread")
                         };
                     }
                 }
