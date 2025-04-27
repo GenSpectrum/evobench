@@ -31,7 +31,16 @@ enum Command {
     /// Print version
     Version,
     /// Read a file
-    Read { path: PathBuf },
+    Read {
+        /// Include the internally-allocated thread number in call
+        /// path strings in the output.
+        #[clap(short, long)]
+        show_thread_number: bool,
+
+        /// Path that was provided via the `EVOBENCH_LOG` environment
+        /// variable to the evobench-probes library.
+        path: PathBuf,
+    },
 }
 
 const TILE_COUNT: usize = 101;
@@ -114,11 +123,15 @@ fn main() -> Result<()> {
     let opts: Opts = Opts::parse();
     match &opts.command {
         Command::Version => println!("{PROGRAM_NAME} version {EVOBENCH_VERSION}"),
-        Command::Read { path } => {
+        Command::Read {
+            path,
+            show_thread_number,
+        } => {
             let data = LogData::read_file(path)?;
             let log_data_index = LogDataIndex::from_logdata(&data)?;
 
-            let index_by_call_path = IndexByCallPath::from_logdataindex(&log_data_index);
+            let index_by_call_path =
+                IndexByCallPath::from_logdataindex(&log_data_index, *show_thread_number);
 
             Stats::<bool, TILE_COUNT>::print_tsv_header(&mut out, &["field", "probe name"])?;
             stats_all_probes(

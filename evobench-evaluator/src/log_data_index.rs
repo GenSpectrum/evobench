@@ -8,8 +8,10 @@
 
 use std::{
     collections::{hash_map::Entry, HashMap},
+    fmt::Display,
     marker::PhantomData,
     num::NonZeroU32,
+    ops::Deref,
 };
 
 use anyhow::{anyhow, bail, Result};
@@ -127,6 +129,8 @@ pub enum SpanKind<'t> {
     /// `EVOBENCH_SCOPE`, end by message from destructor
     Scope {
         kind: ScopeKind,
+        /// The internally-allocated thread number, 0-based
+        thread_number: ThreadNumber,
         start: &'t Timing,
         /// Option just because we allocate the Scope before we get the
         /// closing Timing, as we need it as parent for inner scopes. All
@@ -151,6 +155,8 @@ pub struct PathStringOptions {
     pub ignore_process: bool,
     /// Stop when reaching a `ScopeKind::Thread`
     pub ignore_thread: bool,
+    /// Add thread number (0..) in path strings
+    pub include_thread_number_in_path: bool,
 }
 
 impl<'t> Span<'t> {
@@ -161,17 +167,21 @@ impl<'t> Span<'t> {
             SpanKind::Scope {
                 kind,
                 start: _,
+                thread_number: _,
                 end,
             } => Some((end, *kind)),
             SpanKind::KeyValue(_) => None,
         }
     }
 
+    /// Only checks `pn`. Panics if they don't match. XX Should
+    /// eliminate this longer-term.
     pub fn check(&self) {
         match &self.kind {
             SpanKind::Scope {
                 kind: _,
                 start,
+                thread_number: _,
                 end,
             } => {
                 assert_eq!(start.pn, end.unwrap().pn)
@@ -185,6 +195,7 @@ impl<'t> Span<'t> {
             SpanKind::Scope {
                 kind: _,
                 start,
+                thread_number: _,
                 end: _,
             } => Some(&start.pn),
             SpanKind::KeyValue(_) => None,
@@ -192,21 +203,32 @@ impl<'t> Span<'t> {
     }
 
     pub fn path_string(&self, opts: &PathStringOptions, db: &LogDataIndex<'t>) -> String {
-        // Stop recursion via opts?
+        let PathStringOptions {
+            ignore_process,
+            ignore_thread,
+            include_thread_number_in_path,
+        } = opts;
+        // Stop recursion via opts?--XX how useful is this even, have
+        // display below, too ("P:" etc.).
         match &self.kind {
             SpanKind::Scope {
                 kind,
+                thread_number,
                 start: _,
                 end: _,
             } => match kind {
                 ScopeKind::Process => {
-                    if opts.ignore_process {
+                    if *ignore_process {
                         return format!("process");
                     }
                 }
                 ScopeKind::Thread => {
-                    if opts.ignore_thread {
-                        return format!("thread");
+                    if *ignore_thread {
+                        return if *include_thread_number_in_path {
+                            format!("{thread_number}")
+                        } else {
+                            format!("thread")
+                        };
                     }
                 }
                 ScopeKind::Scope => (),
@@ -225,12 +247,18 @@ impl<'t> Span<'t> {
         match &self.kind {
             SpanKind::Scope {
                 kind,
+                thread_number,
                 start,
                 end: _,
             } => {
                 match kind {
                     ScopeKind::Process => out.push_str("P:"),
-                    ScopeKind::Thread => out.push_str("T:"),
+                    ScopeKind::Thread => {
+                        out.push_str("T:");
+                        if *include_thread_number_in_path {
+                            out.push_str(&thread_number.to_string());
+                        }
+                    }
                     ScopeKind::Scope => (),
                 }
                 let pn = &start.pn;
@@ -249,6 +277,7 @@ impl<'t> Span<'t> {
         match &self.kind {
             SpanKind::Scope {
                 kind: _,
+                thread_number: _,
                 start,
                 end,
             } => Some((*start, end.expect("properly balanced spans"))),
@@ -257,10 +286,70 @@ impl<'t> Span<'t> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ThreadNumber(u32);
+
+impl Deref for ThreadNumber {
+    type Target = u32;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Display for ThreadNumber {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("thread {}", self.0))
+    }
+}
+
+/// Map from thread id to internally-allocated thread_number, both for
+/// correctness (in case a tid is re-used), as well as for more
+/// consistent output (try to have the same numbers across benchmark
+/// runs, although this depends on the order of thread creation
+/// (including their initialization messages) remaining the
+/// same).
+struct ThreadIdMapper {
+    current_thread_number: u32,
+    // Mappings are removed here when a thread ends! To enforce a
+    // new mapping when the same ThreadId shows up again.
+    thread_number_by_thread_id: HashMap<ThreadId, ThreadNumber>,
+}
+
+impl ThreadIdMapper {
+    fn new() -> Self {
+        Self {
+            current_thread_number: 0,
+            thread_number_by_thread_id: HashMap::new(),
+        }
+    }
+
+    /// Automatically inserts a mapping if there is none yet
+    fn to_thread_number(&mut self, thread_id: ThreadId) -> ThreadNumber {
+        match self.thread_number_by_thread_id.entry(thread_id) {
+            Entry::Occupied(occupied_entry) => *occupied_entry.get(),
+            Entry::Vacant(vacant_entry) => {
+                let thread_number = ThreadNumber(self.current_thread_number);
+                self.current_thread_number += 1;
+                vacant_entry.insert(thread_number);
+                thread_number
+            }
+        }
+    }
+
+    /// NOTE: mappings are to be removed during parsing when a thread
+    /// ends, so that when the same ThreadId is re-used, it gets a new
+    /// mapping
+    fn remove_thread_id(&mut self, thread_id: ThreadId) -> Option<ThreadNumber> {
+        self.thread_number_by_thread_id.remove(&thread_id)
+    }
+}
+
 impl<'t> LogDataIndex<'t> {
     pub fn from_logdata(data: &'t LogData) -> Result<Self> {
         let mut slf = Self::default();
-        // XXX ThreadId needs local id for safety
+
+        let mut thread_id_mapper = ThreadIdMapper::new();
         let mut start_by_thread: HashMap<ThreadId, Vec<SpanId<'t>>> = HashMap::new();
 
         for message in &data.messages {
@@ -298,9 +387,11 @@ impl<'t> LogDataIndex<'t> {
                             is_ending: false,
                         } => {
                             let mut scope_with_parent = |parent| -> SpanId<'t> {
+                                let thread_number = thread_id_mapper.to_thread_number(timing.tid);
                                 slf.add_span(Span {
                                     kind: SpanKind::Scope {
                                         kind,
+                                        thread_number,
                                         start: timing,
                                         end: None,
                                     },
@@ -352,6 +443,10 @@ impl<'t> LogDataIndex<'t> {
                                         Entry::Vacant(e) => {
                                             e.insert(vec![span_id]);
                                         }
+                                    }
+
+                                    if kind == ScopeKind::Thread {
+                                        thread_id_mapper.remove_thread_id(timing.tid);
                                     }
 
                                     break;

@@ -15,10 +15,11 @@ pub struct IndexByCallPath<'t> {
 }
 
 impl<'t> IndexByCallPath<'t> {
-    pub fn from_logdataindex(db: &LogDataIndex<'t>) -> Self {
+    pub fn from_logdataindex(db: &LogDataIndex<'t>, include_thread_number_in_path: bool) -> Self {
         let path_string_opts = PathStringOptions {
             ignore_process: true,
             ignore_thread: true,
+            include_thread_number_in_path,
         };
         let mut slf = Self::default();
         for span_id in db.span_ids() {
