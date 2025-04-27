@@ -174,9 +174,9 @@ impl<'t> Span<'t> {
         }
     }
 
-    /// Only checks `pn`. Panics if they don't match. XX Should
-    /// eliminate this longer-term.
-    pub fn check(&self) {
+    /// Checks that the `pn` on the start and end timings
+    /// match. Panics if they don't.
+    pub fn assert_consistency(&self) {
         match &self.kind {
             SpanKind::Scope {
                 kind: _,
@@ -433,7 +433,7 @@ impl<'t> LogDataIndex<'t> {
                                     }
 
                                     *end = Some(timing);
-                                    span.check();
+                                    span.assert_consistency();
 
                                     let pn = span.pn().expect("scopes have a pn");
                                     match slf.spans_by_pn.entry(pn) {
