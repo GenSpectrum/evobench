@@ -219,7 +219,13 @@ impl<'t> Span<'t> {
             } => match kind {
                 ScopeKind::Process => {
                     if *ignore_process {
-                        return format!("process");
+                        // Show this as "main thread", not "process",
+                        // because Timing currently still contains
+                        // `RUSAGE_THREAD` data in this context, too!
+                        // And there is no thread start message for
+                        // that thread, too, so data would be missing
+                        // if not using that as main thread data.
+                        return format!("main thread");
                     }
                 }
                 ScopeKind::Thread => {
