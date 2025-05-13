@@ -36,8 +36,8 @@ enum Command {
         #[clap(short, long)]
         show_thread_number: bool,
 
-        /// Path that was provided via the `EVOBENCH_LOG` environment
-        /// variable to the evobench-probes library.
+        /// The path that was provided via the `EVOBENCH_LOG`
+        /// environment variable to the evobench-probes library.
         path: PathBuf,
     },
 }
