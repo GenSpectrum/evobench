@@ -1,11 +1,13 @@
 use std::{
     fs::File,
-    io::{BufRead, BufReader},
+    io::{BufRead, BufReader, Read},
+    os::unix::ffi::OsStrExt,
     path::Path,
 };
 
 use anyhow::{anyhow, bail, Context, Result};
 use kstring::KString;
+use ruzstd::StreamingDecoder;
 
 use crate::log_message::{LogMessage, Metadata};
 
@@ -19,11 +21,16 @@ pub struct LogData {
 }
 
 impl LogData {
-    /// Currently not doing streaming with the parsed results, the
-    /// in-memory representation is larger than the
+    /// `path` must end in `.log` or `.zstd`. Decompresses the latter
+    /// transparently. Currently not doing streaming with the parsed
+    /// results, the in-memory representation is larger than the
     /// file. `max_file_size` can be used to avoid unintended loading
     /// of overly large files.
     pub fn read_file(path: &Path, max_file_size: Option<u64>) -> Result<Self> {
+        let ext = path.extension().ok_or_else(|| {
+            anyhow!("missing file extension on output file, expecting .log or .zstd: {path:?}")
+        })?;
+
         let input = File::open(path)?;
 
         if let Some(max_file_size) = max_file_size {
@@ -33,7 +40,16 @@ impl LogData {
             }
         }
 
-        let mut input = BufReader::new(input);
+        // XX does matching extension bytes work on Windows?
+        let uncompressed_input: Box<dyn Read> = match ext.as_bytes() {
+            b"log" => Box::new(input),
+            b"zstd" => Box::new(
+                StreamingDecoder::new(input).with_context(|| anyhow!("zstd-decoding {path:?}"))?,
+            ),
+            _ => bail!("unknown file extension {ext:?}, expecting .log or .zstd: {path:?}"),
+        };
+
+        let mut input = BufReader::new(uncompressed_input);
 
         let mut line = String::new();
         let mut linenum = 0;
