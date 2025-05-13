@@ -9,8 +9,6 @@ use kstring::KString;
 
 use crate::log_message::{LogMessage, Metadata};
 
-const MAX_FILE_SIZE: u64 = 300_000_000;
-
 #[derive(Debug)]
 pub struct LogData {
     pub path: Box<Path>,
@@ -21,13 +19,18 @@ pub struct LogData {
 }
 
 impl LogData {
-    pub fn read_file(path: &Path) -> Result<Self> {
+    /// Currently not doing streaming with the parsed results, the
+    /// in-memory representation is larger than the
+    /// file. `max_file_size` can be used to avoid unintended loading
+    /// of overly large files.
+    pub fn read_file(path: &Path, max_file_size: Option<u64>) -> Result<Self> {
         let input = File::open(path)?;
-        let m = input.metadata()?;
-        // Currently not doing streaming with the parsed results
-        // anyway, so...
-        if m.len() > MAX_FILE_SIZE {
-            bail!("currently assuming that you don't read files larger than {MAX_FILE_SIZE}")
+
+        if let Some(max_file_size) = max_file_size {
+            let m = input.metadata()?;
+            if m.len() > max_file_size {
+                bail!("currently assuming that you don't read files larger than {max_file_size}")
+            }
         }
 
         let mut input = BufReader::new(input);

@@ -130,7 +130,7 @@ fn main() -> Result<()> {
             path,
             show_thread_number,
         } => {
-            let data = LogData::read_file(path)?;
+            let data = LogData::read_file(path, None)?;
             let log_data_index = LogDataIndex::from_logdata(&data)?;
 
             let index_by_call_path = {
