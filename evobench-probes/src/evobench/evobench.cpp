@@ -22,6 +22,7 @@
 #include <unistd.h>
 #include <limits.h>
 #include <sys/utsname.h>
+#include <sys/file.h>
 
 // Getting thread statistics on macOS
 #ifdef __MACH__
@@ -300,6 +301,23 @@ namespace evobench {
             is_enabled = false;
             return;
         }
+
+        lock_fd = open(path, O_CREAT, 0666);
+        if (lock_fd < 0) {
+            auto err = errno;
+            std::cerr << "evobench::Output: can't create or open file for locking: ";
+            js_print_stream(std::string_view{path}, std::cerr);
+            std::cerr << ": " << std::strerror(err) << "\n";
+            exit(1);
+        }
+        if (flock(lock_fd, LOCK_EX | LOCK_NB) < 0) {
+            auto err = errno;
+            std::cerr << "evobench::Output: can't lock file: ";
+            js_print_stream(std::string_view{path}, std::cerr);
+            std::cerr << ": " << std::strerror(err) << "\n";
+            exit(1);
+        }
+
         fd = open(path, O_CREAT|O_WRONLY|O_TRUNC, 0666);
         if (fd < 0) {
             auto err = errno;

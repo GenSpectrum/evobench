@@ -41,6 +41,9 @@ namespace evobench {
         // Only if maybe_output_path was true. Stays with that value
         // even if `is_enabled` is turned off later.
         const char* path;
+        // Opened for reading for holding a lock
+        int lock_fd;
+        // Opened for writing
         int fd;
         std::mutex write_mutex;
 
