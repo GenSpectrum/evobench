@@ -8,4 +8,3 @@ pub mod log_message;
 pub mod path_util;
 pub mod stats;
 pub mod times;
-pub mod via_polars;
