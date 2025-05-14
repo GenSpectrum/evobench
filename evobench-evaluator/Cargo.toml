@@ -26,5 +26,5 @@ serde_json= "1.0"
 kstring = "1.0"
 num-traits = "0.2.15"
 rand = "0.8.5"
-ruzstd = { version = "0.7.3", default_features = false, features = ["std"] }
+ruzstd = { version = "0.7.3", default-features = false, features = ["std"] }
 
