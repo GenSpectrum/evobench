@@ -76,7 +76,7 @@ fn stats<T: Into<u64> + From<u64> + ToStatsString + Display>(
     let r: Result<Stats<T, TILE_COUNT>, StatsError> = scopestats(log_data_index, spans, extract);
     match r {
         Ok(s) => {
-            eprintln!("{pn:?} => {s}");
+            // eprintln!("{pn:?} => {s}");
             s.print_tsv_line(&mut out, &[extract_name, pn])?;
         }
         Err(StatsError::NoInputs) => {
@@ -96,7 +96,7 @@ fn stats_all_probes<T: Into<u64> + From<u64> + ToStatsString + Display>(
     extract_name: &str,
     extract: impl Fn(&Timing) -> Option<T>,
 ) -> Result<()> {
-    eprintln!("----{extract_name}-----------------------------------------------------------------------------------");
+    // eprintln!("----{extract_name}-----------------------------------------------------------------------------------");
 
     // Separate the tables from each other in the TSV
     writeln!(&mut out, "")?;
