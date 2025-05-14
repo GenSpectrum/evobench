@@ -1,14 +1,16 @@
 use std::fmt::Display;
-use std::io::{stdout, Write};
+use std::fs::{rename, File};
+use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use evobench_evaluator::get_terminal_width::get_terminal_width;
 use evobench_evaluator::index_by_call_path::IndexByCallPath;
 use evobench_evaluator::log_data_index::{LogDataIndex, PathStringOptions, SpanId};
 use evobench_evaluator::log_file::LogData;
 use evobench_evaluator::log_message::Timing;
+use evobench_evaluator::path_util::add_extension;
 use evobench_evaluator::stats::{Stats, StatsError, ToStatsString};
 
 include!("../../include/evobench_version.rs");
@@ -39,6 +41,9 @@ enum Command {
         /// The path that was provided via the `EVOBENCH_LOG`
         /// environment variable to the evobench-probes library.
         path: PathBuf,
+
+        /// Optional path to write CSV output to
+        csv_path: Option<PathBuf>,
     },
 }
 
@@ -122,13 +127,13 @@ fn stats_all_probes<T: Into<u64> + From<u64> + ToStatsString + Display>(
 }
 
 fn main() -> Result<()> {
-    let mut out = stdout().lock();
     let opts: Opts = Opts::parse();
     match &opts.command {
         Command::Version => println!("{PROGRAM_NAME} version {EVOBENCH_VERSION}"),
         Command::Read {
             path,
             show_thread_number,
+            csv_path,
         } => {
             let data = LogData::read_file(path, None)?;
             let log_data_index = LogDataIndex::from_logdata(&data)?;
@@ -160,34 +165,55 @@ fn main() -> Result<()> {
                 IndexByCallPath::from_logdataindex(&log_data_index, &opts)
             };
 
-            stats_all_probes(
-                &mut out,
-                &log_data_index,
-                &index_by_call_path,
-                "real time",
-                |timing: &Timing| Some(timing.r),
-            )?;
-            stats_all_probes(
-                &mut out,
-                &log_data_index,
-                &index_by_call_path,
-                "cpu time",
-                |timing: &Timing| Some(timing.u),
-            )?;
-            stats_all_probes(
-                &mut out,
-                &log_data_index,
-                &index_by_call_path,
-                "sys time",
-                |timing: &Timing| Some(timing.s),
-            )?;
-            stats_all_probes(
-                &mut out,
-                &log_data_index,
-                &index_by_call_path,
-                "ctx switches",
-                |timing: &Timing| Some(timing.nvcsw()? + timing.nivcsw()?),
-            )?;
+            if let Some(csv_path) = csv_path {
+                let csv_path_tmp = add_extension(csv_path, "tmp")
+                    .ok_or_else(|| anyhow!("path misses a filename: {csv_path:?}"))?;
+                let mut out =
+                    BufWriter::new(File::create(&csv_path_tmp).with_context(|| {
+                        anyhow!("can't open file for writing: {csv_path_tmp:?}")
+                    })?);
+
+                (|| -> Result<()> {
+                    stats_all_probes(
+                        &mut out,
+                        &log_data_index,
+                        &index_by_call_path,
+                        "real time",
+                        |timing: &Timing| Some(timing.r),
+                    )?;
+                    stats_all_probes(
+                        &mut out,
+                        &log_data_index,
+                        &index_by_call_path,
+                        "cpu time",
+                        |timing: &Timing| Some(timing.u),
+                    )?;
+                    stats_all_probes(
+                        &mut out,
+                        &log_data_index,
+                        &index_by_call_path,
+                        "sys time",
+                        |timing: &Timing| Some(timing.s),
+                    )?;
+                    stats_all_probes(
+                        &mut out,
+                        &log_data_index,
+                        &index_by_call_path,
+                        "ctx switches",
+                        |timing: &Timing| Some(timing.nvcsw()? + timing.nivcsw()?),
+                    )?;
+
+                    out.flush()?;
+
+                    Ok(())
+                })()
+                .with_context(|| anyhow!("writing output to file {csv_path_tmp:?}"))?;
+
+                rename(&csv_path_tmp, csv_path)
+                    .with_context(|| anyhow!("renaming {csv_path_tmp:?} to {csv_path:?}"))?;
+            } else {
+                println!("OK, but not printing. Please give a CSV output path!");
+            }
         }
     }
 
