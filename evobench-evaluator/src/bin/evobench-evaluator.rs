@@ -85,6 +85,7 @@ fn stats<T: Into<u64> + From<u64> + ToStatsString + Display>(
             let count = spans.len();
             writeln!(&mut out, "{extract_name}\t{pn}\t{count}")?;
         }
+        Err(e) => Err(e)?,
     }
     Ok(())
 }
