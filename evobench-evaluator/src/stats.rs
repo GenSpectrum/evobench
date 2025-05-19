@@ -2,7 +2,7 @@ use std::fmt::Display;
 use std::io::Write;
 use std::marker::PhantomData;
 
-use num_traits::Zero;
+use num_traits::{Pow, Zero};
 
 use crate::{
     average::Average,
@@ -47,8 +47,12 @@ pub struct Stats<ViewType, const TILES_COUNT: usize> {
     view_type: PhantomData<fn() -> ViewType>,
     pub num_values: usize,
     pub sum: u128,
-    pub average: u64, // x.5 is rounded up
+    /// x.5 is rounded up
+    pub average: u64,
+    /// Interpolated and rounded up for even numbers of input values.
     pub median: u64,
+    /// mean squared difference from the mean
+    pub variance: f64,
     /// Percentiles or in `TILES_COUNT` number of sections. Sample
     /// count is the index, the sample value there is the value in the
     /// vector. `tiles[0]` is the mininum, `tiles[TILES_COUNT]` the
@@ -65,6 +69,14 @@ pub enum StatsError {
 }
 
 impl<ViewType, const TILES_COUNT: usize> Stats<ViewType, TILES_COUNT> {
+    /// sqrt(variance) as u64, since our conversions to ms etc. are on
+    /// that type; bummer to lose f64 precision, though. Rounded.
+    pub fn standard_deviation_u64(&self) -> u64 {
+        // What about number overflows from f64 ? Can't happen,
+        // though, right?
+        (self.variance.sqrt() + 0.5) as u64
+    }
+
     /// `tiles_count` is how many 'tiles' to build, for percentiles
     /// give the number 101. (Needs to own `vals` for sorting,
     /// internally.)
@@ -74,12 +86,21 @@ impl<ViewType, const TILES_COUNT: usize> Stats<ViewType, TILES_COUNT> {
             return Err(StatsError::NoInputs);
         }
         let sum: u128 = vals.iter().map(|v| u128::from(*v)).sum();
+
         let average = {
             let num_values = num_values as u128;
             sum.checked_add(num_values / 2)
                 .ok_or(StatsError::SaturatedU128)?
                 / num_values
         };
+
+        let variance = {
+            let num_values = num_values as f64;
+            let average: f64 = sum as f64 / num_values;
+            let sum: f64 = vals.iter().map(|v| (*v as f64 - average).pow(2)).sum();
+            sum / num_values
+        };
+
         vals.sort();
 
         // Calculate the median before making tiles, because for
@@ -110,6 +131,7 @@ impl<ViewType, const TILES_COUNT: usize> Stats<ViewType, TILES_COUNT> {
             sum,
             average: average.try_into().expect("always fits"),
             median,
+            variance,
             tiles,
         })
     }
@@ -122,7 +144,7 @@ impl<ViewType, const TILES_COUNT: usize> Stats<ViewType, TILES_COUNT> {
             write!(out, "{key_name}\t")?;
         }
         let unit = ViewType::UNIT_SHORT;
-        write!(out, "n\tsum {unit}\tavg {unit}\tmedian {unit}")?;
+        write!(out, "n\tsum {unit}\tavg {unit}\tmedian {unit}\tSD {unit}")?;
 
         // Add empty column before tiles:
         write!(out, "\t")?;
@@ -143,6 +165,8 @@ impl<ViewType, const TILES_COUNT: usize> Stats<ViewType, TILES_COUNT> {
             num_values,
             sum,
             average,
+            // using standard_deviation_u64() instead
+            variance: _,
             median,
             tiles,
         } = self;
@@ -151,11 +175,13 @@ impl<ViewType, const TILES_COUNT: usize> Stats<ViewType, TILES_COUNT> {
         }
         write!(
             out,
-            "{num_values}\t{}\t{}\t{}",
+            "{num_values}\t{}\t{}\t{}\t{}",
             ViewType::from(u64::try_from(*sum).expect("sum is larger than u64: {sum}"))
                 .to_stats_string(),
             ViewType::from(*average).to_stats_string(),
-            ViewType::from(*median).to_stats_string()
+            ViewType::from(*median).to_stats_string(),
+            // oh, bummer, float precision is gone here:
+            ViewType::from(self.standard_deviation_u64()).to_stats_string(),
         )?;
 
         // Add empty column before tiles:
@@ -179,15 +205,19 @@ impl<ViewType: From<u64> + Display, const TILES_COUNT: usize> Display
             num_values,
             sum,
             average,
+            // using standard_deviation_u64() instead
+            variance: _,
             median,
             tiles: _,
         } = self;
         write!(
             f,
-            " {num_values} values \t sum {} \t average {} \t median {}",
+            " {num_values} values \t sum {} \t average {} \t median {} \t SD {}",
             ViewType::from(u64::try_from(*sum).expect("sum is larger than u64: {sum}")),
             ViewType::from(*average),
-            ViewType::from(*median)
+            ViewType::from(*median),
+            // oh, bummer, float precision is gone here:
+            ViewType::from(self.standard_deviation_u64()),
         )
     }
 }
@@ -205,6 +235,8 @@ mod tests {
         assert_eq!(stats.average, 14); // 14.4
         assert_eq!(stats.tiles, [4, 7, 23, 30]); // 8 skipped
         assert_eq!(stats.median, 8);
+        assert_eq!(stats.variance, 104.24000000000001);
+        assert_eq!(stats.standard_deviation_u64(), 10); // 10.2097992144802
 
         let data = vec![23, 4, 8, 31, 7];
         let stats = Stats::<u64, 4>::from_values(data)?;
@@ -214,6 +246,8 @@ mod tests {
         assert_eq!(stats.tiles[3], 31);
         assert_eq!(stats.tiles, [4, 7, 23, 31]); // 8 skipped
         assert_eq!(stats.median, 8);
+        assert_eq!(stats.variance, 110.64000000000001);
+        assert_eq!(stats.standard_deviation_u64(), 11); // 10.5185550338438
 
         let data = vec![23, 4, 8, 7];
         let stats = Stats::<u64, 4>::from_values(data)?;
