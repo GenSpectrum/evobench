@@ -47,6 +47,8 @@ enum Command {
     },
 }
 
+// We use 101 buckets for percentiles instead of 100, so that we get a
+// bucket exactly at 0.50. OK?
 const TILE_COUNT: usize = 101;
 
 fn scopestats<T: Into<u64> + From<u64>>(

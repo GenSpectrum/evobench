@@ -56,7 +56,9 @@ pub struct Stats<ViewType, const TILES_COUNT: usize> {
     /// Percentiles or in `TILES_COUNT` number of sections. Sample
     /// count is the index, the sample value there is the value in the
     /// vector. `tiles[0]` is the mininum, `tiles[TILES_COUNT]` the
-    /// maximum sample value.
+    /// maximum sample value. Cut-offs are inclusive, i.e. the index
+    /// is rounded up (shows the value of the next item if it falls at
+    /// least the distance 0.5 between items).
     pub tiles: Vec<u64>,
 }
 
@@ -116,14 +118,23 @@ impl<ViewType, const TILES_COUNT: usize> Stats<ViewType, TILES_COUNT> {
             }
         };
 
-        let flen = num_values as f64;
+        // As an example, a TILES_COUNT of 3 means, we group into
+        // [min, med, max] (we get percentiles via a TILES_COUNT of
+        // 101, not 100, if we want a median bucket!). We need to go 2
+        // distances. If `vals` has 4 elements, that's 3 distances to
+        // go. The tile position 2 needs to go to vals index 3, the
+        // tile position 1 to vals index 1.5 -> round up to index 2.
+        let vals_distances = (num_values - 1) as f64;
+        let tiles_distances = (TILES_COUNT - 1) as f64;
         let mut tiles = Vec::new();
-        let tiles_max = TILES_COUNT as f64;
         for i in 0..TILES_COUNT {
-            let index = i as f64 / tiles_max * flen + 0.5;
+            let index = i as f64 / tiles_distances * vals_distances + 0.5;
             let val = vals[index as usize];
             tiles.push(val);
         }
+
+        assert_eq!(vals.first(), tiles.first());
+        assert_eq!(vals.last(), tiles.last());
 
         Ok(Stats {
             view_type: PhantomData::default(),
@@ -259,11 +270,7 @@ mod tests {
         let stats = Stats::<u64, 4>::from_values(data)?;
         assert_eq!(stats.average, 13); // 12.6666666666667
         assert_eq!(stats.median, 8);
-        assert_eq!(stats.tiles, [7, 8, 23, 23]);
-        // interesting that it duplicates 23 not 8; `let index = i as
-        // f64 / tiles_max * flen + 0.499;` above leads to 8 being
-        // duplicated, but then skips 23 in the test with 5 values
-        // above.
+        assert_eq!(stats.tiles, [7, 8, 8, 23]);
 
         Ok(())
     }
@@ -284,7 +291,7 @@ mod tests {
 
         let data = vec![23, 4, 10, 7];
         let stats = Stats::<u64, 2>::from_values(data)?;
-        assert_eq!(stats.tiles, [4, 10]);
+        assert_eq!(stats.tiles, [4, 23]);
         // Calculated from original values, not tiles:
         assert_eq!(stats.median, 9); // 8.5
 
@@ -299,6 +306,10 @@ mod tests {
         let data = vec![23, 4, 7];
         let stats = Stats::<u64, 4>::from_values(data)?;
         assert_eq!(stats.median, 7);
+
+        let data = vec![23, 4];
+        let stats = Stats::<u64, 4>::from_values(data)?;
+        assert_eq!(stats.median, 14); // 13.5
 
         Ok(())
     }
