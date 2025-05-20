@@ -11,8 +11,8 @@ usage() {
     echo
     echo "  Copies these directories:"
     echo
-    echo "     evobench-probes/include/evobench/ -> include/"
-    echo "     evobench-probes/src/evobench/ -> src/"
+    echo "     include/evobench/ -> into include/"
+    echo "     src/evobench/ -> into src/"
     echo
     echo "  i.e. run this from your project that uses include/ and src/"
     echo "  subdirectories, to get a copy of the probes infrastructure."
@@ -26,6 +26,6 @@ if [ $# -ne 0 ]; then
 fi
 
 
-cp -a "$basedir"/evobench-probes/include/evobench/ include/
-cp -a "$basedir"/evobench-probes/src/evobench/ src/
+cp -a "$basedir"/include/evobench/ include/
+cp -a "$basedir"/src/evobench/ src/
 
