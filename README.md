@@ -6,7 +6,7 @@ This software is currently used for benchmarking
 
 It consists of multiple parts:
 
- -  [evobench-probes](evobench-probes/), a small library in C++ to
+ -  [evobench-probes](evobench-probes/README.md), a small library in C++ to
     record performance relevant data (real, cpu and sys timings,
     context switches, it might be feasible to extend for measuring
     memory allocations). Probes are explicitly to the source code of
