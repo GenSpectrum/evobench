@@ -47,8 +47,10 @@ enum Command {
     },
 }
 
-// We use 101 buckets for percentiles instead of 100, so that we get a
-// bucket exactly at 0.50. OK?
+// We use 101 buckets for percentiles instead of 100, so that we get
+// buckets at positions 50, 25, 75 for exact matches, OK? (Although
+// note that the `Stats` median is not based on those buckets
+// (anymore).)
 const TILE_COUNT: usize = 101;
 
 fn scopestats<T: Into<u64> + From<u64>>(
