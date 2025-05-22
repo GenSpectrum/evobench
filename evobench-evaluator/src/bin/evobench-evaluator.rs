@@ -1,17 +1,22 @@
-use std::fmt::Display;
-use std::fs::{rename, File};
-use std::io::{BufWriter, Write};
+use std::borrow::Cow;
+use std::fmt::{Debug, Display};
+use std::fs::File;
+use std::io::BufWriter;
 use std::path::PathBuf;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
+use evobench_evaluator::excel_table_view::excel_file_write;
 use evobench_evaluator::get_terminal_width::get_terminal_width;
 use evobench_evaluator::index_by_call_path::IndexByCallPath;
+use evobench_evaluator::io_util::xrename;
 use evobench_evaluator::log_data_index::{LogDataIndex, PathStringOptions, SpanId};
 use evobench_evaluator::log_file::LogData;
 use evobench_evaluator::log_message::Timing;
 use evobench_evaluator::path_util::add_extension;
 use evobench_evaluator::stats::{Stats, StatsError, ToStatsString};
+use evobench_evaluator::table::{KeyVal, StatsOrCount, Table, TableKeyLabel};
+use evobench_evaluator::table_view::TableView;
 
 include!("../../include/evobench_version.rs");
 
@@ -31,8 +36,22 @@ struct Opts {
 enum Command {
     /// Print version
     Version,
-    /// Read a file
+
+    /// Show statistics for a single benchmarking log file
     Read {
+        /// The width of the column with the probes path, in characters
+        /// (as per Excel's definition of characters)
+        #[clap(short, long, default_value = "100")]
+        key_width: f64,
+
+        /// Path to write CSV output to
+        #[clap(short, long)]
+        csv: Option<PathBuf>,
+
+        /// Path to write Excel output to
+        #[clap(short, long)]
+        excel: Option<PathBuf>,
+
         /// Include the internally-allocated thread number in call
         /// path strings in the output.
         #[clap(short, long)]
@@ -41,9 +60,6 @@ enum Command {
         /// The path that was provided via the `EVOBENCH_LOG`
         /// environment variable to the evobench-probes library.
         path: PathBuf,
-
-        /// Optional path to write CSV output to
-        csv_path: Option<PathBuf>,
     },
 }
 
@@ -69,78 +85,81 @@ fn scopestats<T: Into<u64> + From<u64>>(
     Stats::from_values(vals)
 }
 
-fn stats<T: Into<u64> + From<u64> + ToStatsString + Display>(
+fn pn_stats<'t, T: Into<u64> + From<u64> + ToStatsString + Display + Debug>(
     log_data_index: &LogDataIndex,
     spans: &[SpanId],
-    extract_name: &str,
-    pn: &str,
+    pn: &'t str,
     extract: impl Fn(&Timing) -> Option<T>,
-    mut out: impl Write,
-) -> Result<()> {
+) -> Result<KeyVal<Cow<'t, str>, StatsOrCount<T, TILE_COUNT>>, StatsError> {
     let r: Result<Stats<T, TILE_COUNT>, StatsError> = scopestats(log_data_index, spans, extract);
     match r {
-        Ok(s) => {
-            // eprintln!("{pn:?} => {s}");
-            s.print_tsv_line(&mut out, &[extract_name, pn])?;
-        }
+        Ok(s) => Ok(KeyVal {
+            key: pn.into(),
+            val: StatsOrCount::Stats(s),
+        }),
         Err(StatsError::NoInputs) => {
-            // XX more generic? print_tsv_line directly on Result? Or evil
-            // anyway? Actually showing counts here now, evil too.
             let count = spans.len();
-            writeln!(&mut out, "{extract_name}\t{pn}\t{count}")?;
+            Ok(KeyVal {
+                key: pn.into(),
+                val: StatsOrCount::Count(count),
+            })
         }
-        Err(e) => Err(e)?,
+        Err(e) => Err(e),
     }
-    Ok(())
 }
 
-fn stats_all_probes<T: Into<u64> + From<u64> + ToStatsString + Display>(
-    mut out: impl Write,
-    log_data_index: &LogDataIndex,
-    index_by_call_path: &IndexByCallPath,
-    extract_name: &str,
-    extract: impl Fn(&Timing) -> Option<T>,
-) -> Result<()> {
-    // eprintln!("----{extract_name}-----------------------------------------------------------------------------------");
+pub struct PathLabel;
+impl TableKeyLabel for PathLabel {
+    const KEY_LABEL: &str = "Probe name or path\n(A: across all threads, N: by thread number)";
+}
 
-    // Separate the tables from each other in the TSV
-    writeln!(&mut out, "")?;
-    Stats::<T, TILE_COUNT>::print_tsv_header(&mut out, &["field", "probe name"])?;
+/// A table holding one field for all probes
+fn table_for_field<'t, T: Into<u64> + From<u64> + ToStatsString + Display + Debug>(
+    extract_name: &'t str,
+    extract: impl Fn(&Timing) -> Option<T>,
+    log_data_index: &'t LogDataIndex,
+    index_by_call_path: &'t IndexByCallPath,
+    key_column_width: f64,
+) -> Result<Table<'t, StatsOrCount<T, TILE_COUNT>, PathLabel>> {
+    let mut rows = Vec::new();
     for pn in log_data_index.probe_names() {
-        stats(
+        rows.push(pn_stats(
             log_data_index,
             log_data_index.spans_by_pn(&pn).unwrap(),
-            extract_name,
             pn,
             &extract,
-            &mut out,
-        )?;
+        )?);
     }
 
     for call_path in index_by_call_path.call_paths() {
-        stats(
+        rows.push(pn_stats(
             log_data_index,
             index_by_call_path.spans_by_call_path(call_path).unwrap(),
-            extract_name,
             call_path,
             &extract,
-            &mut out,
-        )?;
+        )?);
     }
 
-    Ok(())
+    Ok(Table {
+        key_label: Default::default(),
+        name: extract_name.into(),
+        rows,
+        key_column_width: Some(key_column_width),
+    })
 }
 
 fn main() -> Result<()> {
-    let opts: Opts = Opts::parse();
-    match &opts.command {
+    let Opts { command } = Opts::parse();
+    match command {
         Command::Version => println!("{PROGRAM_NAME} version {EVOBENCH_VERSION}"),
         Command::Read {
+            key_width,
             path,
             show_thread_number,
-            csv_path,
+            csv,
+            excel,
         } => {
-            let data = LogData::read_file(path, None)?;
+            let data = LogData::read_file(&path, None)?;
             let log_data_index = LogDataIndex::from_logdata(&data)?;
 
             let index_by_call_path = {
@@ -158,7 +177,7 @@ fn main() -> Result<()> {
                     // "across threads / added up"
                     prefix: "A:",
                 }];
-                if *show_thread_number {
+                if show_thread_number {
                     opts.push(PathStringOptions {
                         ignore_process: true,
                         ignore_thread: true,
@@ -170,52 +189,60 @@ fn main() -> Result<()> {
                 IndexByCallPath::from_logdataindex(&log_data_index, &opts)
             };
 
-            if let Some(csv_path) = csv_path {
-                let csv_path_tmp = add_extension(csv_path, "tmp")
+            if let Some(csv_path) = csv {
+                let csv_path_tmp = add_extension(&csv_path, "tmp")
                     .ok_or_else(|| anyhow!("path misses a filename: {csv_path:?}"))?;
-                let mut out =
+                let mut _out =
                     BufWriter::new(File::create(&csv_path_tmp).with_context(|| {
                         anyhow!("can't open file for writing: {csv_path_tmp:?}")
                     })?);
+                bail!("TODO re-add code for CSV writing?");
+                // out.flush()?;
+                // xrename(&csv_path_tmp, csv_path)?;
+            }
+
+            if let Some(excel_path) = excel {
+                let path_tmp = add_extension(&excel_path, "tmp")
+                    .ok_or_else(|| anyhow!("path misses a filename: {excel_path:?}"))?;
 
                 (|| -> Result<()> {
-                    stats_all_probes(
-                        &mut out,
-                        &log_data_index,
-                        &index_by_call_path,
+                    let mut tables: Vec<Box<dyn TableView>> = vec![];
+                    tables.push(Box::new(table_for_field(
                         "real time",
                         |timing: &Timing| Some(timing.r),
-                    )?;
-                    stats_all_probes(
-                        &mut out,
                         &log_data_index,
                         &index_by_call_path,
+                        key_width,
+                    )?));
+
+                    tables.push(Box::new(table_for_field(
                         "cpu time",
                         |timing: &Timing| Some(timing.u),
-                    )?;
-                    stats_all_probes(
-                        &mut out,
                         &log_data_index,
                         &index_by_call_path,
+                        key_width,
+                    )?));
+                    tables.push(Box::new(table_for_field(
                         "sys time",
                         |timing: &Timing| Some(timing.s),
-                    )?;
-                    stats_all_probes(
-                        &mut out,
                         &log_data_index,
                         &index_by_call_path,
+                        key_width,
+                    )?));
+                    tables.push(Box::new(table_for_field(
                         "ctx switches",
                         |timing: &Timing| Some(timing.nvcsw()? + timing.nivcsw()?),
-                    )?;
+                        &log_data_index,
+                        &index_by_call_path,
+                        key_width,
+                    )?));
 
-                    out.flush()?;
+                    excel_file_write(&tables, &path_tmp)?;
+                    xrename(&path_tmp, &excel_path)?;
 
                     Ok(())
                 })()
-                .with_context(|| anyhow!("writing output to file {csv_path_tmp:?}"))?;
-
-                rename(&csv_path_tmp, csv_path)
-                    .with_context(|| anyhow!("renaming {csv_path_tmp:?} to {csv_path:?}"))?;
+                .with_context(|| anyhow!("writing output to file {excel_path:?}"))?;
             } else {
                 println!("OK, but not printing. Please give a CSV output path!");
             }

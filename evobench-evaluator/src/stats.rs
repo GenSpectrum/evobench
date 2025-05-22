@@ -1,11 +1,11 @@
-use std::fmt::Display;
-use std::io::Write;
+use std::borrow::Cow;
 use std::marker::PhantomData;
 
 use num_traits::{Pow, Zero};
 
 use crate::{
     average::Average,
+    table_view::{ColumnFormatting, Highlight, TableViewRow, Unit},
     times::{MicroTime, NanoTime, ToStringMilliseconds},
 };
 
@@ -42,6 +42,76 @@ impl ToStatsString for u64 {
     }
 }
 
+pub trait IsBetter {
+    const FORMATTING_FOR_LARGER: Highlight;
+    const FORMATTING_FOR_SMALLER: Highlight;
+}
+
+pub struct LargerIsBetter;
+impl IsBetter for LargerIsBetter {
+    const FORMATTING_FOR_LARGER: Highlight = Highlight::Green;
+
+    const FORMATTING_FOR_SMALLER: Highlight = Highlight::Red;
+}
+
+pub struct SmallerIsBetter;
+impl IsBetter for SmallerIsBetter {
+    const FORMATTING_FOR_LARGER: Highlight = Highlight::Red;
+
+    const FORMATTING_FOR_SMALLER: Highlight = Highlight::Green;
+}
+
+#[derive(Debug)]
+pub struct Change<Better: IsBetter> {
+    better: PhantomData<Better>,
+    pub from: u64,
+    pub to: u64,
+}
+
+impl<Better: IsBetter> Change<Better> {
+    // XX take two `ViewType`s instead to ensure the values are
+    // compatible? "But" already have u64 from `Stat`, "that's more
+    // efficient".
+    pub fn new(from: u64, to: u64) -> Self {
+        Self {
+            better: Default::default(),
+            from,
+            to,
+        }
+    }
+}
+
+impl<Better: IsBetter> TableViewRow for Change<Better> {
+    fn table_view_header() -> impl AsRef<[(Cow<'static, str>, Unit, ColumnFormatting)]> {
+        const HEADER: &[(Cow<'static, str>, Unit, ColumnFormatting)] = &[(
+            Cow::Borrowed("change"),
+            Unit::DimensionLess,
+            ColumnFormatting::Number,
+        )];
+        HEADER
+    }
+    fn table_view_row(&self, out: &mut Vec<(Cow<str>, Highlight)>) {
+        let Change {
+            better: _,
+            from,
+            to,
+        } = self;
+        let relative = *to as f64 / *from as f64;
+        let formatting = if relative > 1.1 {
+            Better::FORMATTING_FOR_LARGER
+        } else if relative < 0.9 {
+            Better::FORMATTING_FOR_SMALLER
+        } else {
+            Highlight::Neutral
+        };
+        out.push((format!("{relative:.3}").into(), formatting));
+    }
+}
+
+/// `ViewType` is perhaps a bit of a misnomer: simply the type that
+/// the statistics is made for, e.g. `NanoTime`. But that type must,
+/// for full functionality, support conversion to and from u64, and
+/// `ToStatsString` for viewing.
 #[derive(Debug)]
 pub struct Stats<ViewType, const TILES_COUNT: usize> {
     view_type: PhantomData<fn() -> ViewType>,
@@ -146,31 +216,48 @@ impl<ViewType, const TILES_COUNT: usize> Stats<ViewType, TILES_COUNT> {
             tiles,
         })
     }
+}
 
-    pub fn print_tsv_header(mut out: impl Write, key_names: &[&str]) -> Result<(), std::io::Error>
-    where
-        ViewType: ToStatsString,
-    {
-        for key_name in key_names {
-            write!(out, "{key_name}\t")?;
-        }
-        let unit = ViewType::UNIT_SHORT;
-        write!(out, "n\tsum {unit}\tavg {unit}\tmedian {unit}\tSD {unit}")?;
-
-        // Add empty column before tiles:
-        write!(out, "\t")?;
+impl<ViewType: From<u64> + ToStatsString, const TILES_COUNT: usize> TableViewRow
+    for Stats<ViewType, TILES_COUNT>
+{
+    fn table_view_header() -> impl AsRef<[(Cow<'static, str>, Unit, ColumnFormatting)]> {
+        let mut cols = vec![
+            ("n".into(), Unit::Count, ColumnFormatting::Number),
+            (
+                "sum".into(),
+                Unit::ViewType(ViewType::UNIT_SHORT),
+                ColumnFormatting::Number,
+            ),
+            (
+                "avg".into(),
+                Unit::ViewType(ViewType::UNIT_SHORT),
+                ColumnFormatting::Number,
+            ),
+            (
+                "median".into(),
+                Unit::ViewType(ViewType::UNIT_SHORT),
+                ColumnFormatting::Number,
+            ),
+            (
+                "SD".into(),
+                Unit::ViewType(ViewType::UNIT_SHORT),
+                ColumnFormatting::Number,
+            ),
+            ("".into(), Unit::None, ColumnFormatting::Spacer),
+        ];
 
         for i in 0..TILES_COUNT {
-            write!(out, "\ttile {i} ({unit})")?
+            cols.push((
+                format!("{:.2}", (i as f64) / ((TILES_COUNT - 1) as f64)).into(),
+                Unit::ViewType(ViewType::UNIT_SHORT),
+                ColumnFormatting::Number,
+            ));
         }
-        writeln!(out, "")?;
-        Ok(())
+        cols
     }
 
-    pub fn print_tsv_line(&self, mut out: impl Write, keys: &[&str]) -> Result<(), std::io::Error>
-    where
-        ViewType: ToStatsString + From<u64>,
-    {
+    fn table_view_row(&self, out: &mut Vec<(Cow<str>, Highlight)>) {
         let Self {
             view_type: _,
             num_values,
@@ -181,55 +268,39 @@ impl<ViewType, const TILES_COUNT: usize> Stats<ViewType, TILES_COUNT> {
             median,
             tiles,
         } = self;
-        for key in keys {
-            write!(out, "{key}\t")?;
-        }
-        write!(
-            out,
-            "{num_values}\t{}\t{}\t{}\t{}",
-            ViewType::from(u64::try_from(*sum).expect("sum is larger than u64: {sum}"))
-                .to_stats_string(),
-            ViewType::from(*average).to_stats_string(),
-            ViewType::from(*median).to_stats_string(),
-            // oh, bummer, float precision is gone here:
-            ViewType::from(self.standard_deviation_u64()).to_stats_string(),
-        )?;
 
-        // Add empty column before tiles:
-        write!(out, "\t")?;
+        out.push((num_values.to_string().into(), Highlight::Neutral));
+        out.push((
+            ViewType::from(u64::try_from(*sum).expect("sum must fit in u64 range"))
+                .to_stats_string()
+                .into(),
+            Highlight::Neutral,
+        ));
+        out.push((
+            ViewType::from(*average).to_stats_string().into(),
+            Highlight::Neutral,
+        ));
+        out.push((
+            ViewType::from(*median).to_stats_string().into(),
+            Highlight::Neutral,
+        ));
+        out.push((
+            // bummer, float precision is lost here, but doesn't
+            // matter in our ns or us units
+            ViewType::from(self.standard_deviation_u64())
+                .to_stats_string()
+                .into(),
+            Highlight::Neutral,
+        ));
 
-        // *tiles
+        out.push(("".into(), Highlight::Spacer));
+
         for val in tiles {
-            write!(out, "\t{}", ViewType::from(*val).to_stats_string())?;
+            out.push((
+                ViewType::from(*val).to_stats_string().into(),
+                Highlight::Neutral,
+            ));
         }
-        writeln!(out, "")?;
-        Ok(())
-    }
-}
-
-impl<ViewType: From<u64> + Display, const TILES_COUNT: usize> Display
-    for Stats<ViewType, TILES_COUNT>
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let Self {
-            view_type: _,
-            num_values,
-            sum,
-            average,
-            // using standard_deviation_u64() instead
-            variance: _,
-            median,
-            tiles: _,
-        } = self;
-        write!(
-            f,
-            " {num_values} values \t sum {} \t average {} \t median {} \t SD {}",
-            ViewType::from(u64::try_from(*sum).expect("sum is larger than u64: {sum}")),
-            ViewType::from(*average),
-            ViewType::from(*median),
-            // oh, bummer, float precision is gone here:
-            ViewType::from(self.standard_deviation_u64()),
-        )
     }
 }
 
