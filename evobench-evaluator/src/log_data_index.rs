@@ -124,7 +124,7 @@ impl PointDispatch {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum SpanKind<'t> {
+pub enum SpanData<'t> {
     /// Process and tread creation and destruction, as well as
     /// `EVOBENCH_SCOPE`, end by message from destructor
     Scope {
@@ -147,7 +147,7 @@ pub enum SpanKind<'t> {
 pub struct Span<'t> {
     pub parent: Option<SpanId<'t>>,
     pub children: Vec<SpanId<'t>>,
-    pub kind: SpanKind<'t>,
+    pub kind: SpanData<'t>,
 }
 
 pub struct PathStringOptions {
@@ -168,13 +168,13 @@ impl<'t> Span<'t> {
     /// the same time as mutating the `end` field.
     pub fn end_mut(&mut self) -> Option<(&mut Option<&'t Timing>, ScopeKind)> {
         match &mut self.kind {
-            SpanKind::Scope {
+            SpanData::Scope {
                 kind,
                 start: _,
                 thread_number: _,
                 end,
             } => Some((end, *kind)),
-            SpanKind::KeyValue(_) => None,
+            SpanData::KeyValue(_) => None,
         }
     }
 
@@ -182,7 +182,7 @@ impl<'t> Span<'t> {
     /// match. Panics if they don't.
     pub fn assert_consistency(&self) {
         match &self.kind {
-            SpanKind::Scope {
+            SpanData::Scope {
                 kind: _,
                 start,
                 thread_number: _,
@@ -190,19 +190,19 @@ impl<'t> Span<'t> {
             } => {
                 assert_eq!(start.pn, end.unwrap().pn)
             }
-            SpanKind::KeyValue(_) => todo!(),
+            SpanData::KeyValue(_) => todo!(),
         }
     }
 
     pub fn pn(&self) -> Option<&'t str> {
         match &self.kind {
-            SpanKind::Scope {
+            SpanData::Scope {
                 kind: _,
                 start,
                 thread_number: _,
                 end: _,
             } => Some(&start.pn),
-            SpanKind::KeyValue(_) => None,
+            SpanData::KeyValue(_) => None,
         }
     }
 
@@ -216,7 +216,7 @@ impl<'t> Span<'t> {
         // Stop recursion via opts?--XX how useful is this even, have
         // display below, too ("P:" etc.).
         match &self.kind {
-            SpanKind::Scope {
+            SpanData::Scope {
                 kind,
                 thread_number,
                 start: _,
@@ -244,7 +244,7 @@ impl<'t> Span<'t> {
                 }
                 ScopeKind::Scope => (),
             },
-            SpanKind::KeyValue(_) => (),
+            SpanData::KeyValue(_) => (),
         }
 
         let mut out = if let Some(parent_id) = self.parent {
@@ -256,7 +256,7 @@ impl<'t> Span<'t> {
             String::new()
         };
         match &self.kind {
-            SpanKind::Scope {
+            SpanData::Scope {
                 kind,
                 thread_number,
                 start,
@@ -275,7 +275,7 @@ impl<'t> Span<'t> {
                 let pn = &start.pn;
                 out.push_str(pn);
             }
-            SpanKind::KeyValue(KeyValue { tid: _, k, v }) => {
+            SpanData::KeyValue(KeyValue { tid: _, k, v }) => {
                 out.push_str(k);
                 out.push_str("=");
                 out.push_str(v);
@@ -286,13 +286,13 @@ impl<'t> Span<'t> {
 
     pub fn start_and_end(&self) -> Option<(&'t Timing, &'t Timing)> {
         match &self.kind {
-            SpanKind::Scope {
+            SpanData::Scope {
                 kind: _,
                 thread_number: _,
                 start,
                 end,
             } => Some((*start, end.expect("properly balanced spans"))),
-            SpanKind::KeyValue(_) => None,
+            SpanData::KeyValue(_) => None,
         }
     }
 }
@@ -369,7 +369,7 @@ impl<'t> LogDataIndex<'t> {
                     // Make it a Span
                     let mut span_with_parent = |parent| -> SpanId<'t> {
                         slf.add_span(Span {
-                            kind: SpanKind::KeyValue(kv),
+                            kind: SpanData::KeyValue(kv),
                             parent,
                             children: Default::default(),
                         })
@@ -400,7 +400,7 @@ impl<'t> LogDataIndex<'t> {
                             let mut scope_with_parent = |parent| -> SpanId<'t> {
                                 let thread_number = thread_id_mapper.to_thread_number(timing.tid);
                                 slf.add_span(Span {
-                                    kind: SpanKind::Scope {
+                                    kind: SpanData::Scope {
                                         kind,
                                         thread_number,
                                         start: timing,
