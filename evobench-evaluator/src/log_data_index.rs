@@ -147,7 +147,7 @@ pub enum SpanData<'t> {
 pub struct Span<'t> {
     pub parent: Option<SpanId<'t>>,
     pub children: Vec<SpanId<'t>>,
-    pub kind: SpanData<'t>,
+    pub data: SpanData<'t>,
 }
 
 pub struct PathStringOptions {
@@ -167,7 +167,7 @@ impl<'t> Span<'t> {
     /// Also returns the `ScopeKind`, since you want to verify that at
     /// the same time as mutating the `end` field.
     pub fn end_mut(&mut self) -> Option<(&mut Option<&'t Timing>, ScopeKind)> {
-        match &mut self.kind {
+        match &mut self.data {
             SpanData::Scope {
                 kind,
                 start: _,
@@ -181,7 +181,7 @@ impl<'t> Span<'t> {
     /// Checks that the `pn` on the start and end timings
     /// match. Panics if they don't.
     pub fn assert_consistency(&self) {
-        match &self.kind {
+        match &self.data {
             SpanData::Scope {
                 kind: _,
                 start,
@@ -195,7 +195,7 @@ impl<'t> Span<'t> {
     }
 
     pub fn pn(&self) -> Option<&'t str> {
-        match &self.kind {
+        match &self.data {
             SpanData::Scope {
                 kind: _,
                 start,
@@ -215,7 +215,7 @@ impl<'t> Span<'t> {
         } = opts;
         // Stop recursion via opts?--XX how useful is this even, have
         // display below, too ("P:" etc.).
-        match &self.kind {
+        match &self.data {
             SpanData::Scope {
                 kind,
                 thread_number,
@@ -255,7 +255,7 @@ impl<'t> Span<'t> {
         } else {
             String::new()
         };
-        match &self.kind {
+        match &self.data {
             SpanData::Scope {
                 kind,
                 thread_number,
@@ -285,7 +285,7 @@ impl<'t> Span<'t> {
     }
 
     pub fn start_and_end(&self) -> Option<(&'t Timing, &'t Timing)> {
-        match &self.kind {
+        match &self.data {
             SpanData::Scope {
                 kind: _,
                 thread_number: _,
@@ -369,7 +369,7 @@ impl<'t> LogDataIndex<'t> {
                     // Make it a Span
                     let mut span_with_parent = |parent| -> SpanId<'t> {
                         slf.add_span(Span {
-                            kind: SpanData::KeyValue(kv),
+                            data: SpanData::KeyValue(kv),
                             parent,
                             children: Default::default(),
                         })
@@ -400,7 +400,7 @@ impl<'t> LogDataIndex<'t> {
                             let mut scope_with_parent = |parent| -> SpanId<'t> {
                                 let thread_number = thread_id_mapper.to_thread_number(timing.tid);
                                 slf.add_span(Span {
-                                    kind: SpanData::Scope {
+                                    data: SpanData::Scope {
                                         kind,
                                         thread_number,
                                         start: timing,
