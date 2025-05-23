@@ -149,6 +149,7 @@ fn table_for_field<'t, T: Into<u64> + From<u64> + ToStatsString + Display + Debu
     key_column_width: f64,
 ) -> Result<Table<'t, StatsOrCount<T, TILE_COUNT>>> {
     let mut rows = Vec::new();
+
     for pn in log_data_index.probe_names() {
         rows.push(pn_stats(
             log_data_index,
