@@ -32,34 +32,66 @@ struct Opts {
     command: Command,
 }
 
+#[derive(clap::Args, Debug)]
+struct EvaluationOpts {
+    /// The width of the column with the probes path, in characters
+    /// (as per Excel's definition of characters)
+    #[clap(short, long, default_value = "100")]
+    key_width: f64,
+
+    /// Path to write CSV output to
+    #[clap(short, long)]
+    csv: Option<PathBuf>,
+
+    /// Path to write Excel output to
+    #[clap(short, long)]
+    excel: Option<PathBuf>,
+
+    /// Include the internally-allocated thread number in call
+    /// path strings in the output.
+    #[clap(short, long)]
+    show_thread_number: bool,
+}
+
 #[derive(clap::Subcommand, Debug)]
 enum Command {
     /// Print version
     Version,
 
     /// Show statistics for a single benchmarking log file
-    Read {
-        /// The width of the column with the probes path, in characters
-        /// (as per Excel's definition of characters)
-        #[clap(short, long, default_value = "100")]
-        key_width: f64,
-
-        /// Path to write CSV output to
-        #[clap(short, long)]
-        csv: Option<PathBuf>,
-
-        /// Path to write Excel output to
-        #[clap(short, long)]
-        excel: Option<PathBuf>,
-
-        /// Include the internally-allocated thread number in call
-        /// path strings in the output.
-        #[clap(short, long)]
-        show_thread_number: bool,
+    Single {
+        #[clap(flatten)]
+        evaluation_opts: EvaluationOpts,
 
         /// The path that was provided via the `EVOBENCH_LOG`
         /// environment variable to the evobench-probes library.
         path: PathBuf,
+    },
+
+    /// Show statistics for a set of benchmarking log files, all for
+    /// the same software version.
+    Multi {
+        #[clap(flatten)]
+        evaluation_opts: EvaluationOpts,
+
+        /// The paths that were provided via the `EVOBENCH_LOG`
+        /// environment variable to the evobench-probes library.
+        paths: Vec<PathBuf>,
+    },
+
+    /// Show statistics across multiple sets of benchmarking log
+    /// files, each group consisting of files for the same software
+    /// version. Each group is enclosed with square brackets, e.g.:
+    /// `trend [ a.log b.log ] [ c.log ] [ d.log e.log ]` has data for
+    /// 3 software versions, the first and third version with data
+    /// from two runs each.
+    Trend {
+        #[clap(flatten)]
+        evaluation_opts: EvaluationOpts,
+
+        /// The paths that were provided via the `EVOBENCH_LOG`
+        /// environment variable to the evobench-probes library.
+        grouped_paths: Vec<PathBuf>,
     },
 }
 
@@ -152,12 +184,15 @@ fn main() -> Result<()> {
     let Opts { command } = Opts::parse();
     match command {
         Command::Version => println!("{PROGRAM_NAME} version {EVOBENCH_VERSION}"),
-        Command::Read {
-            key_width,
+        Command::Single {
+            evaluation_opts:
+                EvaluationOpts {
+                    key_width,
+                    csv,
+                    excel,
+                    show_thread_number,
+                },
             path,
-            show_thread_number,
-            csv,
-            excel,
         } => {
             let data = LogData::read_file(&path, None)?;
             let log_data_index = LogDataIndex::from_logdata(&data)?;
@@ -247,6 +282,8 @@ fn main() -> Result<()> {
                 println!("OK, but not printing. Please give a CSV output path!");
             }
         }
+        Command::Multi { evaluation_opts, paths } => todo!(),
+        Command::Trend { evaluation_opts, grouped_paths } => todo!(),
     }
 
     Ok(())
