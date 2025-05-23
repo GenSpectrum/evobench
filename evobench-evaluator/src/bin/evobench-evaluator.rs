@@ -15,7 +15,7 @@ use evobench_evaluator::log_file::LogData;
 use evobench_evaluator::log_message::Timing;
 use evobench_evaluator::path_util::add_extension;
 use evobench_evaluator::stats::{Stats, StatsError, ToStatsString};
-use evobench_evaluator::table::{KeyVal, StatsOrCount, Table, TableKeyLabel};
+use evobench_evaluator::table::{KeyVal, StatsOrCount, Table};
 use evobench_evaluator::table_view::TableView;
 
 include!("../../include/evobench_version.rs");
@@ -140,11 +140,6 @@ fn pn_stats<'t, T: Into<u64> + From<u64> + ToStatsString + Display + Debug>(
     }
 }
 
-pub struct PathLabel;
-impl TableKeyLabel for PathLabel {
-    const KEY_LABEL: &str = "Probe name or path\n(A: across all threads, N: by thread number)";
-}
-
 /// A table holding one field for all probes
 fn table_for_field<'t, T: Into<u64> + From<u64> + ToStatsString + Display + Debug>(
     extract_name: &'t str,
@@ -152,7 +147,7 @@ fn table_for_field<'t, T: Into<u64> + From<u64> + ToStatsString + Display + Debu
     log_data_index: &'t LogDataIndex,
     index_by_call_path: &'t IndexByCallPath,
     key_column_width: f64,
-) -> Result<Table<'t, StatsOrCount<T, TILE_COUNT>, PathLabel>> {
+) -> Result<Table<'t, StatsOrCount<T, TILE_COUNT>>> {
     let mut rows = Vec::new();
     for pn in log_data_index.probe_names() {
         rows.push(pn_stats(
@@ -173,7 +168,7 @@ fn table_for_field<'t, T: Into<u64> + From<u64> + ToStatsString + Display + Debu
     }
 
     Ok(Table {
-        key_label: Default::default(),
+        key_label: "Probe name or path\n(A: across all threads, N: by thread number)".into(),
         name: extract_name.into(),
         rows,
         key_column_width: Some(key_column_width),
@@ -282,8 +277,14 @@ fn main() -> Result<()> {
                 println!("OK, but not printing. Please give a CSV output path!");
             }
         }
-        Command::Multi { evaluation_opts, paths } => todo!(),
-        Command::Trend { evaluation_opts, grouped_paths } => todo!(),
+        Command::Multi {
+            evaluation_opts,
+            paths,
+        } => todo!(),
+        Command::Trend {
+            evaluation_opts,
+            grouped_paths,
+        } => todo!(),
     }
 
     Ok(())
