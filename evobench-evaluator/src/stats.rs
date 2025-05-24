@@ -169,8 +169,8 @@ impl<ViewType, const TILES_COUNT: usize> Stats<ViewType, TILES_COUNT> {
         let variance = {
             let num_values = num_values as f64;
             let average: f64 = sum as f64 / num_values;
-            let sum: f64 = vals.iter().map(|v| (*v as f64 - average).pow(2)).sum();
-            sum / num_values
+            let sum_squared_error: f64 = vals.iter().map(|v| (*v as f64 - average).pow(2)).sum();
+            sum_squared_error / num_values
         };
 
         vals.sort();
