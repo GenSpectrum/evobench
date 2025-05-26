@@ -531,7 +531,7 @@ where
                     }
                 })
                 .collect();
-            let val = match Stats::<K::ViewType, TILE_COUNT>::from_values_from_field(
+            let maybe_val = match Stats::<K::ViewType, TILE_COUNT>::from_values_from_field(
                 extract_stats_field,
                 vals,
             ) {
@@ -546,7 +546,7 @@ where
                     unreachable!("expecting to never see values > u64")
                 }
             };
-            let val = val?;
+            let val = maybe_val?;
             Some(KeyVal { key, val })
         })
         .collect();
