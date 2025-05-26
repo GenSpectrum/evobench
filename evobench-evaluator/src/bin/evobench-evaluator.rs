@@ -11,6 +11,7 @@ use evobench_evaluator::join::{keyval_inner_join, KeyVal};
 use evobench_evaluator::log_data_index::{LogDataIndex, PathStringOptions, SpanId};
 use evobench_evaluator::log_file::LogData;
 use evobench_evaluator::log_message::Timing;
+use evobench_evaluator::rayon_util::ParRun;
 use evobench_evaluator::stats::{Stats, StatsError, StatsField, SubStats, ToStatsString};
 use evobench_evaluator::table::{StatsOrCount, Table, TableKind};
 use evobench_evaluator::table_view::{TableView, TableViewRow};
@@ -576,11 +577,14 @@ impl AllFieldsTable<SummaryStats> {
             }
         }
 
-        let real_time = summary_stats_for_field::<RealTime>(key_details, afts, field_selector);
-        let cpu_time = summary_stats_for_field::<CpuTime>(key_details, afts, field_selector);
-        let sys_time = summary_stats_for_field::<SysTime>(key_details, afts, field_selector);
-        let ctx_switches =
-            summary_stats_for_field::<CtxSwitches>(&key_details, afts, field_selector);
+        let (real_time, cpu_time, sys_time, ctx_switches) = (
+            || summary_stats_for_field::<RealTime>(key_details, afts, field_selector),
+            || summary_stats_for_field::<CpuTime>(key_details, afts, field_selector),
+            || summary_stats_for_field::<SysTime>(key_details, afts, field_selector),
+            || summary_stats_for_field::<CtxSwitches>(&key_details, afts, field_selector),
+        )
+            .par_run();
+
         AllFieldsTable {
             kind: SummaryStats,
             params,
