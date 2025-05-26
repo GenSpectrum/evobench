@@ -46,6 +46,11 @@ struct EvaluationOpts {
     /// path strings in the output.
     #[clap(short, long)]
     show_thread_number: bool,
+
+    /// Show the call path so that the leaf instead of the root is on
+    /// the left.
+    #[clap(short = 'r', long)]
+    show_reversed: bool,
 }
 
 #[derive(clap::Args, Debug)]
@@ -196,7 +201,7 @@ fn table_for_field<'key, K: KeyDetails>(
 #[derive(Clone, PartialEq, Debug)]
 struct KeyRuntimeDetails {
     show_thread_number: bool,
-    // XX and if reverse ordered
+    show_reversed: bool,
     key_column_width: Option<f64>,
 }
 
@@ -401,21 +406,42 @@ impl AllFieldsTable<SingleRunStats> {
             // (by using a set instead of Vec), but having 1 entry
             // that only counts thing once, but is valid for both
             // kinds of groups, would surely still be confusing.)
-            let mut opts = vec![PathStringOptions {
+            let mut opts = vec![];
+            opts.push(PathStringOptions {
                 ignore_process: true,
                 ignore_thread: true,
                 include_thread_number_in_path: false,
+                reversed: false,
                 // "across threads / added up"
                 prefix: "A:",
-            }];
+            });
+            if key_details.show_reversed {
+                opts.push(PathStringOptions {
+                    ignore_process: true,
+                    ignore_thread: true,
+                    include_thread_number_in_path: false,
+                    reversed: true,
+                    prefix: "AR:",
+                });
+            }
             if key_details.show_thread_number {
                 opts.push(PathStringOptions {
                     ignore_process: true,
                     ignore_thread: true,
                     include_thread_number_in_path: true,
+                    reversed: false,
                     // "numbered threads"
                     prefix: "N:",
                 });
+                if key_details.show_reversed {
+                    opts.push(PathStringOptions {
+                        ignore_process: true,
+                        ignore_thread: true,
+                        include_thread_number_in_path: true,
+                        reversed: true,
+                        prefix: "NR:",
+                    });
+                }
             }
             IndexByCallPath::from_logdataindex(&log_data_index, &opts)
         };
@@ -569,6 +595,7 @@ fn main() -> Result<()> {
                     key_width,
                     excel,
                     show_thread_number,
+                    show_reversed,
                 },
             path,
         } => {
@@ -578,6 +605,7 @@ fn main() -> Result<()> {
                 key_details: KeyRuntimeDetails {
                     show_thread_number,
                     key_column_width: Some(key_width),
+                    show_reversed,
                 },
             })?;
             excel_file_write(&aft.tables(), &excel)?;
@@ -589,6 +617,7 @@ fn main() -> Result<()> {
                     key_width,
                     excel,
                     show_thread_number,
+                    show_reversed,
                 },
             paths,
             field_selector_dimension_3: FieldSelectorDimension3 { summary_field },
@@ -602,6 +631,7 @@ fn main() -> Result<()> {
                         key_details: KeyRuntimeDetails {
                             show_thread_number,
                             key_column_width: Some(key_width),
+                            show_reversed,
                         },
                     })
                 })
@@ -611,6 +641,7 @@ fn main() -> Result<()> {
                 &KeyRuntimeDetails {
                     show_thread_number,
                     key_column_width: Some(key_width),
+                    show_reversed,
                 },
                 &afts,
             );

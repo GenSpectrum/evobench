@@ -8,7 +8,7 @@
 
 use std::{
     collections::{hash_map::Entry, HashMap},
-    fmt::Display,
+    fmt::{Display, Write},
     marker::PhantomData,
     num::NonZeroU32,
     ops::Deref,
@@ -157,6 +157,8 @@ pub struct PathStringOptions {
     pub ignore_thread: bool,
     /// Add thread number (0..) in path strings
     pub include_thread_number_in_path: bool,
+    /// Whether to show the top of the tree left (default) or the leafs left (reversed)
+    pub reversed: bool,
     /// A prefix to distinguish this kind of path from others (feel
     /// free to use ""). Only used with `ignore_process` and
     /// `ignore_thread`!
@@ -206,11 +208,27 @@ impl<'t> Span<'t> {
         }
     }
 
-    pub fn path_string(&self, opts: &PathStringOptions, db: &LogDataIndex<'t>) -> String {
+    /// Show the path to a node in the tree (towards the right, show
+    /// the child node; can also be in reverse (via opts): towards the
+    /// right, show the parents up the tree). `out_prefix` receives
+    /// the prefix (always meant to be shown on the left), `out_main`
+    /// receives the main part of the path (in reversed or normal
+    /// form). The outputs are *not* cleared by this method! The idea
+    /// is to `out_prefix.push_str(&out_main)` after this call, then
+    /// clear both buffers before re-using them.
+    pub fn path_string(
+        &self,
+        opts: &PathStringOptions,
+        db: &LogDataIndex<'t>,
+        out_prefix: &mut String,
+        out_main: &mut String,
+    ) {
+        //
         let PathStringOptions {
             ignore_process,
             ignore_thread,
             include_thread_number_in_path,
+            reversed,
             prefix,
         } = opts;
         // Stop recursion via opts?--XX how useful is this even, have
@@ -230,16 +248,22 @@ impl<'t> Span<'t> {
                         // And there is no thread start message for
                         // that thread, too, so data would be missing
                         // if not using that as main thread data.
-                        return format!("{prefix}main thread");
+                        out_prefix.push_str(prefix);
+                        out_prefix.push_str("main thread");
+                        return;
                     }
                 }
                 ScopeKind::Thread => {
                     if *ignore_thread {
-                        return if *include_thread_number_in_path {
-                            format!("{prefix}{thread_number}")
+                        out_prefix.push_str(prefix);
+                        if *include_thread_number_in_path {
+                            out_main
+                                .write_fmt(format_args!("{thread_number}"))
+                                .expect("string writes don't fail");
                         } else {
-                            format!("{prefix}thread")
+                            out_main.push_str("thread");
                         };
+                        return;
                     }
                 }
                 ScopeKind::Scope => (),
@@ -247,41 +271,53 @@ impl<'t> Span<'t> {
             SpanData::KeyValue(_) => (),
         }
 
-        let mut out = if let Some(parent_id) = self.parent {
-            let parent = parent_id.get_from_db(db);
-            let mut out = parent.path_string(opts, db);
-            out.push_str(" > ");
-            out
-        } else {
-            String::new()
-        };
-        match &self.data {
-            SpanData::Scope {
-                kind,
-                thread_number,
-                start,
-                end: _,
-            } => {
-                match kind {
-                    ScopeKind::Process => out.push_str("P:"),
-                    ScopeKind::Thread => {
-                        out.push_str("T:");
-                        if *include_thread_number_in_path {
-                            out.push_str(&thread_number.to_string());
+        let push_self = |out_prefix: &mut String, out_main: &mut String| {
+            match &self.data {
+                SpanData::Scope {
+                    kind,
+                    thread_number,
+                    start,
+                    end: _,
+                } => {
+                    match kind {
+                        ScopeKind::Process => {
+                            out_prefix.push_str("P:");
                         }
+                        ScopeKind::Thread => {
+                            // Push to out_prefix ? But, we're not at the
+                            // end, so no--XX or what options do we have?
+                            out_main.push_str("T:");
+                            if *include_thread_number_in_path {
+                                out_main.push_str(&thread_number.to_string());
+                            }
+                        }
+                        ScopeKind::Scope => (),
                     }
-                    ScopeKind::Scope => (),
+                    let pn = &start.pn;
+                    out_main.push_str(pn);
                 }
-                let pn = &start.pn;
-                out.push_str(pn);
+                SpanData::KeyValue(KeyValue { tid: _, k, v }) => {
+                    out_main.push_str(k);
+                    out_main.push_str("=");
+                    out_main.push_str(v);
+                }
             }
-            SpanData::KeyValue(KeyValue { tid: _, k, v }) => {
-                out.push_str(k);
-                out.push_str("=");
-                out.push_str(v);
+        };
+
+        if let Some(parent_id) = self.parent {
+            let parent = parent_id.get_from_db(db);
+            if *reversed {
+                push_self(out_prefix, out_main);
+                out_main.push_str(" < ");
+                parent.path_string(opts, db, out_prefix, out_main);
+            } else {
+                parent.path_string(opts, db, out_prefix, out_main);
+                out_main.push_str(" > ");
+                push_self(out_prefix, out_main);
             }
+        } else {
+            push_self(out_prefix, out_main);
         }
-        out
     }
 
     pub fn start_and_end(&self) -> Option<(&'t Timing, &'t Timing)> {
