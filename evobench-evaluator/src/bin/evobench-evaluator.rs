@@ -635,7 +635,7 @@ fn main() -> Result<()> {
             field_selector_dimension_3: FieldSelectorDimension3 { summary_field },
         } => {
             let afts: Vec<AllFieldsTable<SingleRunStats>> = paths
-                .iter()
+                .par_iter()
                 .map(|path| {
                     AllFieldsTable::from_logfile(AllFieldsTableKindParams {
                         path: path.into(),
