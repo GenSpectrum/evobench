@@ -12,30 +12,9 @@ namespace evobench {
     const uint32_t EVOBENCH_LOG_VERSION = 1;
 
 #define pub 
-#include "evobench_version.hpp"
+#include "_evobench_point_kind.hpp"
+    ;
 #undef pub
-    
-    // Keep in sync with `point_kind_name` in evobench.cpp! XX better solution?
-    // Also COPY in log_message.rs, keep in sync!
-    enum PointKind {
-        /// Point at process init -- XX necessary?
-        TStart,
-        /// Individual (unpaired) point
-        T,
-        /// Point at the start of a scope
-        TS,
-        /// Point at the end of a scope
-        TE,
-        /// Point at thread start
-        TThreadStart,
-        /// Point at thread exit
-        TThreadEnd,
-        /// Point at process exit (benchmark always end with this
-        /// message, except if there was an IO error).  XXX
-        TEnd,
-        /// Point directly after flushing the buffer for the current thread.
-        TIO,
-    };
 
     class Output {
         // Only if maybe_output_path was true. Stays with that value
