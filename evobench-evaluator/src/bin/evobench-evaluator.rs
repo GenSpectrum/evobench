@@ -15,6 +15,8 @@ use evobench_evaluator::stats::{Stats, StatsError, StatsField, SubStats, ToStats
 use evobench_evaluator::table::{StatsOrCount, Table, TableKind};
 use evobench_evaluator::table_view::{TableView, TableViewRow};
 use evobench_evaluator::times::{MicroTime, NanoTime};
+use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator};
+use rayon::prelude::ParallelIterator;
 
 include!("../../include/evobench_version.rs");
 
@@ -495,7 +497,7 @@ where
     K::ViewType: 'static,
 {
     let mut rowss: Vec<_> = afts
-        .iter()
+        .par_iter()
         .map(|aft| {
             Some(K::all_fields_table_extract(aft).rows.iter().map(
                 |KeyVal { key, val }| -> KeyVal<Cow<'static, str>, _> {
@@ -511,7 +513,7 @@ where
         .expect("at least 1 table")
         .collect();
     let rows: Vec<_> = rows_merged
-        .into_iter()
+        .into_par_iter()
         .filter_map(|KeyVal { key, val }| {
             let vals: Vec<u64> = val
                 .iter()
