@@ -42,11 +42,14 @@ pub enum ColumnFormatting {
     },
 }
 
-pub trait TableViewRow {
+pub trait TableViewRow<Context> {
     /// Column names and unit. Not dyn compatible, must be static
     /// because it needs to be available for tables in the absense of
-    /// rows.
-    fn table_view_header() -> impl AsRef<[(Cow<'static, str>, Unit, ColumnFormatting)]>;
+    /// rows. But to accommodate for dynamically decided changes,
+    /// takes a context argument (which could be ()).
+    fn table_view_header(
+        ctx: Context,
+    ) -> Box<dyn AsRef<[(Cow<'static, str>, Unit, ColumnFormatting)]>>;
 
     /// Write the given row to `out`, matching the columns in the
     /// `TableViewHeader`. Do *not* clear out inside this method!
@@ -55,10 +58,11 @@ pub trait TableViewRow {
 
 /// A full table. dyn compatible.
 pub trait TableView {
+    fn table_name(&self) -> Cow<str>;
+
     /// Column names and unit.
     fn table_view_header(&self) -> Box<dyn AsRef<[(Cow<'static, str>, Unit, ColumnFormatting)]>>;
 
-    fn table_name(&self) -> &str;
     fn table_view_body<'s>(
         &'s self,
     ) -> Box<dyn Iterator<Item = Cow<'s, [(Cow<'s, str>, Highlight)]>> + 's>;

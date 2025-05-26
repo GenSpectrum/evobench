@@ -4,27 +4,23 @@ use genawaiter::rc::Gen;
 use itertools::{EitherOrBoth, Itertools};
 
 use crate::{
-    stats::{Change, IsBetter, Stats, ToStatsString},
+    change::{Change, IsBetter},
+    join::KeyVal,
+    stats::{Stats, ToStatsString},
     table_view::{ColumnFormatting, Highlight, TableView, TableViewRow, Unit},
 };
 
-fn opt_max<T: PartialOrd>(a: Option<T>, b: Option<T>) -> Option<T> {
-    let a = a?;
-    let b = b?;
-    Some(if a > b { a } else { b })
-}
-
 #[derive(Debug)]
-pub enum StatsOrCount<ViewType: Debug, const TILES_COUNT: usize> {
-    Stats(Stats<ViewType, TILES_COUNT>),
+pub enum StatsOrCount<ViewType: Debug, const TILE_COUNT: usize> {
+    Stats(Stats<ViewType, TILE_COUNT>),
     Count(usize),
 }
 
-impl<ViewType: From<u64> + ToStatsString + Debug, const TILES_COUNT: usize> TableViewRow
-    for StatsOrCount<ViewType, TILES_COUNT>
+impl<ViewType: From<u64> + ToStatsString + Debug, const TILE_COUNT: usize> TableViewRow<()>
+    for StatsOrCount<ViewType, TILE_COUNT>
 {
-    fn table_view_header() -> impl AsRef<[(Cow<'static, str>, Unit, ColumnFormatting)]> {
-        Stats::<ViewType, TILES_COUNT>::table_view_header()
+    fn table_view_header(_: ()) -> Box<dyn AsRef<[(Cow<'static, str>, Unit, ColumnFormatting)]>> {
+        Stats::<ViewType, TILE_COUNT>::table_view_header(())
     }
     fn table_view_row(&self, out: &mut Vec<(Cow<str>, Highlight)>) {
         match self {
@@ -40,41 +36,38 @@ impl<ViewType: From<u64> + ToStatsString + Debug, const TILES_COUNT: usize> Tabl
     }
 }
 
-#[derive(Debug)]
-pub struct KeyVal<K, V> {
-    pub key: K,
-    pub val: V,
-}
-
-pub struct Table<'s, T> {
+pub trait TableKind: Clone {
+    fn table_name(&self) -> Cow<str>;
     /// The column title for the *key* field in the rows
-    pub key_label: Cow<'s, str>,
+    fn table_key_label(&self) -> Cow<str>;
     /// Width of key column in number of characters (as per Excel),
     /// None == automatic.
-    pub key_column_width: Option<f64>,
-    /// Table name
-    pub name: Cow<'s, str>,
-    pub rows: Vec<KeyVal<Cow<'s, str>, T>>,
+    fn table_key_column_width(&self) -> Option<f64>;
 }
 
-impl<'t, T: TableViewRow + TableViewRow> TableView for Table<'t, T> {
+pub struct Table<'key, K: TableKind, T> {
+    pub kind: K,
+    pub rows: Vec<KeyVal<Cow<'key, str>, T>>,
+}
+
+impl<'key, K: TableKind, T: TableViewRow<()>> TableView for Table<'key, K, T> {
     fn table_view_header(&self) -> Box<dyn AsRef<[(Cow<'static, str>, Unit, ColumnFormatting)]>> {
         let mut header = vec![(
-            self.key_label.to_string().into(),
+            self.kind.table_key_label().to_string().into(),
             Unit::None,
             ColumnFormatting::String {
-                width_chars: self.key_column_width,
+                width_chars: self.kind.table_key_column_width(),
             },
         )];
-        let row_header = T::table_view_header();
-        for label in row_header.as_ref() {
+        let row_header = T::table_view_header(());
+        for label in (*row_header).as_ref() {
             header.push((*label).clone());
         }
         Box::new(header)
     }
 
-    fn table_name(&self) -> &str {
-        self.name.as_ref()
+    fn table_name(&self) -> Cow<str> {
+        self.kind.table_name()
     }
 
     fn table_view_body<'s>(
@@ -97,14 +90,16 @@ impl<'t, T: TableViewRow + TableViewRow> TableView for Table<'t, T> {
     }
 }
 
-impl<'s, ViewType: Debug, const TILES_COUNT: usize> Table<'s, StatsOrCount<ViewType, TILES_COUNT>> {
+impl<'key, K: TableKind, ViewType: Debug, const TILE_COUNT: usize>
+    Table<'key, K, StatsOrCount<ViewType, TILE_COUNT>>
+{
     /// Silently ignores rows with keys that only appear on one side.
     /// XX now take whole Groups.
     pub fn change<Better: IsBetter>(
         &self,
         to: &Self,
-        extract: fn(&Stats<ViewType, TILES_COUNT>) -> u64,
-    ) -> Table<'s, Change<Better>> {
+        extract: fn(&Stats<ViewType, TILE_COUNT>) -> u64,
+    ) -> Table<'key, K, Change<Better>> {
         let mut rows: Vec<KeyVal<_, _>> = Vec::new();
         for either_or_both in self
             .rows
@@ -134,10 +129,8 @@ impl<'s, ViewType: Debug, const TILES_COUNT: usize> Table<'s, StatsOrCount<ViewT
             // side.
         }
         Table {
-            key_label: self.key_label.clone(),
-            name: format!("from {} to {}", self.name, to.name).into(),
+            kind: self.kind.clone(), // XX?
             rows,
-            key_column_width: opt_max(self.key_column_width, to.key_column_width),
         }
     }
 }

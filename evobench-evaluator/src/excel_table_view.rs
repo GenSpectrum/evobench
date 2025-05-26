@@ -3,14 +3,18 @@ use std::{borrow::Cow, path::Path};
 use anyhow::{anyhow, Context, Result};
 use rust_xlsxwriter::{workbook::Workbook, Color, Format, FormatAlign};
 
-use crate::table_view::{ColumnFormatting, Highlight, TableView, Unit};
+use crate::{
+    io_util::xrename,
+    path_util::add_extension,
+    table_view::{ColumnFormatting, Highlight, TableView, Unit},
+};
 
 /// How many characters to add to the automatic column width
 /// calculation to try to avoid setting widths too small to accomodate
 /// the strings in the cells.
 const WIDTH_SAFETY_MARGIN_CHARS: f64 = 2.0;
 
-pub fn excel_file_write<'t>(tables: &'t [Box<dyn TableView + 't>], file: &Path) -> Result<()> {
+pub fn excel_file_write<'t>(tables: &'t [&(dyn TableView + 't)], file: &Path) -> Result<()> {
     let mut workbook = Workbook::new();
 
     for table in tables {
@@ -170,9 +174,12 @@ pub fn excel_file_write<'t>(tables: &'t [Box<dyn TableView + 't>], file: &Path) 
         }
     }
 
+    let file_tmp =
+        add_extension(file, "tmp").ok_or_else(|| anyhow!("path misses a filename: {file:?}"))?;
     workbook
-        .save(file)
-        .with_context(|| anyhow!("saving to file {file:?}"))?;
+        .save(&file_tmp)
+        .with_context(|| anyhow!("saving to file {file_tmp:?}"))?;
+    xrename(&file_tmp, &file)?;
 
     Ok(())
 }
