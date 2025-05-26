@@ -11,6 +11,7 @@ pub mod log_data_index;
 pub mod log_file;
 pub mod log_message;
 pub mod path_util;
+pub mod rayon_util;
 pub mod stats;
 pub mod table;
 pub mod table_view;
