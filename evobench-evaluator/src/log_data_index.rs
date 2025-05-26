@@ -249,7 +249,7 @@ impl<'t> Span<'t> {
                         // that thread, too, so data would be missing
                         // if not using that as main thread data.
                         out_prefix.push_str(prefix);
-                        out_prefix.push_str("main thread");
+                        out_main.push_str("main thread");
                         return;
                     }
                 }
