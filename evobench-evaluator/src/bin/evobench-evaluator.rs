@@ -1,7 +1,5 @@
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::fmt::{Debug, Display};
-use std::hash::Hash;
 use std::path::PathBuf;
 
 use anyhow::Result;
@@ -356,7 +354,8 @@ impl<ViewType: Debug + From<u64> + ToStatsString, const TILE_COUNT: usize> Table
 
 struct AllFieldsTable<Kind: AllFieldsTableKind> {
     kind: Kind,
-    /// The parameters this table set was created from/with
+    /// The parameters this table set was created from/with, for cache
+    /// keying purposes.
     params: AllFieldsTableKindParams,
     real_time: Table<'static, RealTime, StatsOrCountOrSubStats<NanoTime, TILE_COUNT>>,
     cpu_time: Table<'static, CpuTime, StatsOrCountOrSubStats<MicroTime, TILE_COUNT>>,
@@ -387,7 +386,7 @@ impl AllFieldsTable<SingleRunStats> {
     fn from_logfile(params: AllFieldsTableKindParams) -> Result<Self> {
         let AllFieldsTableKindParams {
             path,
-            key_width,
+            key_width: _, // the whole `params` will be used below
             key_details,
         } = &params;
 
