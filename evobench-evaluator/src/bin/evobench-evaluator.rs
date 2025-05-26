@@ -206,12 +206,16 @@ struct KeyRuntimeDetails {
 }
 
 impl KeyRuntimeDetails {
-    fn key_label(&self) -> &str {
+    fn key_label(&self) -> String {
+        let mut cases = Vec::new();
+        cases.push("A: across all threads");
         if self.show_thread_number {
-            "Probe name or path\n(A: across all threads, N: by thread number)"
-        } else {
-            "Probe name or path\n(A: across all threads)"
+            cases.push("N: by thread number");
         }
+        if self.show_reversed {
+            cases.push("..R: reversed");
+        }
+        format!("Probe name or path\n({})", cases.join(", ")).into()
     }
 }
 
