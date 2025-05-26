@@ -20,7 +20,7 @@ itertools = "0.11.0"
 thiserror = "1.0.37"
 walkdir = "2"
 os_info = "=3.7"
-#rayon = "=1.5.3"
+rayon = "1.5.3"
 serde = { version = "1.0.154", features = ["derive"] }
 serde_json= "1.0"
 kstring = "1.0"
