@@ -526,7 +526,9 @@ where
                             }
                         }
                     },
-                    StatsOrCountOrSubStats::SubStats(sub_stats) => todo!(),
+                    StatsOrCountOrSubStats::SubStats(_sub_stats) => {
+                        unreachable!("SingleRunStats cannot contain SubStats")
+                    }
                 })
                 .collect();
             let val = match Stats::<K::ViewType, TILE_COUNT>::from_values_from_field(
