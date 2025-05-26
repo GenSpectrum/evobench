@@ -320,6 +320,7 @@ impl<'t> Span<'t> {
         }
     }
 
+    #[inline]
     pub fn start_and_end(&self) -> Option<(&'t Timing, &'t Timing)> {
         match &self.data {
             SpanData::Scope {

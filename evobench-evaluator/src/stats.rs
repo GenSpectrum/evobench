@@ -130,6 +130,7 @@ impl<ViewType, const TILE_COUNT: usize> Stats<ViewType, TILE_COUNT> {
 
     /// Get the value for the given field (and ending up untyped! But
     /// from_values was always untyped, too.)
+    #[inline]
     pub fn get(&self, field: StatsField<TILE_COUNT>) -> u64 {
         match field {
             StatsField::N => self

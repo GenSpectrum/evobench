@@ -72,6 +72,7 @@ pub struct Timing {
 }
 
 impl Timing {
+    #[inline]
     pub fn nvcsw(&self) -> Option<u64> {
         Some(
             self.nvcsw?
@@ -80,6 +81,7 @@ impl Timing {
         )
     }
 
+    #[inline]
     pub fn nivcsw(&self) -> Option<u64> {
         Some(
             self.nivcsw?
