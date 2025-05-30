@@ -30,3 +30,4 @@ ruzstd = { version = "0.7.3", default-features = false, features = ["std"] }
 rust_xlsxwriter = "=0.75.0"
 genawaiter = { version= "0.99.1", default-features= false }
 mimalloc = "0.1.43"
+simd-json = "0.13.11"
