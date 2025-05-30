@@ -361,7 +361,6 @@ dependencies = [
  "rust_xlsxwriter",
  "ruzstd",
  "serde",
- "serde_json",
  "simd-json",
  "terminal_size",
  "thiserror 1.0.40",
