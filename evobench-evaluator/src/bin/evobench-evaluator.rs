@@ -16,8 +16,12 @@ use evobench_evaluator::stats::{Stats, StatsError, StatsField, SubStats, ToStats
 use evobench_evaluator::table::{StatsOrCount, Table, TableKind};
 use evobench_evaluator::table_view::{TableView, TableViewRow};
 use evobench_evaluator::times::{MicroTime, NanoTime};
+use mimalloc::MiMalloc;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator};
 use rayon::prelude::ParallelIterator;
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
 
 include!("../../include/evobench_version.rs");
 
