@@ -3,7 +3,6 @@
 use anyhow::Result;
 use kstring::KString;
 use serde::{Deserialize, Serialize};
-use simd_json::Buffers;
 
 use crate::times::{MicroTime, NanoTime};
 
@@ -135,26 +134,11 @@ pub enum DataMessage<'t> {
     Timing(PointKind, &'t Timing),
 }
 
-pub struct LogMessageParser {
-    buffers: Buffers,
-}
-
-impl LogMessageParser {
-    pub fn new() -> Self {
-        Self {
-            buffers: Default::default(),
-        }
-    }
-
-    pub fn parse_mut_bytes(&mut self, bytes: &mut [u8]) -> Result<LogMessage> {
-        Ok(simd_json::serde::from_slice_with_buffers(
-            bytes,
-            &mut self.buffers,
-        )?)
-    }
-}
-
 impl LogMessage {
+    pub fn from_mut_bytes(bytes: &mut [u8]) -> Result<LogMessage> {
+        Ok(simd_json::from_slice(bytes)?)
+    }
+
     pub fn opt_data_message(&self) -> Option<DataMessage> {
         match self {
             LogMessage::Start {
