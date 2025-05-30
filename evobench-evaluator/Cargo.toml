@@ -22,6 +22,7 @@ walkdir = "2"
 os_info = "=3.7"
 rayon = "1.5.3"
 serde = { version = "1.0.154", features = ["derive"] }
+serde_json= "1.0"
 kstring = "1.0"
 num-traits = "0.2.15"
 rand = "0.8.5"
