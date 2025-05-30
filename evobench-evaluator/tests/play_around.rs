@@ -10,21 +10,21 @@ use evobench_evaluator::{
 
 include!("../include/evobench_version.rs");
 
-fn deser() -> Result<()> {
-    let msg = r#" { "r_ns": 12349089123, "u_ns": 12312321343, "s_ns": 18292137129837219812 } "#;
+// fn deser() -> Result<()> {
+//     let msg = r#" { "r_ns": 12349089123, "u_ns": 12312321343, "s_ns": 18292137129837219812 } "#;
 
-    let timings: ExecutionTimings = serde_json::from_str(msg)?;
-    dbg!(timings);
+//     let timings: ExecutionTimings = serde_json::from_str(msg)?;
+//     dbg!(timings);
 
-    Ok(())
-}
+//     Ok(())
+// }
 
-fn wr<T: serde::Serialize>(val: &T) -> Result<()> {
-    let mut lock = stdout().lock();
-    serde_json::ser::to_writer(&mut lock, val)?;
-    write!(&mut lock, "\n")?;
-    Ok(())
-}
+// fn wr<T: serde::Serialize>(val: &T) -> Result<()> {
+//     let mut lock = stdout().lock();
+//     serde_json::ser::to_writer(&mut lock, val)?;
+//     write!(&mut lock, "\n")?;
+//     Ok(())
+// }
 
 // fn ser() -> Result<()> {
 //     wr(&LogMessage::Start {
