@@ -9,7 +9,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use kstring::KString;
 use ruzstd::StreamingDecoder;
 
-use crate::log_message::{LogMessage, Metadata};
+use crate::log_message::{LogMessage, LogMessageParser, Metadata};
 
 #[derive(Debug)]
 pub struct LogData {
@@ -55,6 +55,8 @@ impl LogData {
         let mut linenum = 0;
         let mut messages = Vec::new();
 
+        let mut log_message_parser = LogMessageParser::new();
+
         // ugly in-line 'iterator' that also updates linenum
         macro_rules! let_next {
             { $var:ident or $($err:tt)* } => {
@@ -62,7 +64,7 @@ impl LogData {
                     $($err)*
                 }
                 linenum += 1;
-                let $var = LogMessage::from_mut_bytes(&mut line)
+                let $var = log_message_parser.parse_mut_bytes(&mut line)
                     .with_context(|| anyhow!("parsing file {path:?}:{linenum}"))?;
                 line.clear();
             }
