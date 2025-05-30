@@ -51,18 +51,18 @@ impl LogData {
 
         let mut input = BufReader::new(uncompressed_input);
 
-        let mut line = Vec::new();
+        let mut line = String::new();
         let mut linenum = 0;
         let mut messages = Vec::new();
 
         // ugly in-line 'iterator' that also updates linenum
         macro_rules! let_next {
             { $var:ident or $($err:tt)* } => {
-                if input.read_until(b'\n', &mut line)? == 0 {
+                if input.read_line(&mut line)? == 0 {
                     $($err)*
                 }
                 linenum += 1;
-                let $var = LogMessage::from_mut_bytes(&mut line)
+                let $var: LogMessage = serde_json::from_str(&line)
                     .with_context(|| anyhow!("parsing file {path:?}:{linenum}"))?;
                 line.clear();
             }
