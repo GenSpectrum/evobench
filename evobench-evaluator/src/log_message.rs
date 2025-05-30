@@ -1,5 +1,6 @@
 //! Representation of benchmark log messages
 
+use anyhow::Result;
 use kstring::KString;
 use serde::{Deserialize, Serialize};
 
@@ -134,6 +135,10 @@ pub enum DataMessage<'t> {
 }
 
 impl LogMessage {
+    pub fn from_mut_bytes(bytes: &mut [u8]) -> Result<LogMessage> {
+        Ok(simd_json::from_slice(bytes)?)
+    }
+
     pub fn opt_data_message(&self) -> Option<DataMessage> {
         match self {
             LogMessage::Start {
