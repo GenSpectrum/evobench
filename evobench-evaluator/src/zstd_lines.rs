@@ -2,7 +2,7 @@ use std::{
     fs::File,
     io::{BufRead, BufReader, Read},
     path::Path,
-    sync::mpsc::channel,
+    sync::mpsc::sync_channel,
     thread,
 };
 
@@ -46,8 +46,7 @@ pub fn decompressed_file_line_groups(
         Box::new(input)
     };
 
-    // XXX need to use bounded channel
-    let (w, r) = channel::<(usize, anyhow::Result<String>)>();
+    let (w, r) = sync_channel::<(usize, anyhow::Result<String>)>(100);
 
     thread::Builder::new()
         .name(format!("decompressed_file_lines"))
@@ -61,7 +60,9 @@ pub fn decompressed_file_line_groups(
                 let mut input = BufReader::new(uncompressed_input);
                 let mut group_num = 0;
                 loop {
-                    let mut linegroup = String::new();
+                    // XX preallocate hopefully with right size,
+                    // should take as arg if anything
+                    let mut linegroup = String::with_capacity(300 * num_lines_per_chunk);
                     for _ in 0..num_lines_per_chunk {
                         match input.read_line(&mut linegroup) {
                             Ok(n) => {
