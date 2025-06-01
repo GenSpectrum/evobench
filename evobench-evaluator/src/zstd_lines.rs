@@ -11,6 +11,48 @@ use ruzstd::StreamingDecoder;
 
 /// Transparently decompress zstd files if they have a .zstd suffix;
 /// after that, expecting the `expected_suffix` (XX well, currently
+/// not checking the sub-suffix if it has .zstd suffix).
+pub fn decompressed_file_contents(
+    path: &Path,
+    expected_suffix: &str,
+    max_file_size: Option<u64>,
+) -> Result<String> {
+    let ext = path.extension().ok_or_else(|| {
+        anyhow!("missing file extension, expecting {expected_suffix:?} or \".zstd\": {path:?}")
+    })?;
+
+    let is_compressed = match ext.to_string_lossy().as_ref() {
+        "zstd" => true,
+        s if &*s == expected_suffix => false,
+        _ => bail!("unknown file extension {ext:?}, expecting .log or .zstd: {path:?}"),
+    };
+
+    let mut input = File::open(path).with_context(|| anyhow!("opening file {path:?}"))?;
+
+    if let Some(max_file_size) = max_file_size {
+        let m = input.metadata()?;
+        if m.len() > max_file_size {
+            bail!("currently assuming that you don't read files larger than {max_file_size}")
+        }
+    }
+
+    (|| -> Result<String> {
+        if is_compressed {
+            let mut decoder = StreamingDecoder::new(input)?;
+            let mut result = Vec::new();
+            decoder.read_to_end(&mut result)?;
+            Ok(String::from_utf8(result)?)
+        } else {
+            let mut s = String::new();
+            input.read_to_string(&mut s)?;
+            Ok(s)
+        }
+    })()
+    .with_context(|| anyhow!("reading file {path:?}"))
+}
+
+/// Transparently decompress zstd files if they have a .zstd suffix;
+/// after that, expecting the `expected_suffix` (XX well, currently
 /// not checking the sub-suffix if it has .zstd suffix). Does not
 /// return individual lines, but groups of `num_lines_per_chunk`, and
 /// a serial number of the line group.
