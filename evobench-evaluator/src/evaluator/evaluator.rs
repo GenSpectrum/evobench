@@ -254,6 +254,8 @@ pub struct AllFieldsTable<Kind: AllFieldsTableKind> {
 }
 
 impl<Kind: AllFieldsTableKind> AllFieldsTable<Kind> {
+    /// Return a list of tables, one for each field (real, cpu, sys
+    /// times and ctx switches), to e.g. be output to excel.
     pub fn tables(&self) -> Vec<&dyn TableView> {
         let mut tables: Vec<&dyn TableView> = vec![];
         let Self {
