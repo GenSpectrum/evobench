@@ -12,7 +12,6 @@ use crate::{
     index_by_call_path::IndexByCallPath,
     join::{keyval_inner_join, KeyVal},
     log_data_tree::{LogDataTree, PathStringOptions, SpanId},
-    log_file::LogData,
     log_message::Timing,
     rayon_util::ParRun,
     stats::{Stats, StatsError, StatsField, SubStats, ToStatsString},
@@ -275,15 +274,17 @@ impl<Kind: AllFieldsTableKind> AllFieldsTable<Kind> {
 }
 
 impl AllFieldsTable<SingleRunStats> {
-    pub fn from_logfile(params: AllFieldsTableKindParams) -> Result<Self> {
+    pub fn from_log_data_tree(
+        log_data_tree: &LogDataTree,
+        // XXX actually build it going from this type!
+        params: AllFieldsTableKindParams,
+    ) -> Result<Self> {
         let AllFieldsTableKindParams {
-            path,
-            key_width: _, // the whole `params` will be used below
             key_details,
+            // the whole `params` will be used below
+            path: _,
+            key_width: _,
         } = &params;
-
-        let data = LogData::read_file(path, None)?;
-        let log_data_tree = LogDataTree::from_logdata(&data)?;
 
         let index_by_call_path = {
             // Note: it's important to give prefixes here, to

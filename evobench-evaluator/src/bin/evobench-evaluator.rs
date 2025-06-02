@@ -11,6 +11,7 @@ use evobench_evaluator::evaluator::options::{
 };
 use evobench_evaluator::excel_table_view::excel_file_write;
 use evobench_evaluator::get_terminal_width::get_terminal_width;
+use evobench_evaluator::log_data_and_tree::LogDataAndTree;
 use mimalloc::MiMalloc;
 use rayon::iter::IntoParallelRefIterator;
 use rayon::prelude::ParallelIterator;
@@ -95,15 +96,19 @@ fn main() -> Result<()> {
                 },
             path,
         } => {
-            let aft = AllFieldsTable::from_logfile(AllFieldsTableKindParams {
-                path,
-                key_width,
-                key_details: KeyRuntimeDetails {
-                    show_thread_number,
-                    key_column_width: Some(key_width),
-                    show_reversed,
+            let ldat = LogDataAndTree::read_file(&path, None)?;
+            let aft = AllFieldsTable::from_log_data_tree(
+                ldat.tree(),
+                AllFieldsTableKindParams {
+                    path,
+                    key_width,
+                    key_details: KeyRuntimeDetails {
+                        show_thread_number,
+                        key_column_width: Some(key_width),
+                        show_reversed,
+                    },
                 },
-            })?;
+            )?;
             excel_file_write(&aft.tables(), &excel)?;
         }
 
@@ -121,15 +126,19 @@ fn main() -> Result<()> {
             let afts: Vec<AllFieldsTable<SingleRunStats>> = paths
                 .par_iter()
                 .map(|path| {
-                    AllFieldsTable::from_logfile(AllFieldsTableKindParams {
-                        path: path.into(),
-                        key_width,
-                        key_details: KeyRuntimeDetails {
-                            show_thread_number,
-                            key_column_width: Some(key_width),
-                            show_reversed,
+                    let ldat = LogDataAndTree::read_file(path, None)?;
+                    AllFieldsTable::from_log_data_tree(
+                        ldat.tree(),
+                        AllFieldsTableKindParams {
+                            path: path.into(),
+                            key_width,
+                            key_details: KeyRuntimeDetails {
+                                show_thread_number,
+                                key_column_width: Some(key_width),
+                                show_reversed,
+                            },
                         },
-                    })
+                    )
                 })
                 .collect::<Result<_>>()?;
             let aft = AllFieldsTable::<SummaryStats>::summary_stats(
