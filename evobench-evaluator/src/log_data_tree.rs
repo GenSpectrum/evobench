@@ -21,8 +21,9 @@ use crate::{
     log_message::{DataMessage, KeyValue, PointKind, ThreadId, Timing},
 };
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct LogDataTree<'t> {
+    log_data: &'t LogData,
     spans: Vec<Span<'t>>,
     /// For a probe name, all the spans in sequence as occurring in
     /// the log file (which isn't necessarily by time when multiple
@@ -394,13 +395,17 @@ impl ThreadIdMapper {
 }
 
 impl<'t> LogDataTree<'t> {
-    pub fn from_logdata(data: &'t LogData) -> Result<Self> {
-        let mut slf = Self::default();
+    pub fn from_logdata(log_data: &'t LogData) -> Result<Self> {
+        let mut slf = Self {
+            log_data,
+            spans: Default::default(),
+            spans_by_pn: Default::default(),
+        };
 
         let mut thread_id_mapper = ThreadIdMapper::new();
         let mut start_by_thread: HashMap<ThreadId, Vec<SpanId<'t>>> = HashMap::new();
 
-        for message in &data.messages {
+        for message in &log_data.messages {
             match message.data_message() {
                 DataMessage::KeyValue(kv) => {
                     // Make it a Span
@@ -516,6 +521,10 @@ impl<'t> LogDataTree<'t> {
             }
         }
         Ok(slf)
+    }
+
+    pub fn log_data(&self) -> &'t LogData {
+        self.log_data
     }
 
     pub fn probe_names(&self) -> Vec<&'t str> {
