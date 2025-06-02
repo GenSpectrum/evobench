@@ -1,6 +1,7 @@
 pub mod average;
 pub mod change;
 pub mod digit_num;
+pub mod evaluator;
 pub mod excel_table_view;
 pub mod get_terminal_width;
 pub mod git;
