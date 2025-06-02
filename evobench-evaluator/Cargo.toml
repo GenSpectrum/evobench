@@ -28,5 +28,6 @@ num-traits = "0.2.15"
 rand = "0.8.5"
 ruzstd = { version = "0.7.3", default-features = false, features = ["std"] }
 rust_xlsxwriter = "=0.75.0"
-genawaiter = { version= "0.99.1", default-features= false }
+genawaiter = { version = "0.99.1", default-features = false }
 mimalloc = "0.1.43"
+inferno = { version = "0.11.21", default-features = false, features = [] }
