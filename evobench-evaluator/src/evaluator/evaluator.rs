@@ -11,7 +11,7 @@ use crate::{
     evaluator::options::TILE_COUNT,
     index_by_call_path::IndexByCallPath,
     join::{keyval_inner_join, KeyVal},
-    log_data_index::{LogDataIndex, PathStringOptions, SpanId},
+    log_data_tree::{LogDataTree, PathStringOptions, SpanId},
     log_file::LogData,
     log_message::Timing,
     rayon_util::ParRun,
@@ -22,13 +22,13 @@ use crate::{
 };
 
 fn scopestats<K: KeyDetails>(
-    log_data_index: &LogDataIndex,
+    log_data_tree: &LogDataTree,
     spans: &[SpanId],
 ) -> Result<Stats<K::ViewType, TILE_COUNT>, StatsError> {
     let vals: Vec<u64> = spans
         .into_iter()
         .filter_map(|span_id| -> Option<u64> {
-            let span = span_id.get_from_db(log_data_index);
+            let span = span_id.get_from_db(log_data_tree);
             let (start, end) = span.start_and_end()?;
             Some(K::timing_extract(end)?.into() - K::timing_extract(start)?.into())
         })
@@ -37,13 +37,13 @@ fn scopestats<K: KeyDetails>(
 }
 
 fn pn_stats<K: KeyDetails>(
-    log_data_index: &LogDataIndex,
+    log_data_tree: &LogDataTree,
     spans: &[SpanId],
     pn: &str,
 ) -> Result<KeyVal<Cow<'static, str>, StatsOrCountOrSubStats<K::ViewType, TILE_COUNT>>, StatsError>
 {
     let r: Result<Stats<K::ViewType, TILE_COUNT>, StatsError> =
-        scopestats::<K>(log_data_index, spans);
+        scopestats::<K>(log_data_tree, spans);
     match r {
         Ok(s) => Ok(KeyVal {
             key: pn.to_string().into(),
@@ -65,22 +65,22 @@ fn pn_stats<K: KeyDetails>(
 /// names) to get a resulting Table with 'static lifetime.
 fn table_for_field<'key, K: KeyDetails>(
     kind: K,
-    log_data_index: &LogDataIndex<'key>,
+    log_data_tree: &LogDataTree<'key>,
     index_by_call_path: &'key IndexByCallPath<'key>,
 ) -> Result<Table<'static, K, StatsOrCountOrSubStats<K::ViewType, TILE_COUNT>>> {
     let mut rows = Vec::new();
 
-    for pn in log_data_index.probe_names() {
+    for pn in log_data_tree.probe_names() {
         rows.push(pn_stats::<K>(
-            log_data_index,
-            log_data_index.spans_by_pn(&pn).unwrap(),
+            log_data_tree,
+            log_data_tree.spans_by_pn(&pn).unwrap(),
             pn,
         )?);
     }
 
     for call_path in index_by_call_path.call_paths() {
         rows.push(pn_stats::<K>(
-            log_data_index,
+            log_data_tree,
             index_by_call_path.spans_by_call_path(call_path).unwrap(),
             call_path,
         )?);
@@ -283,7 +283,7 @@ impl AllFieldsTable<SingleRunStats> {
         } = &params;
 
         let data = LogData::read_file(path, None)?;
-        let log_data_index = LogDataIndex::from_logdata(&data)?;
+        let log_data_tree = LogDataTree::from_logdata(&data)?;
 
         let index_by_call_path = {
             // Note: it's important to give prefixes here, to
@@ -330,27 +330,27 @@ impl AllFieldsTable<SingleRunStats> {
                     });
                 }
             }
-            IndexByCallPath::from_logdataindex(&log_data_index, &opts)
+            IndexByCallPath::from_logdataindex(&log_data_tree, &opts)
         };
 
         let real_time = table_for_field(
             RealTime(key_details.clone()),
-            &log_data_index,
+            &log_data_tree,
             &index_by_call_path,
         )?;
         let cpu_time = table_for_field(
             CpuTime(key_details.clone()),
-            &log_data_index,
+            &log_data_tree,
             &index_by_call_path,
         )?;
         let sys_time = table_for_field(
             SysTime(key_details.clone()),
-            &log_data_index,
+            &log_data_tree,
             &index_by_call_path,
         )?;
         let ctx_switches = table_for_field(
             CtxSwitches(key_details.clone()),
-            &log_data_index,
+            &log_data_tree,
             &index_by_call_path,
         )?;
 

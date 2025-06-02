@@ -8,7 +8,7 @@ pub mod git;
 pub mod index_by_call_path;
 pub mod io_util;
 pub mod join;
-pub mod log_data_index;
+pub mod log_data_tree;
 pub mod log_file;
 pub mod log_message;
 pub mod path_util;

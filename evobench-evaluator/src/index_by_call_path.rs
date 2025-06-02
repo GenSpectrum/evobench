@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use itertools::Itertools;
 
-use crate::log_data_index::{LogDataIndex, PathStringOptions, SpanId};
+use crate::log_data_tree::{LogDataTree, PathStringOptions, SpanId};
 
 #[derive(Debug, Default)]
 pub struct IndexByCallPath<'t> {
@@ -16,7 +16,7 @@ pub struct IndexByCallPath<'t> {
 
 impl<'t> IndexByCallPath<'t> {
     pub fn from_logdataindex(
-        db: &LogDataIndex<'t>,
+        db: &LogDataTree<'t>,
         path_string_optss: &[PathStringOptions],
     ) -> Self {
         let mut slf = Self::default();

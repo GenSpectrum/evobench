@@ -1,9 +1,9 @@
-//! Indexing for making summaries (XX: rename file).
+//! Build tree and index for making summaries.
 
 //! `Timing` and contextual info remains in the parsed log file
 //! (`Vec<LogMessage>`), the index just references into those.
 
-//! `LogDataIndex::from_logdata` both pairs the start and end timings
+//! `LogDataTree::from_logdata` both pairs the start and end timings
 //! and builds up a tree of all spans.
 
 use std::{
@@ -22,7 +22,7 @@ use crate::{
 };
 
 #[derive(Debug, Default)]
-pub struct LogDataIndex<'t> {
+pub struct LogDataTree<'t> {
     spans: Vec<Span<'t>>,
     /// For a probe name, all the spans in sequence as occurring in
     /// the log file (which isn't necessarily by time when multiple
@@ -50,21 +50,21 @@ macro_rules! def_log_data_index_id {
             // never used, so that Option is cheap.
             fn index(self) -> usize { usize::try_from(u32::from(self.id)).unwrap() - 1 }
 
-            pub fn get_from_db<'d>(self, db: &'d LogDataIndex<'t>) -> &'d $T$($TIdLifetime)*
+            pub fn get_from_db<'d>(self, db: &'d LogDataTree<'t>) -> &'d $T$($TIdLifetime)*
                 // XX are these even required or helpful?:
                 where 't: 'd
             {
                 &db.$db_field[self.index()]
             }
 
-            pub fn get_mut_from_db<'d>(self, db: &'d mut LogDataIndex<'t>) -> &'d mut $T$($TIdLifetime)*
+            pub fn get_mut_from_db<'d>(self, db: &'d mut LogDataTree<'t>) -> &'d mut $T$($TIdLifetime)*
                 where 't: 'd
             {
                 &mut db.$db_field[self.index()]
             }
         }
 
-        impl<'t> LogDataIndex<'t> {
+        impl<'t> LogDataTree<'t> {
             pub fn $add_method(&mut self, value: $T $($TIdLifetime)*) -> $TId $($TIdLifetime)* {
                 self.$db_field.push(value);
                 $TId::new(self.$db_field.len())
@@ -219,7 +219,7 @@ impl<'t> Span<'t> {
     pub fn path_string(
         &self,
         opts: &PathStringOptions,
-        db: &LogDataIndex<'t>,
+        db: &LogDataTree<'t>,
         out_prefix: &mut String,
         out_main: &mut String,
     ) {
@@ -393,7 +393,7 @@ impl ThreadIdMapper {
     }
 }
 
-impl<'t> LogDataIndex<'t> {
+impl<'t> LogDataTree<'t> {
     pub fn from_logdata(data: &'t LogData) -> Result<Self> {
         let mut slf = Self::default();
 
