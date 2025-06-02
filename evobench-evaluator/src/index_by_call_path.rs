@@ -25,11 +25,16 @@ impl<'t> IndexByCallPath<'t> {
         for span_id in db.span_ids() {
             let span = span_id.get_from_db(db);
             for opts in path_string_optss {
-                out_prefix.clear();
-                out_main.clear();
-                span.path_string(&opts, db, &mut out_prefix, &mut out_main);
-                out_prefix.push_str(&out_main);
-                let path = &*out_prefix;
+                let path = {
+                    // Calculate the path efficiently by reusing
+                    // buffers
+                    out_prefix.clear();
+                    out_main.clear();
+                    span.path_string(&opts, db, &mut out_prefix, &mut out_main);
+                    out_prefix.push_str(&out_main);
+                    &*out_prefix
+                };
+                // Add span_id for the path
                 match slf.spans_by_call_path.get_mut(path) {
                     Some(vec) => {
                         vec.push(span_id);
