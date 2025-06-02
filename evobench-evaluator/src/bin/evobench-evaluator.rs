@@ -101,7 +101,6 @@ fn main() -> Result<()> {
                 ldat.tree(),
                 AllFieldsTableKindParams {
                     path,
-                    key_width,
                     key_details: KeyRuntimeDetails {
                         show_thread_number,
                         key_column_width: Some(key_width),
@@ -131,7 +130,6 @@ fn main() -> Result<()> {
                         ldat.tree(),
                         AllFieldsTableKindParams {
                             path: path.into(),
-                            key_width,
                             key_details: KeyRuntimeDetails {
                                 show_thread_number,
                                 key_column_width: Some(key_width),

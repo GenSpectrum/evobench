@@ -179,7 +179,6 @@ def_key_details! {
 pub struct AllFieldsTableKindParams {
     pub path: PathBuf,
     pub key_details: KeyRuntimeDetails,
-    pub key_width: f64,
 }
 
 /// Markers to designate what a `Stats` value represents.
@@ -283,7 +282,6 @@ impl AllFieldsTable<SingleRunStats> {
             key_details,
             // the whole `params` will be used below
             path: _,
-            key_width: _,
         } = &params;
 
         let index_by_call_path = {
