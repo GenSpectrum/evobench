@@ -346,6 +346,13 @@ impl AllFieldsTable<SingleRunStats> {
                     prefix: "A:",
                 });
             }
+            // XX should this be nested in the above, like for
+            // show_paths_with_thread_number, or rather really not?
+            // Really should make separate options for ALL of
+            // those. Currently IIRC the logic is that the user's
+            // option is passed down only once, in
+            // show_paths_reversed_too, and we deal with it in this
+            // contorted way for that reason.
             if *show_paths_reversed_too {
                 opts.push(PathStringOptions {
                     normal_separator,

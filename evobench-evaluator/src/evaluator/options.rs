@@ -26,7 +26,8 @@ pub struct EvaluationOpts {
     pub show_thread_number: bool,
 
     /// Show the call path so that the leaf instead of the root is on
-    /// the left.
+    /// the left (only has an effect on tables (Excel), not
+    /// flamegraphs).
     #[clap(short = 'r', long)]
     pub show_reversed: bool,
 }

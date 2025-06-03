@@ -59,6 +59,7 @@ fn key_details_for(
         normal_separator,
         reverse_separator,
         show_probe_names,
+        show_paths_without_thread_number,
         show_paths_reversed_too,
         key_column_width,
     );
@@ -67,6 +68,7 @@ fn key_details_for(
             normal_separator = " > ";
             reverse_separator = " < ";
             show_probe_names = true;
+            show_paths_without_thread_number = true;
             show_paths_reversed_too = *show_reversed;
             key_column_width = Some(*key_width);
         }
@@ -74,7 +76,8 @@ fn key_details_for(
             normal_separator = ";";
             reverse_separator = ";";
             show_probe_names = false;
-            show_paths_reversed_too = false; // XX would it make sense?  show_reversed,
+            show_paths_without_thread_number = !*show_thread_number;
+            show_paths_reversed_too = false;
             key_column_width = None;
         }
     }
@@ -83,7 +86,7 @@ fn key_details_for(
         normal_separator,
         reverse_separator,
         show_probe_names,
-        show_paths_without_thread_number: true,
+        show_paths_without_thread_number,
         show_paths_with_thread_number: *show_thread_number,
         show_paths_reversed_too,
         key_column_width,
