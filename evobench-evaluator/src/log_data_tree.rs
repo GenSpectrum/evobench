@@ -152,6 +152,8 @@ pub struct Span<'t> {
 }
 
 pub struct PathStringOptions {
+    pub normal_separator: &'static str,
+    pub reverse_separator: &'static str,
     /// Stop when reaching a `ScopeKind::Process`
     pub ignore_process: bool,
     /// Stop when reaching a `ScopeKind::Thread`
@@ -231,6 +233,8 @@ impl<'t> Span<'t> {
             include_thread_number_in_path,
             reversed,
             prefix,
+            normal_separator,
+            reverse_separator,
         } = opts;
         // Stop recursion via opts?--XX how useful is this even, have
         // display below, too ("P:" etc.).
@@ -309,11 +313,11 @@ impl<'t> Span<'t> {
             let parent = parent_id.get_from_db(db);
             if *reversed {
                 push_self(out_prefix, out_main);
-                out_main.push_str(" < ");
+                out_main.push_str(reverse_separator);
                 parent.path_string(opts, db, out_prefix, out_main);
             } else {
                 parent.path_string(opts, db, out_prefix, out_main);
-                out_main.push_str(" > ");
+                out_main.push_str(normal_separator);
                 push_self(out_prefix, out_main);
             }
         } else {

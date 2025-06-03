@@ -5,8 +5,10 @@ use itertools::{EitherOrBoth, Itertools};
 
 use crate::{
     change::{Change, IsBetter},
+    evaluator::{evaluator::StatsOrCountOrSubStats, options::TILE_COUNT},
     join::KeyVal,
-    stats::{Stats, ToStatsString},
+    stats::{Stats, StatsField, SubStats, ToStatsString},
+    table_field_view::TableFieldView,
     table_view::{ColumnFormatting, Highlight, TableView, TableViewRow, Unit},
 };
 
@@ -83,6 +85,45 @@ impl<'key, K: TableKind, T: TableViewRow<()>> TableView for Table<'key, K, T> {
                     vals.push((key.clone(), Highlight::Neutral));
                     val.table_view_row(&mut vals);
                     co.yield_(vals.into()).await;
+                }
+            })
+            .into_iter(),
+        )
+    }
+}
+
+impl<'key, K: TableKind, ViewType: Debug + ToStatsString + From<u64>> TableFieldView<TILE_COUNT>
+    for Table<'key, K, StatsOrCountOrSubStats<ViewType, TILE_COUNT>>
+{
+    fn table_key_vals<'s>(
+        &'s self,
+        stats_field: StatsField<TILE_COUNT>,
+    ) -> Box<dyn Iterator<Item = KeyVal<String, u64>> + 's> {
+        Box::new(
+            Gen::new(|co| async move {
+                for KeyVal { key, val } in &self.rows {
+                    let val = match val {
+                        StatsOrCountOrSubStats::StatsOrCount(stats_or_count) => {
+                            match stats_or_count {
+                                StatsOrCount::Stats(stats) => stats.get(stats_field),
+                                StatsOrCount::Count(_) => {
+                                    // XX todo: I forgot: do I check
+                                    // if stats_field is a count and
+                                    // in that case give this value?
+                                    continue;
+                                }
+                            }
+                        }
+                        StatsOrCountOrSubStats::SubStats(sub_stats) => match sub_stats {
+                            SubStats::Count(stats) => stats.get(stats_field),
+                            SubStats::ViewType(stats) => stats.get(stats_field),
+                        },
+                    };
+                    co.yield_(KeyVal {
+                        key: key.to_string(),
+                        val,
+                    })
+                    .await;
                 }
             })
             .into_iter(),

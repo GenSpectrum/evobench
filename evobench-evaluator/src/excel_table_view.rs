@@ -14,7 +14,10 @@ use crate::{
 /// the strings in the cells.
 const WIDTH_SAFETY_MARGIN_CHARS: f64 = 2.0;
 
-pub fn excel_file_write<'t>(tables: &'t [&(dyn TableView + 't)], file: &Path) -> Result<()> {
+pub fn excel_file_write<'t>(
+    tables: impl IntoIterator<Item = &'t (dyn TableView + 't)>,
+    file: &Path,
+) -> Result<()> {
     let mut workbook = Workbook::new();
 
     for table in tables {

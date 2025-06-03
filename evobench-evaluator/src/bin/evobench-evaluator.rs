@@ -3,13 +3,11 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::Parser;
-use evobench_evaluator::evaluator::evaluator::{
-    AllFieldsTable, AllFieldsTableKindParams, KeyRuntimeDetails, SingleRunStats, SummaryStats,
-};
+use evobench_evaluator::evaluator::all_outputs_all_fields_table::AllOutputsAllFieldsTable;
+use evobench_evaluator::evaluator::evaluator::{SingleRunStats, SummaryStats};
 use evobench_evaluator::evaluator::options::{
-    EvaluationOpts, FieldSelectorDimension3, FieldSelectorDimension4,
+    CheckedOutputOpts, EvaluationAndOutputOpts, FieldSelectorDimension3, FieldSelectorDimension4,
 };
-use evobench_evaluator::excel_table_view::excel_file_write;
 use evobench_evaluator::get_terminal_width::get_terminal_width;
 use evobench_evaluator::log_data_and_tree::LogDataAndTree;
 use mimalloc::MiMalloc;
@@ -41,7 +39,7 @@ enum Command {
     /// Show statistics for a single benchmarking log file
     Single {
         #[clap(flatten)]
-        evaluation_opts: EvaluationOpts,
+        evaluation_and_output_opts: EvaluationAndOutputOpts,
 
         /// The path that was provided via the `EVOBENCH_LOG`
         /// environment variable to the evobench-probes library.
@@ -52,7 +50,7 @@ enum Command {
     /// the same software version.
     Summary {
         #[clap(flatten)]
-        evaluation_opts: EvaluationOpts,
+        evaluation_and_output_opts: EvaluationAndOutputOpts,
         #[clap(flatten)]
         field_selector_dimension_3: FieldSelectorDimension3,
 
@@ -69,7 +67,7 @@ enum Command {
     /// from two runs each.
     Trend {
         #[clap(flatten)]
-        evaluation_opts: EvaluationOpts,
+        evaluation_and_output_opts: EvaluationAndOutputOpts,
         #[clap(flatten)]
         field_selector_dimension_3: FieldSelectorDimension3,
         #[clap(flatten)]
@@ -87,72 +85,64 @@ fn main() -> Result<()> {
         Command::Version => println!("{PROGRAM_NAME} version {EVOBENCH_VERSION}"),
 
         Command::Single {
-            evaluation_opts:
-                EvaluationOpts {
-                    key_width,
-                    excel,
-                    show_thread_number,
-                    show_reversed,
+            evaluation_and_output_opts:
+                EvaluationAndOutputOpts {
+                    evaluation_opts,
+                    output_opts,
                 },
             path,
         } => {
+            let CheckedOutputOpts {
+                variants,
+                flame_field,
+            } = output_opts.check()?;
             let ldat = LogDataAndTree::read_file(&path, None)?;
-            let aft = AllFieldsTable::from_log_data_tree(
+            let aoaft = AllOutputsAllFieldsTable::from_log_data_tree(
                 ldat.tree(),
-                AllFieldsTableKindParams {
-                    path,
-                    key_details: KeyRuntimeDetails {
-                        show_thread_number,
-                        key_column_width: Some(key_width),
-                        show_reversed,
-                    },
-                },
+                &evaluation_opts,
+                variants,
+                true,
             )?;
-            excel_file_write(&aft.tables(), &excel)?;
+            aoaft.write_to_files(flame_field)?;
         }
 
         Command::Summary {
-            evaluation_opts:
-                EvaluationOpts {
-                    key_width,
-                    excel,
-                    show_thread_number,
-                    show_reversed,
+            evaluation_and_output_opts:
+                EvaluationAndOutputOpts {
+                    evaluation_opts,
+                    output_opts,
                 },
             paths,
             field_selector_dimension_3: FieldSelectorDimension3 { summary_field },
         } => {
-            let afts: Vec<AllFieldsTable<SingleRunStats>> = paths
+            let CheckedOutputOpts {
+                variants,
+                flame_field,
+            } = output_opts.check()?;
+            let afts: Vec<AllOutputsAllFieldsTable<SingleRunStats>> = paths
                 .par_iter()
-                .map(|path| {
-                    let ldat = LogDataAndTree::read_file(path, None)?;
-                    AllFieldsTable::from_log_data_tree(
+                .map(|source_path| {
+                    let ldat = LogDataAndTree::read_file(source_path, None)?;
+                    AllOutputsAllFieldsTable::from_log_data_tree(
                         ldat.tree(),
-                        AllFieldsTableKindParams {
-                            path: path.into(),
-                            key_details: KeyRuntimeDetails {
-                                show_thread_number,
-                                key_column_width: Some(key_width),
-                                show_reversed,
-                            },
-                        },
+                        &evaluation_opts,
+                        variants.clone(),
+                        false,
                     )
                 })
                 .collect::<Result<_>>()?;
-            let aft = AllFieldsTable::<SummaryStats>::summary_stats(
-                summary_field,
-                &KeyRuntimeDetails {
-                    show_thread_number,
-                    key_column_width: Some(key_width),
-                    show_reversed,
-                },
+            let aft = AllOutputsAllFieldsTable::<SummaryStats>::summary_stats(
                 &afts,
+                summary_field,
+                &evaluation_opts,
+                variants, // same as passed to from_log_data_tree above
+                true,
             );
-            excel_file_write(&aft.tables(), &excel)?;
+            aft.write_to_files(flame_field)?;
         }
 
         Command::Trend {
-            evaluation_opts,
+            evaluation_and_output_opts: evaluation_opts,
             grouped_paths,
             field_selector_dimension_3: FieldSelectorDimension3 { summary_field },
             field_selector_dimension_4: FieldSelectorDimension4 { trend_field },

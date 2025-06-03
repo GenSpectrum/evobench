@@ -3,6 +3,8 @@
 
 use std::path::PathBuf;
 
+use anyhow::{bail, Result};
+
 use crate::stats::StatsField;
 
 // We use 101 buckets for percentiles instead of 100, so that we get
@@ -18,11 +20,6 @@ pub struct EvaluationOpts {
     #[clap(short, long, default_value = "100")]
     pub key_width: f64,
 
-    /// Path to write Excel output to (currently required, as there is
-    /// no other output format)
-    #[clap(short, long)]
-    pub excel: PathBuf,
-
     /// Include the internally-allocated thread number in call
     /// path strings in the output.
     #[clap(short, long)]
@@ -32,6 +29,106 @@ pub struct EvaluationOpts {
     /// the left.
     #[clap(short = 'r', long)]
     pub show_reversed: bool,
+}
+
+/// Private fields to enforce .check()
+#[derive(clap::Args, Debug)]
+pub struct OutputOpts {
+    /// Path to write Excel output to
+    #[clap(short, long)]
+    excel: Option<PathBuf>,
+
+    /// Base path to write flame graph SVG to; "-$type.svg" is
+    /// appended, where type is "real", "cpu", "sys" or
+    /// "ctx-switches".
+    #[clap(short, long)]
+    flame: Option<PathBuf>,
+
+    /// What field to select for the flame graph.
+    #[clap(long, default_value = "median")]
+    flame_field: StatsField<TILE_COUNT>,
+}
+
+pub struct CheckedOutputOpts {
+    pub variants: OutputVariants<PathBuf>,
+    pub flame_field: StatsField<TILE_COUNT>,
+}
+
+impl OutputOpts {
+    pub fn check(self) -> Result<CheckedOutputOpts> {
+        let Self {
+            excel,
+            flame,
+            flame_field,
+        } = self;
+
+        let any_given = [excel.is_some(), flame.is_some()].iter().any(|b| *b);
+        if !any_given {
+            bail!("no output files were specified")
+        }
+
+        Ok(CheckedOutputOpts {
+            variants: OutputVariants { excel, flame },
+            flame_field,
+        })
+    }
+}
+
+/// Same as OutputOpts but at least one file is set; parameterized so
+/// it can be used for pipelining via its `map` method.
+#[derive(Clone)]
+pub struct OutputVariants<T> {
+    pub excel: Option<T>,
+    pub flame: Option<T>,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum CheckedOutputOptsMapCase {
+    Excel,
+    Flame,
+}
+
+impl<T> OutputVariants<T> {
+    /// get a field
+    pub fn get(&self, case: CheckedOutputOptsMapCase) -> &Option<T> {
+        match case {
+            CheckedOutputOptsMapCase::Excel => &self.excel,
+            CheckedOutputOptsMapCase::Flame => &self.flame,
+        }
+    }
+
+    /// `f` is applied to all fields that are `Some`
+    pub fn map<U>(self, f: impl Fn(CheckedOutputOptsMapCase, T) -> U) -> OutputVariants<U> {
+        let Self { excel, flame } = self;
+        OutputVariants {
+            excel: excel.map(|v| f(CheckedOutputOptsMapCase::Excel, v)),
+            flame: flame.map(|v| f(CheckedOutputOptsMapCase::Flame, v)),
+        }
+    }
+
+    /// `f` is applied to all fields that are `Some`
+    pub fn try_map<U, E>(
+        self,
+        f: impl Fn(CheckedOutputOptsMapCase, T) -> Result<U, E>,
+    ) -> Result<OutputVariants<U>, E> {
+        let Self { excel, flame } = self;
+        Ok(OutputVariants {
+            excel: excel
+                .map(|v| f(CheckedOutputOptsMapCase::Excel, v))
+                .transpose()?,
+            flame: flame
+                .map(|v| f(CheckedOutputOptsMapCase::Flame, v))
+                .transpose()?,
+        })
+    }
+}
+
+#[derive(clap::Args, Debug)]
+pub struct EvaluationAndOutputOpts {
+    #[clap(flatten)]
+    pub evaluation_opts: EvaluationOpts,
+    #[clap(flatten)]
+    pub output_opts: OutputOpts,
 }
 
 #[derive(clap::Args, Debug)]

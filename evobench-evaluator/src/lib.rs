@@ -16,5 +16,6 @@ pub mod path_util;
 pub mod rayon_util;
 pub mod stats;
 pub mod table;
+pub mod table_field_view;
 pub mod table_view;
 pub mod times;

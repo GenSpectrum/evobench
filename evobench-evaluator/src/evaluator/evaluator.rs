@@ -16,7 +16,8 @@ use crate::{
     rayon_util::ParRun,
     stats::{Stats, StatsError, StatsField, SubStats, ToStatsString},
     table::{StatsOrCount, Table, TableKind},
-    table_view::{ColumnFormatting, Highlight, TableView, TableViewRow, Unit},
+    table_field_view::TableFieldView,
+    table_view::{ColumnFormatting, Highlight, TableViewRow, Unit},
     times::{MicroTime, NanoTime},
 };
 
@@ -69,12 +70,15 @@ fn table_for_field<'key, K: KeyDetails>(
 ) -> Result<Table<'static, K, StatsOrCountOrSubStats<K::ViewType, TILE_COUNT>>> {
     let mut rows = Vec::new();
 
-    for pn in log_data_tree.probe_names() {
-        rows.push(pn_stats::<K>(
-            log_data_tree,
-            log_data_tree.spans_by_pn(&pn).unwrap(),
-            pn,
-        )?);
+    // Add the bare probe names, not paths, to the table if desired
+    if kind.show_probe_names() {
+        for pn in log_data_tree.probe_names() {
+            rows.push(pn_stats::<K>(
+                log_data_tree,
+                log_data_tree.spans_by_pn(&pn).unwrap(),
+                pn,
+            )?);
+        }
     }
 
     for call_path in index_by_call_path.call_paths() {
@@ -88,10 +92,22 @@ fn table_for_field<'key, K: KeyDetails>(
     Ok(Table { kind, rows })
 }
 
+/// How keys (in AllFieldsTable) are presented, and, unlike what the
+/// name suggests, also what rows are generated, since the grouping of
+/// the measurements depends on the set of generated key
+/// strings. (This only contains the runtime data, but unlike what the
+/// name suggests, actually there is no static data for the key
+/// column?)
 #[derive(Clone, PartialEq, Debug)]
 pub struct KeyRuntimeDetails {
-    pub show_thread_number: bool,
-    pub show_reversed: bool,
+    /// The separators to use
+    pub normal_separator: &'static str,
+    pub reverse_separator: &'static str,
+    /// Whether to use the probe names as keys (versus paths)
+    pub show_probe_names: bool,
+    pub show_paths_without_thread_number: bool,
+    pub show_paths_with_thread_number: bool,
+    pub show_paths_reversed_too: bool,
     pub key_column_width: Option<f64>,
 }
 
@@ -99,10 +115,10 @@ impl KeyRuntimeDetails {
     fn key_label(&self) -> String {
         let mut cases = Vec::new();
         cases.push("A: across all threads");
-        if self.show_thread_number {
+        if self.show_paths_with_thread_number {
             cases.push("N: by thread number");
         }
-        if self.show_reversed {
+        if self.show_paths_reversed_too {
             cases.push("..R: reversed");
         }
         format!("Probe name or path\n({})", cases.join(", ")).into()
@@ -118,6 +134,8 @@ trait KeyDetails: TableKind {
     fn all_fields_table_extract<'f>(
         aft: &'f AllFieldsTable<SingleRunStats>,
     ) -> &'f Table<'static, Self, StatsOrCountOrSubStats<Self::ViewType, TILE_COUNT>>;
+    /// Whether probe *names* (not paths) are part of the table
+    fn show_probe_names(&self) -> bool;
 }
 
 macro_rules! def_key_details {
@@ -145,6 +163,9 @@ macro_rules! def_key_details {
                 aft: &'f AllFieldsTable<SingleRunStats>,
             ) -> &'f Table<'static, Self, StatsOrCountOrSubStats<Self::ViewType, TILE_COUNT>>{
                 ($aft_extract)(aft)
+            }
+            fn show_probe_names(&self) -> bool {
+                self.0.show_probe_names
             }
         }
     }
@@ -177,7 +198,7 @@ def_key_details! {
 
 #[derive(Clone, Debug)]
 pub struct AllFieldsTableKindParams {
-    pub path: PathBuf,
+    pub source_path: PathBuf,
     pub key_details: KeyRuntimeDetails,
 }
 
@@ -240,6 +261,9 @@ impl<ViewType: Debug + From<u64> + ToStatsString, const TILE_COUNT: usize> Table
     }
 }
 
+/// A group of 4 tables, one per real/cpu/sys time and ctx switches,
+/// rows representing probe points, although the exact rows depend on
+/// `params.key_details`
 pub struct AllFieldsTable<Kind: AllFieldsTableKind> {
     pub kind: Kind,
     /// The parameters this table set was created from/with, for cache
@@ -251,11 +275,17 @@ pub struct AllFieldsTable<Kind: AllFieldsTableKind> {
     pub ctx_switches: Table<'static, CtxSwitches, StatsOrCountOrSubStats<u64, TILE_COUNT>>,
 }
 
+impl<Kind: AllFieldsTableKind> AsRef<AllFieldsTable<Kind>> for AllFieldsTable<Kind> {
+    fn as_ref(&self) -> &AllFieldsTable<Kind> {
+        self
+    }
+}
+
 impl<Kind: AllFieldsTableKind> AllFieldsTable<Kind> {
     /// Return a list of tables, one for each field (real, cpu, sys
     /// times and ctx switches), to e.g. be output to excel.
-    pub fn tables(&self) -> Vec<&dyn TableView> {
-        let mut tables: Vec<&dyn TableView> = vec![];
+    pub fn tables(&self) -> Vec<&dyn TableFieldView<TILE_COUNT>> {
+        let mut tables: Vec<&dyn TableFieldView<TILE_COUNT>> = vec![];
         let Self {
             kind: _,
             params: _,
@@ -275,14 +305,25 @@ impl<Kind: AllFieldsTableKind> AllFieldsTable<Kind> {
 impl AllFieldsTable<SingleRunStats> {
     pub fn from_log_data_tree(
         log_data_tree: &LogDataTree,
-        // XXX actually build it going from this type!
         params: AllFieldsTableKindParams,
     ) -> Result<Self> {
         let AllFieldsTableKindParams {
             key_details,
             // the whole `params` will be used below
-            path: _,
+            source_path: _,
         } = &params;
+
+        let KeyRuntimeDetails {
+            normal_separator,
+            reverse_separator,
+            show_paths_without_thread_number,
+            show_paths_with_thread_number,
+            show_paths_reversed_too,
+            // show_probe_names and key_column_width are passed to
+            // `table_for_field` inside its `kind` argument
+            show_probe_names: _,
+            key_column_width: _,
+        } = key_details;
 
         let index_by_call_path = {
             // Note: it's important to give prefixes here, to
@@ -293,16 +334,22 @@ impl AllFieldsTable<SingleRunStats> {
             // that only counts thing once, but is valid for both
             // kinds of groups, would surely still be confusing.)
             let mut opts = vec![];
-            opts.push(PathStringOptions {
-                ignore_process: true,
-                ignore_thread: true,
-                include_thread_number_in_path: false,
-                reversed: false,
-                // "across threads / added up"
-                prefix: "A:",
-            });
-            if key_details.show_reversed {
+            if *show_paths_without_thread_number {
                 opts.push(PathStringOptions {
+                    normal_separator,
+                    reverse_separator,
+                    ignore_process: true,
+                    ignore_thread: true,
+                    include_thread_number_in_path: false,
+                    reversed: false,
+                    // "across threads / added up"
+                    prefix: "A:",
+                });
+            }
+            if *show_paths_reversed_too {
+                opts.push(PathStringOptions {
+                    normal_separator,
+                    reverse_separator,
                     ignore_process: true,
                     ignore_thread: true,
                     include_thread_number_in_path: false,
@@ -310,8 +357,10 @@ impl AllFieldsTable<SingleRunStats> {
                     prefix: "AR:",
                 });
             }
-            if key_details.show_thread_number {
+            if *show_paths_with_thread_number {
                 opts.push(PathStringOptions {
+                    normal_separator,
+                    reverse_separator,
                     ignore_process: true,
                     ignore_thread: true,
                     include_thread_number_in_path: true,
@@ -319,8 +368,10 @@ impl AllFieldsTable<SingleRunStats> {
                     // "numbered threads"
                     prefix: "N:",
                 });
-                if key_details.show_reversed {
+                if *show_paths_reversed_too {
                     opts.push(PathStringOptions {
+                        normal_separator,
+                        reverse_separator,
                         ignore_process: true,
                         ignore_thread: true,
                         include_thread_number_in_path: true,
@@ -370,7 +421,7 @@ impl AllFieldsTable<SingleRunStats> {
 /// average, counts, etc.)
 fn summary_stats_for_field<'t, K: KeyDetails + 'static>(
     key_details: &KeyRuntimeDetails,
-    afts: &[AllFieldsTable<SingleRunStats>],
+    afts: &[impl AsRef<AllFieldsTable<SingleRunStats>> + Sync],
     extract_stats_field: StatsField<TILE_COUNT>, // XX add to cache key somehow !
 ) -> Table<'static, K, StatsOrCountOrSubStats<K::ViewType, TILE_COUNT>>
 where
@@ -379,7 +430,7 @@ where
     let mut rowss: Vec<_> = afts
         .par_iter()
         .map(|aft| {
-            Some(K::all_fields_table_extract(aft).rows.iter().map(
+            Some(K::all_fields_table_extract(aft.as_ref()).rows.iter().map(
                 |KeyVal { key, val }| -> KeyVal<Cow<'static, str>, _> {
                     KeyVal {
                         key: key.clone(),
@@ -441,17 +492,18 @@ where
 
 impl AllFieldsTable<SummaryStats> {
     pub fn summary_stats(
+        afts: &[impl AsRef<AllFieldsTable<SingleRunStats>> + Sync],
         field_selector: StatsField<TILE_COUNT>,
         key_details: &KeyRuntimeDetails,
-        afts: &[AllFieldsTable<SingleRunStats>],
     ) -> AllFieldsTable<SummaryStats> {
         // XX panic happy everywhere...
-        let params = afts[0].params.clone();
+        let params = afts[0].as_ref().params.clone();
         for aft in afts {
-            if params.key_details != aft.params.key_details {
+            if params.key_details != aft.as_ref().params.key_details {
                 panic!(
                     "unequal key_details in params: {:?} vs. {:?}",
-                    params, aft.params
+                    params,
+                    aft.as_ref().params
                 );
             }
         }

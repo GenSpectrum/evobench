@@ -1,0 +1,220 @@
+use std::{
+    fs::File,
+    io::{BufWriter, Write},
+    ops::Deref,
+    path::PathBuf,
+};
+
+use anyhow::{anyhow, bail, Context, Result};
+
+use crate::{
+    evaluator::options::TILE_COUNT, excel_table_view::excel_file_write, join::KeyVal,
+    log_data_tree::LogDataTree, stats::StatsField, table_view::TableView,
+};
+
+use super::{
+    evaluator::{
+        AllFieldsTable, AllFieldsTableKind, AllFieldsTableKindParams, KeyRuntimeDetails,
+        SingleRunStats, SummaryStats,
+    },
+    options::{CheckedOutputOptsMapCase, EvaluationOpts, OutputVariants},
+};
+
+pub struct AllFieldsTableWithOutputPathOrBase<Kind: AllFieldsTableKind> {
+    aft: AllFieldsTable<Kind>,
+    /// The path or base for where this file or set of files is to end up in
+    output_path_or_base: PathBuf,
+    /// Whether *this* aft is actually to be stored at the above path;
+    /// false means, it's not processed to the final stage yet.
+    is_final_file: bool,
+}
+
+/// A wrapper holding the table sets for all requested
+/// outputs. (Wrapping `CheckedOutputOpts` since we want to have the
+/// same fields and mapping methods. A type alias would currently lose
+/// the trait restriction checks in Rust's type system.)
+pub struct AllOutputsAllFieldsTable<Kind: AllFieldsTableKind>(
+    OutputVariants<AllFieldsTableWithOutputPathOrBase<Kind>>,
+);
+
+impl<Kind: AllFieldsTableKind> Deref for AllOutputsAllFieldsTable<Kind> {
+    type Target = OutputVariants<AllFieldsTableWithOutputPathOrBase<Kind>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+fn key_details_for(
+    case: CheckedOutputOptsMapCase,
+    evaluation_opts: &EvaluationOpts,
+) -> KeyRuntimeDetails {
+    let EvaluationOpts {
+        key_width,
+        show_thread_number,
+        show_reversed,
+    } = evaluation_opts;
+
+    let (
+        normal_separator,
+        reverse_separator,
+        show_probe_names,
+        show_paths_reversed_too,
+        key_column_width,
+    );
+    match case {
+        CheckedOutputOptsMapCase::Excel => {
+            normal_separator = " > ";
+            reverse_separator = " < ";
+            show_probe_names = true;
+            show_paths_reversed_too = *show_reversed;
+            key_column_width = Some(*key_width);
+        }
+        CheckedOutputOptsMapCase::Flame => {
+            normal_separator = ";";
+            reverse_separator = ";";
+            show_probe_names = false;
+            show_paths_reversed_too = false; // XX would it make sense?  show_reversed,
+            key_column_width = None;
+        }
+    }
+
+    KeyRuntimeDetails {
+        normal_separator,
+        reverse_separator,
+        show_probe_names,
+        show_paths_without_thread_number: true,
+        show_paths_with_thread_number: *show_thread_number,
+        show_paths_reversed_too,
+        key_column_width,
+    }
+}
+
+impl AllOutputsAllFieldsTable<SingleRunStats> {
+    pub fn from_log_data_tree(
+        log_data_tree: &LogDataTree,
+        evaluation_opts: &EvaluationOpts,
+        output_opts: OutputVariants<PathBuf>,
+        is_final_file: bool,
+    ) -> Result<Self> {
+        let OutputVariants { excel, flame } = output_opts.try_map(|case, path| -> Result<_> {
+            Ok(AllFieldsTableWithOutputPathOrBase {
+                aft: AllFieldsTable::from_log_data_tree(
+                    log_data_tree,
+                    AllFieldsTableKindParams {
+                        source_path: log_data_tree.log_data().path.as_ref().into(),
+                        key_details: key_details_for(case, evaluation_opts),
+                    },
+                )?,
+                output_path_or_base: path,
+                is_final_file,
+            })
+        })?;
+        Ok(Self(OutputVariants { excel, flame }))
+    }
+}
+
+impl AllOutputsAllFieldsTable<SummaryStats> {
+    pub fn summary_stats(
+        aoafts: &[AllOutputsAllFieldsTable<SingleRunStats>],
+        field_selector: StatsField<TILE_COUNT>,
+        evaluation_opts: &EvaluationOpts,
+        output_opts: OutputVariants<PathBuf>,
+        is_final_file: bool,
+    ) -> AllOutputsAllFieldsTable<SummaryStats> {
+        // Split up the `aoafts` by field
+        let lists_by_field = output_opts.clone().map(|case, _path| {
+            aoafts
+                .into_iter()
+                .map(|aoaft| {
+                    &aoaft
+                        .get(case)
+                        .as_ref()
+                        .expect(
+                            "same output_opts given in previous layer \
+                                                     leading to same set of options",
+                        )
+                        .aft
+                })
+                .collect::<Vec<_>>()
+        });
+        let x = lists_by_field.map(|case, afts| AllFieldsTableWithOutputPathOrBase {
+            aft: AllFieldsTable::summary_stats(
+                afts.as_slice(),
+                field_selector,
+                &key_details_for(case, evaluation_opts),
+            ),
+            output_path_or_base: output_opts.get(case).as_ref().expect("ditto").clone(),
+            is_final_file,
+        });
+        Self(x)
+    }
+}
+
+impl<Kind: AllFieldsTableKind> AllOutputsAllFieldsTable<Kind> {
+    /// Write to all output files originally specified; gives an error
+    /// unless the `is_final_file` for this instance was true. (Taking
+    /// ownership only because `try_map` currently requires so.)
+    pub fn write_to_files(self, flame_field: StatsField<TILE_COUNT>) -> Result<()> {
+        self.0.try_map(|case, aft| -> Result<()> {
+            let AllFieldsTableWithOutputPathOrBase {
+                aft,
+                output_path_or_base,
+                is_final_file,
+            } = aft;
+            if !is_final_file {
+                bail!(
+                    "trying to save a table that wasn't marked as \
+                       the last stage in a processing chain"
+                )
+            }
+            let tables = aft.tables();
+            match case {
+                CheckedOutputOptsMapCase::Excel => {
+                    excel_file_write(
+                        tables.iter().map(|v| {
+                            let v: &dyn TableView = *v;
+                            v
+                        }),
+                        &output_path_or_base,
+                    )?;
+                }
+                CheckedOutputOptsMapCase::Flame => {
+                    let curdir = PathBuf::from(".");
+                    let flame_base_dir = output_path_or_base.parent().unwrap_or(&*curdir);
+                    let flame_base_name = output_path_or_base
+                        .file_name()
+                        .ok_or_else(|| anyhow!("--flame option argument is missing a file name"))?
+                        .to_string_lossy();
+
+                    for table in tables {
+                        let mut path = flame_base_dir.to_owned();
+                        path.push(format!("{flame_base_name}-{}.svg", table.table_name()));
+                        (|| -> Result<()> {
+                            let mut out = BufWriter::new(File::create(&path)?);
+
+                            let lines = table
+                                .table_key_vals(flame_field)
+                                .map(|KeyVal { key, val }| format!("{key} {val}"))
+                                .collect::<Vec<_>>();
+                            dbg!(&lines);
+                            let mut options = inferno::flamegraph::Options::default();
+                            // XX options.count_name = table. "foo".into();
+                            inferno::flamegraph::from_lines(
+                                // why mut ??
+                                &mut options,
+                                lines.iter().map(|s| -> &str { s }),
+                                &mut out,
+                            )?;
+                            out.flush()?;
+                            Ok(())
+                        })()
+                        .with_context(|| anyhow!("creating flamegraph file {path:?}"))?;
+                    }
+                }
+            }
+            Ok(())
+        })?;
+        Ok(())
+    }
+}
