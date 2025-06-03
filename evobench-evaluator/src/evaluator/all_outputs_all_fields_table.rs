@@ -179,7 +179,16 @@ fn node_children_sum<'key>(tree: &Tree<'key, u64>) -> u64 {
 fn fix_tree<'key>(tree: Tree<'key, u64>) -> Tree<'key, u64> {
     let value = tree.value.map(|orig_value| {
         let orig_children_total: u64 = node_children_sum(&tree);
-        orig_value - orig_children_total
+        // orig_value - orig_children_total
+        orig_value
+            .checked_sub(orig_children_total)
+            .unwrap_or_else(|| {
+                eprintln!(
+                    "somehow parent has lower value, {orig_value}, \
+                 than sum of children, {orig_children_total}"
+                );
+                0
+            })
     });
     Tree {
         value,
