@@ -109,6 +109,9 @@ pub struct KeyRuntimeDetails {
     pub show_paths_with_thread_number: bool,
     pub show_paths_reversed_too: bool,
     pub key_column_width: Option<f64>,
+    /// Override the standard prefixes--the same is used for all modes
+    /// above!
+    pub prefix: Option<&'static str>,
 }
 
 impl KeyRuntimeDetails {
@@ -319,6 +322,7 @@ impl AllFieldsTable<SingleRunStats> {
             show_paths_without_thread_number,
             show_paths_with_thread_number,
             show_paths_reversed_too,
+            prefix,
             // show_probe_names and key_column_width are passed to
             // `table_for_field` inside its `kind` argument
             show_probe_names: _,
@@ -343,7 +347,7 @@ impl AllFieldsTable<SingleRunStats> {
                     include_thread_number_in_path: false,
                     reversed: false,
                     // "across threads / added up"
-                    prefix: "A:",
+                    prefix: prefix.unwrap_or("A:"),
                 });
             }
             // XX should this be nested in the above, like for
@@ -361,7 +365,7 @@ impl AllFieldsTable<SingleRunStats> {
                     ignore_thread: true,
                     include_thread_number_in_path: false,
                     reversed: true,
-                    prefix: "AR:",
+                    prefix: prefix.unwrap_or("AR:"),
                 });
             }
             if *show_paths_with_thread_number {
@@ -373,7 +377,7 @@ impl AllFieldsTable<SingleRunStats> {
                     include_thread_number_in_path: true,
                     reversed: false,
                     // "numbered threads"
-                    prefix: "N:",
+                    prefix: prefix.unwrap_or("N:"),
                 });
                 if *show_paths_reversed_too {
                     opts.push(PathStringOptions {
@@ -383,7 +387,7 @@ impl AllFieldsTable<SingleRunStats> {
                         ignore_thread: true,
                         include_thread_number_in_path: true,
                         reversed: true,
-                        prefix: "NR:",
+                        prefix: prefix.unwrap_or("NR:"),
                     });
                 }
             }
