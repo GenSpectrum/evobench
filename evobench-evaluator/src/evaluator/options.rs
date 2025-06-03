@@ -46,7 +46,7 @@ pub struct OutputOpts {
     flame: Option<PathBuf>,
 
     /// What field to select for the flame graph.
-    #[clap(long, default_value = "median")]
+    #[clap(long, default_value = "avg")]
     flame_field: StatsField<TILE_COUNT>,
 }
 
@@ -141,7 +141,7 @@ pub struct FieldSelectorDimension3 {
     /// evaluation, after dimensions 1 (probe name) and 2 (stats
     /// fields)). Valid values: n|sum|average|median|sd or a floating
     /// point number between 0 and 1 for selecting a percentile.
-    #[clap(long, default_value = "median")]
+    #[clap(long, default_value = "avg")]
     pub summary_field: StatsField<TILE_COUNT>,
 }
 
