@@ -9,7 +9,7 @@ use anyhow::{anyhow, bail, Context, Result};
 
 use crate::{
     evaluator::options::TILE_COUNT, excel_table_view::excel_file_write, join::KeyVal,
-    log_data_tree::LogDataTree, stats::StatsField, table_view::TableView,
+    log_data_tree::LogDataTree, stats::StatsField, table_view::TableView, tree::Tree,
 };
 
 use super::{
@@ -158,6 +158,58 @@ impl AllOutputsAllFieldsTable<SummaryStats> {
     }
 }
 
+/// Get the sum of the children's values, and if those don't have a
+/// value, their children's values recursively. XX Could be a bit
+/// costly if there are many gaps!
+fn node_children_sum<'key>(tree: &Tree<'key, u64>) -> u64 {
+    tree.children
+        .iter()
+        .map(|(_, child)| child.value.unwrap_or_else(|| node_children_sum(child)))
+        .sum()
+}
+
+/// Convert a tree where the value of a parent include the values of
+/// the children (timings!) into one where the parent has only the
+/// remainder after subtracting the original values of the
+/// children.
+fn fix_tree<'key>(tree: Tree<'key, u64>) -> Tree<'key, u64> {
+    let value = tree.value.map(|orig_value| {
+        let orig_children_total: u64 = node_children_sum(&tree);
+        orig_value - orig_children_total
+    });
+    Tree {
+        value,
+        children: tree
+            .children
+            .into_iter()
+            .map(|(key, child)| (key, fix_tree(child)))
+            .collect(),
+    }
+}
+
+#[test]
+fn t_fix_tree() {
+    let vals = &[
+        ("a", 2),
+        ("a:b", 1),
+        ("a:b:c", 1),
+        ("c:d", 3),
+        ("d:e:f", 4),
+        ("d", 5),
+    ];
+    let tree = Tree::from_key_val(vals.into_iter().map(|(k, v)| (k.split(':'), *v)));
+    dbg!(&tree);
+    assert_eq!(tree.get("a".split(':')), Some(&2));
+    assert_eq!(tree.get("a:b".split(':')), Some(&1));
+    assert_eq!(tree.get("a:b:c".split(':')), Some(&1));
+    let tree = fix_tree(tree);
+    dbg!(&tree);
+    assert_eq!(tree.get("a".split(':')), Some(&1));
+    assert_eq!(tree.get("a:b".split(':')), Some(&0));
+    assert_eq!(tree.get("a:b:c".split(':')), Some(&1));
+    // panic!()
+}
+
 impl<Kind: AllFieldsTableKind> AllOutputsAllFieldsTable<Kind> {
     /// Write to all output files originally specified; gives an error
     /// unless the `is_final_file` for this instance was true. (Taking
@@ -172,7 +224,7 @@ impl<Kind: AllFieldsTableKind> AllOutputsAllFieldsTable<Kind> {
             if !is_final_file {
                 bail!(
                     "trying to save a table that wasn't marked as \
-                       the last stage in a processing chain"
+                     the last stage in a processing chain"
                 )
             }
             let tables = aft.tables();
@@ -198,12 +250,23 @@ impl<Kind: AllFieldsTableKind> AllOutputsAllFieldsTable<Kind> {
                         let mut path = flame_base_dir.to_owned();
                         path.push(format!("{flame_base_name}-{}.svg", table.table_name()));
                         (|| -> Result<()> {
+                            let tree = Tree::from_key_val(
+                                table
+                                    .table_key_vals(flame_field)
+                                    .map(|KeyVal { key, val }| (key.split(';'), val)),
+                            );
+                            // dbg!(&tree);
 
-                            let lines = table
-                                .table_key_vals(flame_field)
-                                .map(|KeyVal { key, val }| format!("{key} {val}"))
-                                .collect::<Vec<_>>();
-                            dbg!((table.table_name(), &lines));
+                            let fixed_tree = fix_tree(tree);
+                            // dbg!(&fixed_tree);
+
+                            let lines: Vec<String> = fixed_tree
+                                .into_joined_key_val(";")
+                                .into_iter()
+                                .map(|(path, val)| format!("{path} {val}"))
+                                .collect();
+
+                            // dbg!((table.table_name(), &lines));
 
                             let mut options = inferno::flamegraph::Options::default();
                             options.count_name = table.resolution_unit();

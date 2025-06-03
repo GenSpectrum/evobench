@@ -9,7 +9,7 @@ pub trait TableFieldView<const TILE_COUNT: usize>: TableView {
     fn table_key_vals<'s>(
         &'s self,
         stats_field: StatsField<TILE_COUNT>,
-    ) -> Box<dyn Iterator<Item = KeyVal<String, u64>> + 's>;
+    ) -> Box<dyn Iterator<Item = KeyVal<&'s str, u64>> + 's>;
 
     /// Return the physical unit name for one step of the u64 values
     fn resolution_unit(&self) -> String;

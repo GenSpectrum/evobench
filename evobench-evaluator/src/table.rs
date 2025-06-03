@@ -99,7 +99,7 @@ impl<'key, K: TableKind, ViewType: Debug + ToStatsString + From<u64> + Resolutio
     fn table_key_vals<'s>(
         &'s self,
         stats_field: StatsField<TILE_COUNT>,
-    ) -> Box<dyn Iterator<Item = KeyVal<String, u64>> + 's> {
+    ) -> Box<dyn Iterator<Item = KeyVal<&'s str, u64>> + 's> {
         Box::new(
             Gen::new(|co| async move {
                 for KeyVal { key, val } in &self.rows {
@@ -121,7 +121,7 @@ impl<'key, K: TableKind, ViewType: Debug + ToStatsString + From<u64> + Resolutio
                         },
                     };
                     co.yield_(KeyVal {
-                        key: key.to_string(),
+                        key: key.as_ref(),
                         val,
                     })
                     .await;
