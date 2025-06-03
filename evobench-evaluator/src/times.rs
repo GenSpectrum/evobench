@@ -4,6 +4,8 @@ use std::ops::{Add, Sub};
 use num_traits::CheckedSub;
 use serde::{Deserialize, Serialize};
 
+use crate::resolution_unit::ResolutionUnit;
+
 pub trait ToStringMilliseconds {
     fn to_string_ms(&self) -> String;
 }
@@ -36,7 +38,13 @@ pub trait Time:
 }
 
 impl Time for MicroTime {}
+impl ResolutionUnit for MicroTime {
+    const RESOLUTION_UNIT_SHORT: &str = "us";
+}
 impl Time for NanoTime {}
+impl ResolutionUnit for NanoTime {
+    const RESOLUTION_UNIT_SHORT: &str = "ns";
+}
 
 fn print_milli_micro(f: &mut std::fmt::Formatter<'_>, milli: u32, micro: u32) -> std::fmt::Result {
     write!(f, "{milli}.{micro:03} ms")
