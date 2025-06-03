@@ -198,15 +198,19 @@ impl<Kind: AllFieldsTableKind> AllOutputsAllFieldsTable<Kind> {
                         let mut path = flame_base_dir.to_owned();
                         path.push(format!("{flame_base_name}-{}.svg", table.table_name()));
                         (|| -> Result<()> {
-                            let mut out = BufWriter::new(File::create(&path)?);
 
                             let lines = table
                                 .table_key_vals(flame_field)
                                 .map(|KeyVal { key, val }| format!("{key} {val}"))
                                 .collect::<Vec<_>>();
-                            dbg!(&lines);
+                            dbg!((table.table_name(), &lines));
+
                             let mut options = inferno::flamegraph::Options::default();
                             options.count_name = table.resolution_unit();
+                            options.title = table.table_name().into();
+                            // options.subtitle = Some("foo".into()); XX show inputs key
+
+                            let mut out = BufWriter::new(File::create(&path)?);
                             inferno::flamegraph::from_lines(
                                 // why mut ??
                                 &mut options,
