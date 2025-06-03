@@ -112,6 +112,8 @@ pub struct KeyRuntimeDetails {
     /// Override the standard prefixes--the same is used for all modes
     /// above!
     pub prefix: Option<&'static str>,
+    /// Do not show process measurement (used for flamegraph)
+    pub skip_process: bool,
 }
 
 impl KeyRuntimeDetails {
@@ -322,12 +324,14 @@ impl AllFieldsTable<SingleRunStats> {
             show_paths_without_thread_number,
             show_paths_with_thread_number,
             show_paths_reversed_too,
+            skip_process,
             prefix,
             // show_probe_names and key_column_width are passed to
             // `table_for_field` inside its `kind` argument
             show_probe_names: _,
             key_column_width: _,
         } = key_details;
+        let skip_process = *skip_process;
 
         let index_by_call_path = {
             // Note: it's important to give prefixes here, to
@@ -343,6 +347,7 @@ impl AllFieldsTable<SingleRunStats> {
                     normal_separator,
                     reverse_separator,
                     ignore_process: true,
+                    skip_process,
                     ignore_thread: true,
                     include_thread_number_in_path: false,
                     reversed: false,
@@ -362,6 +367,7 @@ impl AllFieldsTable<SingleRunStats> {
                     normal_separator,
                     reverse_separator,
                     ignore_process: true,
+                    skip_process,
                     ignore_thread: true,
                     include_thread_number_in_path: false,
                     reversed: true,
@@ -373,6 +379,7 @@ impl AllFieldsTable<SingleRunStats> {
                     normal_separator,
                     reverse_separator,
                     ignore_process: true,
+                    skip_process,
                     ignore_thread: true,
                     include_thread_number_in_path: true,
                     reversed: false,
@@ -384,6 +391,7 @@ impl AllFieldsTable<SingleRunStats> {
                         normal_separator,
                         reverse_separator,
                         ignore_process: true,
+                        skip_process,
                         ignore_thread: true,
                         include_thread_number_in_path: true,
                         reversed: true,

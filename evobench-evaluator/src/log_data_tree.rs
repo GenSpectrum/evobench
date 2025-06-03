@@ -156,6 +156,9 @@ pub struct PathStringOptions {
     pub reverse_separator: &'static str,
     /// Stop when reaching a `ScopeKind::Process`
     pub ignore_process: bool,
+    /// Skip showing the process completely (`ignore_process` just
+    /// stops before it and shows a placeholder)
+    pub skip_process: bool,
     /// Stop when reaching a `ScopeKind::Thread`
     pub ignore_thread: bool,
     /// Add thread number (0..) in path strings
@@ -229,6 +232,7 @@ impl<'t> Span<'t> {
         //
         let PathStringOptions {
             ignore_process,
+            skip_process,
             ignore_thread,
             include_thread_number_in_path,
             reversed,
@@ -246,6 +250,9 @@ impl<'t> Span<'t> {
                 end: _,
             } => match kind {
                 ScopeKind::Process => {
+                    if *skip_process {
+                        return;
+                    }
                     if *ignore_process {
                         // Show this as "main thread", not "process",
                         // because Timing currently still contains

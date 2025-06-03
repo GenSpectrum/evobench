@@ -62,6 +62,7 @@ fn key_details_for(
         show_paths_without_thread_number,
         show_paths_reversed_too,
         key_column_width,
+        skip_process,
         prefix,
     );
     match case {
@@ -72,6 +73,7 @@ fn key_details_for(
             show_paths_without_thread_number = true;
             show_paths_reversed_too = *show_reversed;
             key_column_width = Some(*key_width);
+            skip_process = false;
             prefix = None;
         }
         CheckedOutputOptsMapCase::Flame => {
@@ -81,6 +83,7 @@ fn key_details_for(
             show_paths_without_thread_number = !*show_thread_number;
             show_paths_reversed_too = false;
             key_column_width = None;
+            skip_process = true;
             prefix = Some("");
         }
     }
@@ -93,6 +96,7 @@ fn key_details_for(
         show_paths_with_thread_number: *show_thread_number,
         show_paths_reversed_too,
         key_column_width,
+        skip_process,
         prefix,
     }
 }
