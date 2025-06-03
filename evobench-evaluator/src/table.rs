@@ -7,6 +7,7 @@ use crate::{
     change::{Change, IsBetter},
     evaluator::{evaluator::StatsOrCountOrSubStats, options::TILE_COUNT},
     join::KeyVal,
+    resolution_unit::ResolutionUnit,
     stats::{Stats, StatsField, SubStats, ToStatsString},
     table_field_view::TableFieldView,
     table_view::{ColumnFormatting, Highlight, TableView, TableViewRow, Unit},
@@ -92,8 +93,8 @@ impl<'key, K: TableKind, T: TableViewRow<()>> TableView for Table<'key, K, T> {
     }
 }
 
-impl<'key, K: TableKind, ViewType: Debug + ToStatsString + From<u64>> TableFieldView<TILE_COUNT>
-    for Table<'key, K, StatsOrCountOrSubStats<ViewType, TILE_COUNT>>
+impl<'key, K: TableKind, ViewType: Debug + ToStatsString + From<u64> + ResolutionUnit>
+    TableFieldView<TILE_COUNT> for Table<'key, K, StatsOrCountOrSubStats<ViewType, TILE_COUNT>>
 {
     fn table_key_vals<'s>(
         &'s self,
@@ -128,6 +129,10 @@ impl<'key, K: TableKind, ViewType: Debug + ToStatsString + From<u64>> TableField
             })
             .into_iter(),
         )
+    }
+
+    fn resolution_unit(&self) -> String {
+        ViewType::RESOLUTION_UNIT_SHORT.into()
     }
 }
 

@@ -199,7 +199,7 @@ impl<Kind: AllFieldsTableKind> AllOutputsAllFieldsTable<Kind> {
                                 .collect::<Vec<_>>();
                             dbg!(&lines);
                             let mut options = inferno::flamegraph::Options::default();
-                            // XX options.count_name = table. "foo".into();
+                            options.count_name = table.resolution_unit();
                             inferno::flamegraph::from_lines(
                                 // why mut ??
                                 &mut options,
