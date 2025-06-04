@@ -29,7 +29,7 @@ impl<const TILE_COUNT: usize> FromStr for StatsField<TILE_COUNT> {
         use StatsField::*;
         match s {
             "n" | "N" => Ok(N),
-            "sum" | "Sum" => Ok(Sum),
+            "sum" | "Sum" | "total" | "Total" => Ok(Sum),
             "average" | "Average" | "avg" | "mean" => Ok(Average),
             "median" | "Median" => Ok(Median),
             "sd" | "SD" | "stdev" => Ok(SD),
