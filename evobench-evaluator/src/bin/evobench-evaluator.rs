@@ -7,9 +7,11 @@ use evobench_evaluator::evaluator::all_outputs_all_fields_table::AllOutputsAllFi
 use evobench_evaluator::evaluator::evaluator::{SingleRunStats, SummaryStats};
 use evobench_evaluator::evaluator::options::{
     CheckedOutputOpts, EvaluationAndOutputOpts, FieldSelectorDimension3, FieldSelectorDimension4,
+    FlameField,
 };
 use evobench_evaluator::get_terminal_width::get_terminal_width;
 use evobench_evaluator::log_data_and_tree::LogDataAndTree;
+use evobench_evaluator::stats::StatsField;
 use mimalloc::MiMalloc;
 use rayon::iter::IntoParallelRefIterator;
 use rayon::prelude::ParallelIterator;
@@ -53,6 +55,8 @@ enum Command {
         evaluation_and_output_opts: EvaluationAndOutputOpts,
         #[clap(flatten)]
         field_selector_dimension_3: FieldSelectorDimension3,
+        #[clap(flatten)]
+        flame_selector: FlameField,
 
         /// The paths that were provided via the `EVOBENCH_LOG`
         /// environment variable to the evobench-probes library.
@@ -72,6 +76,8 @@ enum Command {
         field_selector_dimension_3: FieldSelectorDimension3,
         #[clap(flatten)]
         field_selector_dimension_4: FieldSelectorDimension4,
+        #[clap(flatten)]
+        flame_selector: FlameField,
 
         /// The paths that were provided via the `EVOBENCH_LOG`
         /// environment variable to the evobench-probes library.
@@ -92,10 +98,7 @@ fn main() -> Result<()> {
                 },
             path,
         } => {
-            let CheckedOutputOpts {
-                variants,
-                flame_field,
-            } = output_opts.check()?;
+            let CheckedOutputOpts { variants } = output_opts.check()?;
             let ldat = LogDataAndTree::read_file(&path, None)?;
             let aoaft = AllOutputsAllFieldsTable::from_log_data_tree(
                 ldat.tree(),
@@ -103,7 +106,7 @@ fn main() -> Result<()> {
                 variants,
                 true,
             )?;
-            aoaft.write_to_files(flame_field)?;
+            aoaft.write_to_files(StatsField::Sum)?;
         }
 
         Command::Summary {
@@ -114,11 +117,9 @@ fn main() -> Result<()> {
                 },
             paths,
             field_selector_dimension_3: FieldSelectorDimension3 { summary_field },
+            flame_selector: FlameField { flame_field },
         } => {
-            let CheckedOutputOpts {
-                variants,
-                flame_field,
-            } = output_opts.check()?;
+            let CheckedOutputOpts { variants } = output_opts.check()?;
             let afts: Vec<AllOutputsAllFieldsTable<SingleRunStats>> = paths
                 .par_iter()
                 .map(|source_path| {
@@ -146,6 +147,7 @@ fn main() -> Result<()> {
             grouped_paths,
             field_selector_dimension_3: FieldSelectorDimension3 { summary_field },
             field_selector_dimension_4: FieldSelectorDimension4 { trend_field },
+            flame_selector: FlameField { flame_field },
         } => todo!(),
     }
 

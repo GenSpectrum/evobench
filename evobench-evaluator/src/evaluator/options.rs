@@ -32,7 +32,7 @@ pub struct EvaluationOpts {
     pub show_reversed: bool,
 }
 
-/// Private fields to enforce .check()
+/// Using private fields, to enforce calling .check()!
 #[derive(clap::Args, Debug)]
 pub struct OutputOpts {
     /// Path to write Excel output to
@@ -44,26 +44,30 @@ pub struct OutputOpts {
     /// "ctx-switches".
     #[clap(short, long)]
     flame: Option<PathBuf>,
+}
 
-    /// What field to select for the flame graph.
+///  Do not use for level 0 (i.e. `single` subcommand), there sum must
+/// always be used!
+#[derive(clap::Args, Debug)]
+pub struct FlameField {
+    /// What field to select from the last stage for the flame graph
+    /// (tables show all stats values, but flame graphs can only show
+    /// one, that's why this option is needed for those).
     #[clap(long, default_value = "avg")]
-    flame_field: StatsField<TILE_COUNT>,
+    pub flame_field: StatsField<TILE_COUNT>,
 }
 
 /// OutputOpts split into checked `OutputVariants` and possibly other
-/// options
+/// options (flame_field was here in the past, not any more, but maybe
+/// other fields will come in the future, thus keeping the separation
+/// into OutputVariants and the wrapper)
 pub struct CheckedOutputOpts {
     pub variants: OutputVariants<PathBuf>,
-    pub flame_field: StatsField<TILE_COUNT>,
 }
 
 impl OutputOpts {
     pub fn check(self) -> Result<CheckedOutputOpts> {
-        let Self {
-            excel,
-            flame,
-            flame_field,
-        } = self;
+        let Self { excel, flame } = self;
 
         let any_given = [excel.is_some(), flame.is_some()].iter().any(|b| *b);
         if !any_given {
@@ -72,7 +76,6 @@ impl OutputOpts {
 
         Ok(CheckedOutputOpts {
             variants: OutputVariants { excel, flame },
-            flame_field,
         })
     }
 }

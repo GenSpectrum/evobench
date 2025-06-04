@@ -152,7 +152,12 @@ impl AllOutputsAllFieldsTable<SummaryStats> {
         let x = lists_by_field.map(|case, afts| AllFieldsTableWithOutputPathOrBase {
             aft: AllFieldsTable::summary_stats(
                 afts.as_slice(),
-                field_selector,
+                match case {
+                    CheckedOutputOptsMapCase::Excel => field_selector,
+                    // Flame graphs always need the sums, thus ignore
+                    // the user option for those
+                    CheckedOutputOptsMapCase::Flame => StatsField::Sum,
+                },
                 &key_details_for(case, evaluation_opts),
             ),
             output_path_or_base: output_opts.get(case).as_ref().expect("ditto").clone(),
