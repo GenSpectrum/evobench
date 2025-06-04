@@ -3,8 +3,8 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::Parser;
+use evobench_evaluator::evaluator::all_fields_table::{SingleRunStats, SummaryStats};
 use evobench_evaluator::evaluator::all_outputs_all_fields_table::AllOutputsAllFieldsTable;
-use evobench_evaluator::evaluator::evaluator::{SingleRunStats, SummaryStats};
 use evobench_evaluator::evaluator::options::{
     CheckedOutputOpts, EvaluationAndOutputOpts, FieldSelectorDimension3, FieldSelectorDimension4,
     FlameField,

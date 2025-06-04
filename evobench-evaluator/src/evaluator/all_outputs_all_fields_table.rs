@@ -13,7 +13,7 @@ use crate::{
 };
 
 use super::{
-    evaluator::{
+    all_fields_table::{
         AllFieldsTable, AllFieldsTableKind, AllFieldsTableKindParams, KeyRuntimeDetails,
         SingleRunStats, SummaryStats,
     },
