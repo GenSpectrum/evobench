@@ -142,6 +142,7 @@ fn main() -> Result<()> {
             aft.write_to_files(flame_field)?;
         }
 
+        #[allow(unused)]
         Command::Trend {
             evaluation_and_output_opts: evaluation_opts,
             grouped_paths,
