@@ -512,7 +512,7 @@ impl AllFieldsTable<SummaryStats> {
             || summary_stats_for_field::<RealTime>(key_details, afts, field_selector),
             || summary_stats_for_field::<CpuTime>(key_details, afts, field_selector),
             || summary_stats_for_field::<SysTime>(key_details, afts, field_selector),
-            || summary_stats_for_field::<CtxSwitches>(&key_details, afts, field_selector),
+            || summary_stats_for_field::<CtxSwitches>(key_details, afts, field_selector),
         )
             .par_run();
 

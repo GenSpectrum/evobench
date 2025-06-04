@@ -49,6 +49,8 @@ pub struct OutputOpts {
     flame_field: StatsField<TILE_COUNT>,
 }
 
+/// OutputOpts split into checked `OutputVariants` and possibly other
+/// options
 pub struct CheckedOutputOpts {
     pub variants: OutputVariants<PathBuf>,
     pub flame_field: StatsField<TILE_COUNT>,
