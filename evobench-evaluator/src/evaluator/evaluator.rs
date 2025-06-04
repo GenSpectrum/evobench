@@ -8,16 +8,16 @@ use anyhow::Result;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
+    dynamic_typing::{StatsOrCount, StatsOrCountOrSubStats},
     evaluator::options::TILE_COUNT,
     index_by_call_path::IndexByCallPath,
     join::{keyval_inner_join, KeyVal},
     log_data_tree::{LogDataTree, PathStringOptions, SpanId},
     log_message::Timing,
     rayon_util::ParRun,
-    stats::{Stats, StatsError, StatsField, SubStats, ToStatsString},
-    table::{StatsOrCount, Table, TableKind},
+    stats::{Stats, StatsError, StatsField, ToStatsString},
+    table::{Table, TableKind},
     table_field_view::TableFieldView,
-    table_view::{ColumnFormatting, Highlight, TableViewRow, Unit},
     times::{MicroTime, NanoTime},
 };
 
@@ -224,47 +224,6 @@ impl AllFieldsTableKind for SummaryStats {}
 /// lines, across SummaryStats.
 pub struct Trend;
 impl AllFieldsTableKind for Trend {}
-
-// XX can one do the same via GATs? For now just do a runtime switch.
-pub enum StatsOrCountOrSubStats<ViewType: Debug, const TILE_COUNT: usize> {
-    StatsOrCount(StatsOrCount<ViewType, TILE_COUNT>),
-    SubStats(SubStats<ViewType, TILE_COUNT>),
-}
-
-impl<ViewType: Debug, const TILE_COUNT: usize> From<StatsOrCount<ViewType, TILE_COUNT>>
-    for StatsOrCountOrSubStats<ViewType, TILE_COUNT>
-{
-    fn from(value: StatsOrCount<ViewType, TILE_COUNT>) -> Self {
-        Self::StatsOrCount(value)
-    }
-}
-
-impl<ViewType: Debug, const TILE_COUNT: usize> From<SubStats<ViewType, TILE_COUNT>>
-    for StatsOrCountOrSubStats<ViewType, TILE_COUNT>
-{
-    fn from(value: SubStats<ViewType, TILE_COUNT>) -> Self {
-        Self::SubStats(value)
-    }
-}
-
-impl<ViewType: Debug + From<u64> + ToStatsString, const TILE_COUNT: usize> TableViewRow<()>
-    for StatsOrCountOrSubStats<ViewType, TILE_COUNT>
-{
-    fn table_view_header(_: ()) -> Box<dyn AsRef<[(Cow<'static, str>, Unit, ColumnFormatting)]>> {
-        // XXX oh, which one to choose from? Are they the same?-- now
-        // could base this on TableViewRow type parameter
-        StatsOrCount::<ViewType, TILE_COUNT>::table_view_header(())
-    }
-
-    fn table_view_row(&self, out: &mut Vec<(Cow<str>, Highlight)>) {
-        match self {
-            StatsOrCountOrSubStats::StatsOrCount(stats_or_count) => {
-                stats_or_count.table_view_row(out)
-            }
-            StatsOrCountOrSubStats::SubStats(sub_stats) => sub_stats.table_view_row(out),
-        }
-    }
-}
 
 /// A group of 4 tables, one per real/cpu/sys time and ctx switches,
 /// rows representing probe points, although the exact rows depend on

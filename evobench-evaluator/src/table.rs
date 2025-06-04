@@ -5,39 +5,14 @@ use itertools::{EitherOrBoth, Itertools};
 
 use crate::{
     change::{Change, IsBetter},
-    evaluator::{evaluator::StatsOrCountOrSubStats, options::TILE_COUNT},
+    dynamic_typing::{StatsOrCount, StatsOrCountOrSubStats},
+    evaluator::options::TILE_COUNT,
     join::KeyVal,
     resolution_unit::ResolutionUnit,
     stats::{Stats, StatsField, SubStats, ToStatsString},
     table_field_view::TableFieldView,
     table_view::{ColumnFormatting, Highlight, TableView, TableViewRow, Unit},
 };
-
-#[derive(Debug)]
-pub enum StatsOrCount<ViewType: Debug, const TILE_COUNT: usize> {
-    Stats(Stats<ViewType, TILE_COUNT>),
-    Count(usize),
-}
-
-impl<ViewType: From<u64> + ToStatsString + Debug, const TILE_COUNT: usize> TableViewRow<()>
-    for StatsOrCount<ViewType, TILE_COUNT>
-{
-    fn table_view_header(_: ()) -> Box<dyn AsRef<[(Cow<'static, str>, Unit, ColumnFormatting)]>> {
-        Stats::<ViewType, TILE_COUNT>::table_view_header(())
-    }
-    fn table_view_row(&self, out: &mut Vec<(Cow<str>, Highlight)>) {
-        match self {
-            StatsOrCount::Stats(stats) => stats.table_view_row(out),
-            StatsOrCount::Count(count) => {
-                out.push((
-                    count.to_string().into(),
-                    // XX?
-                    Highlight::Neutral,
-                ));
-            }
-        }
-    }
-}
 
 pub trait TableKind: Clone {
     fn table_name(&self) -> Cow<str>;
