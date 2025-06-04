@@ -14,12 +14,9 @@ overflow-checks = true
 anyhow = { version = "1.0.65", features = ["backtrace"]}
 clap = { version = "3", features = ["derive"] }
 terminal_size = "0.2"
-chrono = "0.4"
 lazy_static = "1.4"
 itertools = "0.11.0"
 thiserror = "1.0.37"
-walkdir = "2"
-os_info = "=3.7"
 rayon = "1.5.3"
 serde = { version = "1.0.154", features = ["derive"] }
 serde_json= "1.0"
@@ -32,3 +29,7 @@ genawaiter = { version = "0.99.1", default-features = false }
 mimalloc = "0.1.43"
 inferno = { version = "0.11.21", default-features = false, features = [] }
 ouroboros = "0.18.5"
+
+chrono = "0.4"
+walkdir = "2"
+os_info = "=3.7"
