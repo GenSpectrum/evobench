@@ -15,8 +15,8 @@ pub struct LogDataAndTree {
 
 impl LogDataAndTree {
     /// `LogData::read_file` combined with `LogDataTree::from_logdata`
-    pub fn read_file(path: &Path, max_file_size: Option<u64>) -> Result<Self> {
-        let log_data = LogData::read_file(path, max_file_size)?;
+    pub fn read_file(path: &Path) -> Result<Self> {
+        let log_data = LogData::read_file(path)?;
 
         LogDataAndTree::try_new(log_data, |log_data| LogDataTree::from_logdata(log_data))
     }
