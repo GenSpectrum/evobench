@@ -7,6 +7,9 @@ use std::{
 };
 
 use anyhow::{anyhow, bail, Context, Result};
+use ruzstd::StreamingDecoder;
+
+const USING_EXTERNAL_TOOL: bool = false;
 
 /// Transparently decompress zstd files if they have a .zstd suffix;
 /// after that, expecting the `expected_suffix` (XX well, currently
@@ -22,19 +25,25 @@ pub fn decompressed_file(path: &Path, expected_suffix: &str) -> Result<Box<dyn R
         _ => bail!("unknown file extension {ext:?}, expecting .log or .zstd: {path:?}"),
     };
 
+    let file_open = || File::open(path).with_context(|| anyhow!("opening file {path:?}"));
+
     if is_compressed {
-        let mut c = Command::new("zstd");
-        let args: Vec<OsString> = vec!["-dcf".into(), "--".into(), path.into()];
-        c.args(args);
-        c.stdout(Stdio::piped());
-        let child = c
-            .spawn()
-            .with_context(|| anyhow!("opening file {path:?}"))?;
-        let out = child.stdout.expect("present since configured");
-        Ok(Box::new(out))
+        if USING_EXTERNAL_TOOL {
+            let mut c = Command::new("zstd");
+            let args: Vec<OsString> = vec!["-dcf".into(), "--".into(), path.into()];
+            c.args(args);
+            c.stdout(Stdio::piped());
+            let child = c
+                .spawn()
+                .with_context(|| anyhow!("opening file {path:?}"))?;
+            Ok(Box::new(child.stdout.expect("present since configured")))
+        } else {
+            let input = file_open()?;
+            Ok(Box::new(
+                StreamingDecoder::new(input).with_context(|| anyhow!("zstd-decoding {path:?}"))?,
+            ))
+        }
     } else {
-        Ok(Box::new(
-            File::open(path).with_context(|| anyhow!("opening file {path:?}"))?,
-        ))
+        Ok(Box::new(file_open()?))
     }
 }
