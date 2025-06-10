@@ -5,7 +5,7 @@ use anyhow::Result;
 use evobench_evaluator::log_message::Metadata;
 use evobench_evaluator::{
     git::GitGraph,
-    log_message::{ExecutionTimings, LogMessage, ThreadId},
+    log_message::{LogMessage, ThreadId},
 };
 
 include!("../include/evobench_version.rs");

@@ -40,17 +40,6 @@ pub struct Metadata {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ExecutionTimings {
-    /// Real time
-    pub r_ns: u64,
-    /// Userspace time
-    pub u_ns: u64,
-    /// Sys time
-    pub s_ns: u64,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Timing {
     // Probe name ("module|local" if using the macros)
     pub pn: KString,
