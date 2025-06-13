@@ -4,7 +4,10 @@
 //! From/Into. Then call locking methods on that to get a guard with
 //! access to the file handle.
 
-use std::ops::{Deref, DerefMut};
+use std::{
+    fmt::Display,
+    ops::{Deref, DerefMut},
+};
 
 use fs2::{lock_contended_error, FileExt};
 
@@ -76,7 +79,45 @@ impl<F: FileExt> From<F> for LockableFile<F> {
     }
 }
 
+/// Information about what kind of lock is held
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LockStatus {
+    Unlocked,
+    SharedLock,
+    ExclusiveLock,
+}
+impl LockStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            LockStatus::Unlocked => "unlocked",
+            LockStatus::SharedLock => "shared lock",
+            LockStatus::ExclusiveLock => "exclusive lock",
+        }
+    }
+}
+
+impl Display for LockStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 impl<F: FileExt> LockableFile<F> {
+    /// Determines lock status by temporarily getting locks in
+    /// nonblocking manner, thus not very performant! Also, may
+    /// erroneously return `LockStatus::SharedLock` if during testing
+    /// an exclusive lock is released.
+    pub fn lock_status(&mut self) -> std::io::Result<LockStatus> {
+        use LockStatus::*;
+        Ok(if self.try_lock_exclusive()?.is_some() {
+            Unlocked
+        } else if self.try_lock_shared()?.is_some() {
+            SharedLock
+        } else {
+            ExclusiveLock
+        })
+    }
+
     pub fn lock_shared<'s>(&'s mut self) -> std::io::Result<SharedFileLock<'s, F>> {
         FileExt::lock_shared(&self.file)?;
         Ok(SharedFileLock {
