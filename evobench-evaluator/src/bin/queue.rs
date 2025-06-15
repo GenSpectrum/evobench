@@ -269,7 +269,7 @@ fn main() -> Result<()> {
                                 Ok(v) => format!("{v:?}"),
                                 Err(e) => format!("-- error retrieving file name: {e:?}"),
                             };
-                            anyhow!("lock taken on {file_name_str}")
+                            anyhow!("lock is already taken on {file_name_str}")
                         })?
                     } else {
                         lockable.lock_exclusive()?
