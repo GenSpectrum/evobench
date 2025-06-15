@@ -2,21 +2,40 @@ use std::{
     borrow::Cow,
     fmt::Display,
     fs::File,
-    path::Path,
+    path::{Path, PathBuf},
     sync::atomic::AtomicU64,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use chrono::{DateTime, Utc};
 use genawaiter::rc::Gen;
+use ouroboros::self_referencing;
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::lockable_file::{ExclusiveFileLock, SharedFileLock};
+use crate::lockable_file::{ExclusiveFileLock, LockableFile, SharedFileLock};
 
 use super::{
     as_key::AsKey,
     key_val::{Entry, KeyVal, KeyValConfig, KeyValError},
 };
+
+#[macro_export]
+macro_rules! info_if {
+    { $verbose:expr, $($arg:tt)* } => {
+        if $verbose {
+            eprintln!($($arg)*);
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! info_noln_if {
+    { $verbose:expr, $($arg:tt)* } => {
+        if $verbose {
+            eprint!($($arg)*);
+        }
+    }
+}
 
 fn next_id() -> u64 {
     static IDS: AtomicU64 = AtomicU64::new(0);
@@ -80,7 +99,79 @@ impl AsKey for TimeKey {
     }
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub struct QueueIterationOpts {
+    /// Used for debugging in some places
+    pub verbose: bool,
+    /// Wait for entries if the queue is empty (i.e. go on forever)
+    pub wait: bool,
+    /// Do not attempt to lock entries (default: false)
+    pub no_lock: bool,
+    /// Instead of blocking to get a lock on an entry, return with an
+    /// error if an entry is locked.
+    pub error_when_locked: bool,
+    /// Delete entry before returning the item (alternatively, call
+    /// `delete`).
+    pub delete_first: bool,
+}
+
+enum PerhapsLock<T> {
+    /// User asked not to lock (`no_lock`)
+    NoLock,
+    /// Entry vanished thus let go lock again
+    EntryGone,
+    /// Lock
+    Lock(T),
+}
+
+impl<T> PerhapsLock<T> {
+    fn is_gone(&self) -> bool {
+        match self {
+            PerhapsLock::NoLock => false,
+            PerhapsLock::EntryGone => true,
+            PerhapsLock::Lock(_) => false,
+        }
+    }
+}
+
+#[self_referencing]
+pub struct QueueItem<'basedir, V: DeserializeOwned + Serialize + 'static> {
+    verbose: bool,
+    lockable: LockableFile<File>,
+    entry: Entry<'basedir, TimeKey, V>,
+    #[borrows(mut entry, mut lockable)]
+    #[covariant]
+    // The lock unless `no_lock` was given.
+    perhaps_lock: (
+        &'this mut Entry<'basedir, TimeKey, V>,
+        PerhapsLock<ExclusiveFileLock<'this, File>>,
+    ),
+}
+
+impl<'basedir, V: DeserializeOwned + Serialize> QueueItem<'basedir, V> {
+    /// Delete this item now (alternatively, give `delete_first` in
+    /// `QueueIterationOpts`)
+    pub fn delete(&mut self) -> Result<(), KeyValError> {
+        let deleted = self.with_perhaps_lock_mut(|(entry, _lock)| entry.delete())?;
+        info_if!(*self.borrow_verbose(), "deleted entry: {:?}", deleted);
+        Ok(())
+    }
+}
+
 pub struct Queue<V: DeserializeOwned + Serialize>(KeyVal<TimeKey, V>);
+
+fn keyvalerror_from_lock_error<V>(
+    res: Result<V, std::io::Error>,
+    base_dir: &PathBuf,
+    path: &Path,
+) -> Result<V, KeyValError> {
+    res.map_err(|error| KeyValError::IO {
+        ctx: "getting lock on file",
+        base_dir: base_dir.clone(),
+        path: path.to_owned(),
+        error,
+    })
+}
 
 impl<V: DeserializeOwned + Serialize + 'static> Queue<V> {
     pub fn open(base_dir: impl AsRef<Path>, config: KeyValConfig) -> Result<Self, KeyValError> {
@@ -124,6 +215,100 @@ impl<V: DeserializeOwned + Serialize + 'static> Queue<V> {
                 }
                 Err(error) => {
                     co.yield_(Err(error)).await;
+                }
+            }
+        })
+        .into_iter()
+    }
+
+    /// Like `sorted_entries`, but (1) allows to lock entries and in
+    /// this case skips over entries that have been deleted by the
+    /// time we have the lock, (2) allows to go on forever, (3) always
+    /// retrieves the values, and offers an easy method to delete the
+    /// entry as well as delete it automatically immediately.
+    pub fn items<'s>(
+        &'s self,
+        opts: QueueIterationOpts,
+    ) -> impl Iterator<Item = Result<(QueueItem<'s, V>, V), KeyValError>> + use<'s, V> {
+        let base_dir = self.0.base_dir.clone();
+        Gen::new(|co| async move {
+            let QueueIterationOpts {
+                verbose,
+                wait,
+                no_lock,
+                error_when_locked,
+                delete_first,
+            } = opts;
+
+            let mut entries = None;
+            loop {
+                if entries.is_none() {
+                    entries = Some(self.sorted_entries(wait))
+                }
+                if let Some(entry) = entries.as_mut().expect("set 2 lines above").next() {
+                    match entry {
+                        Ok(mut entry) => {
+                            let value = entry.get().unwrap();
+                            let lockable = entry
+                                .take_lockable_file()
+                                .expect("we have not taken it yet");
+
+                            match QueueItem::try_new(
+                                verbose,
+                                lockable,
+                                entry,
+                                |entry, lockable: &mut LockableFile<File>| -> Result<_, _> {
+                                    if no_lock {
+                                        if delete_first {
+                                            entry.delete()?;
+                                        }
+                                        Ok((entry, PerhapsLock::NoLock))
+                                    } else {
+                                        let lock = if error_when_locked {
+                                            keyvalerror_from_lock_error(
+                                                lockable.try_lock_exclusive(),
+                                                &base_dir,
+                                                entry.target_path(),
+                                            )?
+                                            .ok_or_else(|| KeyValError::LockTaken {
+                                                base_dir: base_dir.clone(),
+                                                path: entry.target_path().to_owned(),
+                                            })?
+                                        } else {
+                                            keyvalerror_from_lock_error(
+                                                lockable.lock_exclusive(),
+                                                &base_dir,
+                                                entry.target_path(),
+                                            )?
+                                        };
+                                        info_if!(verbose, "got lock");
+                                        let exists = entry.exists();
+                                        if !exists {
+                                            info_if!(
+                                                verbose,
+                                                "but entry now deleted by another process"
+                                            );
+                                            return Ok((entry, PerhapsLock::EntryGone));
+                                        }
+                                        if delete_first {
+                                            entry.delete()?;
+                                        }
+                                        Ok((entry, PerhapsLock::Lock(lock)))
+                                    }
+                                },
+                            ) {
+                                Ok(item) => {
+                                    if !item.borrow_perhaps_lock().1.is_gone() {
+                                        co.yield_(Ok((item, value))).await;
+                                    }
+                                }
+                                Err(e) => co.yield_(Err(e)).await,
+                            }
+                        }
+                        Err(_) => todo!(),
+                    }
+                } else {
+                    entries = None
                 }
             }
         })

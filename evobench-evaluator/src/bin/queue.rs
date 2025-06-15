@@ -2,9 +2,6 @@ use std::{
     ffi::{OsStr, OsString},
     path::{Path, PathBuf},
     process::{exit, Command},
-    sync::atomic::{AtomicU64, Ordering},
-    thread,
-    time::Duration,
 };
 
 use anyhow::{anyhow, bail, Context, Result};
@@ -12,27 +9,12 @@ use clap::Parser;
 
 use evobench_evaluator::{
     get_terminal_width::get_terminal_width,
+    info_if,
     key_val_fs::{
         key_val::{Entry, KeyValConfig},
-        queue::Queue,
+        queue::{Queue, QueueIterationOpts},
     },
 };
-
-macro_rules! info_if {
-    { $verbose:expr, $($arg:tt)* } => {
-        if $verbose {
-            eprintln!($($arg)*);
-        }
-    }
-}
-
-macro_rules! info_noln_if {
-    { $verbose:expr, $($arg:tt)* } => {
-        if $verbose {
-            eprint!($($arg)*);
-        }
-    }
-}
 
 #[derive(clap::Parser, Debug)]
 #[clap(next_line_help = true)]
@@ -107,17 +89,12 @@ enum SubCommand {
         /// If an entry is locked, stop with an "Error: lock taken on"
         /// message (by default, blocks until it gets the lock).
         #[clap(long)]
-        error_on_lock: bool,
+        error_when_locked: bool,
 
         /// Only process at most those many entries (default: all of
         /// them).
         #[clap(long)]
-        limit: Option<u64>,
-
-        /// Sleep for that many seconds between steps (for debugging
-        /// purposes).
-        #[clap(long)]
-        sleep: Option<u64>,
+        limit: Option<usize>,
 
         /// Program name or path to run
         program: PathBuf,
@@ -199,98 +176,37 @@ fn main() -> Result<()> {
         SubCommand::Run {
             no_lock,
             limit,
-            sleep,
-            error_on_lock,
+            error_when_locked,
             wait,
             verbose,
             delete_first,
             program,
             first_arguments,
         } => {
-            let num_processed = AtomicU64::new(0);
-            let mut entries = None;
-            loop {
-                if let Some(limit) = &limit {
-                    if num_processed.load(Ordering::SeqCst) >= *limit {
-                        info_if!(verbose, "reached given limit, stop processing the queue");
-                        break;
-                    }
-                }
-                if entries.is_none() {
-                    entries = Some(queue.sorted_entries(wait))
-                }
-                if let Some(entry) = entries.as_mut().expect("set 2 lines above").next() {
-                    let mut entry = entry?;
-                    let mut arguments = first_arguments.clone();
-                    {
-                        let mut queue_arguments = entry.get()?;
-                        arguments.append(&mut queue_arguments);
-                    }
+            let opts = QueueIterationOpts {
+                no_lock,
+                error_when_locked,
+                wait,
+                verbose,
+                delete_first,
+            };
+            for item_value in queue.items(opts).take(limit.unwrap_or(usize::MAX)) {
+                let (mut item, mut queue_arguments) = item_value?;
 
-                    let perhaps_sleep = || {
-                        if let Some(secs) = &sleep {
-                            info_noln_if!(verbose, "sleeping {secs} seconds...");
-                            thread::sleep(Duration::from_secs(*secs));
-                            info_if!(verbose, "done.");
-                        }
-                    };
-                    let run = |entry: &mut Entry<_, _>| -> Result<()> {
-                        let mut delete = || -> Result<()> {
-                            let deleted = entry.delete()?;
-                            info_if!(verbose, "deleted entry: {:?}", deleted);
-                            Ok(())
-                        };
+                let mut arguments = first_arguments.clone();
+                arguments.append(&mut queue_arguments);
 
-                        if delete_first {
-                            delete()?;
-                        }
-                        info_if!(verbose, "running {program:?} with arguments {arguments:?}");
-                        let mut command = Command::new(&program)
-                            .args(arguments)
-                            .spawn()
-                            .with_context(|| anyhow!("running program {program:?}"))?;
-                        let status = command.wait();
-                        if status.is_err() {
-                            bail!("command {program:?} exited with code {status:?}")
-                        }
-                        if !delete_first {
-                            delete()?;
-                        }
-                        num_processed.fetch_add(1, Ordering::SeqCst);
-                        Ok(())
-                    };
-                    if no_lock {
-                        run(&mut entry)?;
-                        perhaps_sleep();
-                    } else {
-                        let mut lockable = entry
-                            .take_lockable_file()
-                            .expect("we have not taken it yet");
-                        let lock = if error_on_lock {
-                            lockable.try_lock_exclusive()?.ok_or_else(|| {
-                                let file_name_str = match get_filename(&entry) {
-                                    Ok(v) => format!("{v:?}"),
-                                    Err(e) => format!("-- error retrieving file name: {e:?}"),
-                                };
-                                anyhow!("lock is already taken on {file_name_str}")
-                            })?
-                        } else {
-                            lockable.lock_exclusive()?
-                        };
-                        info_if!(verbose, "got lock");
-                        let exists = entry.exists();
-                        if exists {
-                            run(&mut entry)?;
-                            perhaps_sleep();
-                        } else {
-                            info_if!(verbose, "but entry now deleted by another process");
-                        }
-                        drop(lock);
-                        info_if!(verbose, "released lock");
-                        perhaps_sleep();
-                    }
-                } else {
-                    entries = None
+                info_if!(verbose, "running {program:?} with arguments {arguments:?}");
+                let mut command = Command::new(&program)
+                    .args(arguments)
+                    .spawn()
+                    .with_context(|| anyhow!("running program {program:?}"))?;
+                let status = command.wait();
+                if status.is_err() {
+                    bail!("command {program:?} exited with code {status:?}")
+                }
+                if !delete_first {
+                    item.delete()?;
                 }
             }
         }

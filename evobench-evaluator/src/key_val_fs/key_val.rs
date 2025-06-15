@@ -187,8 +187,10 @@ pub enum KeyValError {
         ctx: &'static str,
         invalid_file_name: OsString,
     },
-    #[error("usage error: file handle already taken (in {base_dir:?}: {path:?})")]
+    #[error("usage error: file handle already taken out (in {base_dir:?}: {path:?})")]
     FileTaken { base_dir: PathBuf, path: PathBuf },
+    #[error("lock is already taken in {base_dir:?} for {path:?}")]
+    LockTaken { base_dir: PathBuf, path: PathBuf },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -284,8 +286,8 @@ impl Default for KeyValConfig {
 pub struct KeyVal<K: AsKey, V: DeserializeOwned + Serialize> {
     keys: PhantomData<fn() -> K>,
     vals: PhantomData<fn() -> V>,
-    config: KeyValConfig,
-    base_dir: PathBuf,
+    pub config: KeyValConfig,
+    pub base_dir: PathBuf,
     // Filehandle to the directory, for flock (was a .lock file, but
     // dir itself works, too, on Linux anyway)
     lock_file: LockableFile<File>,
