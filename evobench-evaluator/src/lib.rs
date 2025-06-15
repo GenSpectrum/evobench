@@ -9,6 +9,7 @@ pub mod git;
 pub mod index_by_call_path;
 pub mod io_util;
 pub mod join;
+pub mod key_val_fs;
 pub mod lockable_file;
 pub mod log_data_and_tree;
 pub mod log_data_tree;
