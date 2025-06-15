@@ -266,7 +266,7 @@ fn main() -> Result<()> {
                     let lock = if error_on_lock {
                         lockable.try_lock_exclusive()?.ok_or_else(|| {
                             let file_name_str = match get_filename(&entry) {
-                                Ok(v) => format!("{:?}", v),
+                                Ok(v) => format!("{v:?}"),
                                 Err(e) => format!("-- error retrieving file name: {e:?}"),
                             };
                             anyhow!("lock taken on {file_name_str}")
