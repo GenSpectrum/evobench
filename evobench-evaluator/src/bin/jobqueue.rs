@@ -136,13 +136,22 @@ fn main() -> Result<()> {
             .to_string())
     };
 
-    let mut queue: Queue<Vec<SafeString>> = Queue::open(&path, KeyValConfig::default())?;
+    let open_queue = |create_dir_if_not_exists| -> Result<Queue<Vec<SafeString>>> {
+        Ok(Queue::open(
+            &path,
+            KeyValConfig {
+                create_dir_if_not_exists,
+                ..KeyValConfig::default()
+            },
+        )?)
+    };
     match subcommand {
         SubCommand::WithExclusiveLock {
             verbose,
             command,
             arguments,
         } => {
+            let mut queue = open_queue(true)?;
             let lock = queue.lock_exclusive()?;
             info_if!(verbose, "got lock");
             let exit_code = run_command(command, arguments)?;
@@ -154,6 +163,7 @@ fn main() -> Result<()> {
             command,
             arguments,
         } => {
+            let mut queue = open_queue(true)?;
             let lock = queue.lock_shared()?;
             info_if!(verbose, "got lock");
             let exit_code = run_command(command, arguments)?;
@@ -161,6 +171,7 @@ fn main() -> Result<()> {
             exit(exit_code)
         }
         SubCommand::List => {
+            let queue = open_queue(false)?;
             for entry in queue.sorted_entries(false) {
                 let mut entry = entry?;
                 let file_name = get_filename(&entry)?;
@@ -173,7 +184,10 @@ fn main() -> Result<()> {
                 println!("{file_name} ({key})\t{locking}\t{val:?}");
             }
         }
-        SubCommand::Insert { arguments } => queue.push_front(&arguments)?,
+        SubCommand::Insert { arguments } => {
+            let mut queue = open_queue(true)?;
+            queue.push_front(&arguments)?
+        }
         SubCommand::Run {
             no_lock,
             limit,
@@ -184,6 +198,7 @@ fn main() -> Result<()> {
             program,
             first_arguments,
         } => {
+            let queue = open_queue(true)?;
             let opts = QueueIterationOpts {
                 no_lock,
                 error_when_locked,

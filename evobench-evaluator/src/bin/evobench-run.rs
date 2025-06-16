@@ -56,18 +56,21 @@ fn main() -> Result<()> {
     let conf = RunConfig::load_config(config)?;
     let run_queue_path = conf.run_queue_path()?;
 
-    let mut queue = Queue::<BenchmarkJob>::open(
-        &run_queue_path,
-        KeyValConfig {
-            sync: KeyValSync::All,
-            create_dir_if_not_exists: true,
-        },
-    )?;
+    let open_queue = |create_dir_if_not_exists| -> Result<Queue<BenchmarkJob>> {
+        Ok(Queue::<BenchmarkJob>::open(
+            &run_queue_path,
+            KeyValConfig {
+                sync: KeyValSync::All,
+                create_dir_if_not_exists,
+            },
+        )?)
+    };
 
     match subcommand {
         SubCommand::List => {
             // COPY-PASTE from List action in jobqueue.rs, except
             // printing the job in :#? view on the next line.
+            let queue = open_queue(false)?;
             for entry in queue.sorted_entries(false) {
                 let mut entry = entry?;
                 let file_name = get_filename(&entry)?;
@@ -81,6 +84,7 @@ fn main() -> Result<()> {
             }
         }
         SubCommand::Insert { benchmark_job } => {
+            let mut queue = open_queue(true)?;
             queue.push_front(&benchmark_job)?;
         }
     }
