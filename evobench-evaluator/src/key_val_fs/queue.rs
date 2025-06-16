@@ -241,11 +241,15 @@ impl<V: DeserializeOwned + Serialize + 'static> Queue<V> {
             } = opts;
 
             let mut entries = None;
+            // Whether we have tried to get an entry from entries (for "EOF" checking)
+            let mut got_entry = false;
             loop {
                 if entries.is_none() {
-                    entries = Some(self.sorted_entries(wait))
+                    entries = Some(self.sorted_entries(wait));
+                    got_entry = false;
                 }
                 if let Some(entry) = entries.as_mut().expect("set 2 lines above").next() {
+                    got_entry = true;
                     match entry {
                         Ok(mut entry) => {
                             let value = entry.get().unwrap();
@@ -308,7 +312,10 @@ impl<V: DeserializeOwned + Serialize + 'static> Queue<V> {
                         Err(_) => todo!(),
                     }
                 } else {
-                    entries = None
+                    entries = None;
+                    if !(got_entry || wait) {
+                        break;
+                    }
                 }
             }
         })
