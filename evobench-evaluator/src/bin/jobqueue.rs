@@ -62,7 +62,7 @@ enum SubCommand {
     Insert {
         /// The arguments to be passed to the program when using the
         /// `run` subcommand
-        arguments: Vec<SafeString>,
+        arguments: Vec<OsString>,
     },
     /// Process the entries in the queue
     Run {
@@ -100,7 +100,7 @@ enum SubCommand {
         /// Program name or path to run
         program: PathBuf,
         /// Program arguments to be prepended to the ones from the queue
-        first_arguments: Vec<SafeString>,
+        first_arguments: Vec<OsString>,
     },
 }
 
@@ -123,6 +123,10 @@ where
         Ok(exit_code)
     })()
     .with_context(|| anyhow!("running {:?}", command.as_ref()))
+}
+
+fn safestrings_from_osstrings(arguments: Vec<OsString>) -> Vec<SafeString> {
+    arguments.into_iter().map(|v| v.into()).collect()
 }
 
 fn main() -> Result<()> {
@@ -173,7 +177,9 @@ fn main() -> Result<()> {
                 println!("{file_name} ({key})\t{locking}\t{val:?}");
             }
         }
-        SubCommand::Insert { arguments } => queue.push_front(&arguments)?,
+        SubCommand::Insert { arguments } => {
+            queue.push_front(&safestrings_from_osstrings(arguments))?
+        }
         SubCommand::Run {
             no_lock,
             limit,
@@ -184,6 +190,7 @@ fn main() -> Result<()> {
             program,
             first_arguments,
         } => {
+            let first_arguments = safestrings_from_osstrings(first_arguments);
             let opts = QueueIterationOpts {
                 no_lock,
                 error_when_locked,
