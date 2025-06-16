@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{anyhow, bail, Context, Result};
 use serde::de::DeserializeOwned;
 
+use crate::path_util::add_extension;
+
 /// Returns None if the file does not exist
 pub fn try_load_json_file<T: DeserializeOwned>(path: &Path) -> Result<Option<T>> {
     match std::fs::read_to_string(&path) {
@@ -19,20 +21,34 @@ pub fn try_load_json_file<T: DeserializeOwned>(path: &Path) -> Result<Option<T>>
 }
 
 pub trait LoadConfigFile: Default + DeserializeOwned {
-    fn default_config_path() -> Result<Option<PathBuf>>;
+    /// ".json5" and ".json" will be appended (and tried in order, but
+    /// the chosen suffix has no effect on the parser)
+    fn default_config_path_without_suffix() -> Result<Option<PathBuf>>;
 
     /// If `path` is given, the file must exist or an error is
     /// returned. Otherwise, a default location is checked
-    /// (`default_config_path`) and if exists, is loaded, if it
-    /// doesn't exist, a `Default` instance is generated.
+    /// (`default_config_path_without_suffix`) and if exists, is
+    /// loaded, if it doesn't exist, a `Default` instance is
+    /// generated.
     fn load_config<P: AsRef<Path>>(path: Option<P>) -> Result<Self> {
         if let Some(path) = path {
             let path = path.as_ref();
             try_load_json_file(&path)?
                 .ok_or_else(|| anyhow!("file with specified location {path:?} does not exist"))
         } else {
-            if let Some(path) = Self::default_config_path()? {
-                Ok(try_load_json_file(&path)?.unwrap_or_else(Self::default))
+            if let Some(path) = Self::default_config_path_without_suffix()? {
+                let path_json5 = add_extension(&path, "json5")
+                    .ok_or_else(|| anyhow!("path is missing a file name: {path:?}"))?;
+                let path_json = add_extension(&path, "json")
+                    .ok_or_else(|| anyhow!("path is missing a file name: {path:?}"))?;
+
+                Ok(if let Some(c) = try_load_json_file(&path_json5)? {
+                    c
+                } else if let Some(c) = try_load_json_file(&path_json)? {
+                    c
+                } else {
+                    Self::default()
+                })
             } else {
                 Ok(Self::default())
             }

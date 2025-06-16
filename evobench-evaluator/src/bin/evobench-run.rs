@@ -18,8 +18,9 @@ use evobench_evaluator::{
 #[clap(set_term_width = get_terminal_width())]
 /// Schedule (and query?) benchmarking jobs.
 struct Opts {
-    /// Path to the config file, by default `~/.evobench-run.rs`, and
-    /// if that is missing, using compiled-in default config values.
+    /// Override the path to the config file (default: the paths
+    /// `~/.evobench-run.json5` and `~/.evobench-run.json`, and if
+    /// those are missing, use compiled-in default config values)
     #[clap(long)]
     config: Option<PathBuf>,
 

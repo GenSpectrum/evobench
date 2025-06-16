@@ -30,8 +30,8 @@ impl Default for RunConfig {
 }
 
 impl LoadConfigFile for RunConfig {
-    fn default_config_path() -> Result<Option<PathBuf>> {
+    fn default_config_path_without_suffix() -> Result<Option<PathBuf>> {
         let home = home_dir()?;
-        Ok(Some(home.append(".evobench-run.rs")))
+        Ok(Some(home.append(".evobench-run")))
     }
 }
