@@ -22,10 +22,15 @@ pub struct ThreadId(pub u64);
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct UName {
+    /// e.g. "Linux",
     pub sysname: String,
+    /// e.g. "dev-1-cj1"
     pub nodename: String,
+    /// e.g. "6.1.0-37-amd64"
     pub release: String,
+    /// e.g. "#1 SMP PREEMPT_DYNAMIC Debian 6.1.140-1 (2025-05-22)"
     pub version: String,
+    /// e.g. "x86_64"
     pub machine: String,
 }
 
