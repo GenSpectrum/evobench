@@ -21,6 +21,7 @@ pub mod path_util;
 pub mod rayon_util;
 pub mod resolution_unit;
 pub mod run;
+pub mod safe_string;
 pub mod serde;
 pub mod stats;
 pub mod table;
