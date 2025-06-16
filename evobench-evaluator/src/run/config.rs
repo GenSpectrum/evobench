@@ -5,6 +5,7 @@ use anyhow::Result;
 use crate::{load_config_file::LoadConfigFile, path_util::AppendToPath, utillib::home::home_dir};
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RunConfig {
     /// If not given, `~/.evobench-run-queue/` is used
     run_queue_path: Option<PathBuf>,

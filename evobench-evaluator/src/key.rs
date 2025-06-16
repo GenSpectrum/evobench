@@ -28,6 +28,7 @@ use crate::{
 };
 
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct OsInfo {
     /// e.g. taken from `UName.sysname`
     pub os: String, // XX use the enum from other lib, move
@@ -40,6 +41,7 @@ pub struct OsInfo {
 /// Information that together should allow a host to be determined to
 /// be equivalent.
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct HostInfo {
     pub cpu_model: String,
     pub num_cores: NonZeroU32,
@@ -50,6 +52,7 @@ pub struct HostInfo {
 }
 
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Host {
     /// e.g. taken from `UName.nodename`
     pub hostname: String,
@@ -59,6 +62,7 @@ pub struct Host {
 /// As determined by evobench-run (but should compare to duplicates
 /// of some of the fields in the bench log file resulting from a run)
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EarlyContext {
     pub host: Host,
     pub username: String,
@@ -67,6 +71,7 @@ pub struct EarlyContext {
 }
 
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize, clap::Parser)]
+#[serde(deny_unknown_fields)]
 pub struct RunParameters {
     /// The commit of the source code of the target (benchmarked)
     /// project
@@ -81,6 +86,7 @@ pub struct RunParameters {
 /// As output by the benchmark runner of the target project (currently
 /// always the evobench-probes library)
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LateContext {
     /// Taken from `log_message::Metadata`: including version, as determined
     /// by evobench-probes, e.g. "GCC 12.2.0"
@@ -88,6 +94,7 @@ pub struct LateContext {
 }
 
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Key {
     /// Info gleaned by evobench-run before executing a run.
     pub early_context: EarlyContext,

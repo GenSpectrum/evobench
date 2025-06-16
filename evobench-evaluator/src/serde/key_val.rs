@@ -14,6 +14,7 @@ use anyhow::anyhow;
 // }
 
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize, clap::Parser)]
+#[serde(deny_unknown_fields)]
 pub struct KeyVal {
     pub key: String,
     pub val: String,
