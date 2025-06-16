@@ -30,6 +30,7 @@ mimalloc = "0.1.43"
 inferno = { version = "0.11.21", default-features = false, features = [] }
 ouroboros = "0.18.5"
 fs2 = "0.4.3"
+json5 = "0.2.8"
 
 chrono = "0.4"
 walkdir = "2"
