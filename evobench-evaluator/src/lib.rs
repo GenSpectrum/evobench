@@ -26,4 +26,5 @@ pub mod table_field_view;
 pub mod table_view;
 pub mod times;
 pub mod tree;
+pub mod utillib;
 pub mod zstd_file;
