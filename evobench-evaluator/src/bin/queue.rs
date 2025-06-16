@@ -190,7 +190,14 @@ fn main() -> Result<()> {
                 verbose,
                 delete_first,
             };
-            for item_value in queue.items(opts).take(limit.unwrap_or(usize::MAX)) {
+            let items = queue.items(opts);
+            let items: Box<dyn Iterator<Item = _>> = if let Some(limit) = limit {
+                Box::new(items.take(limit))
+            } else {
+                Box::new(items)
+            };
+
+            for item_value in items {
                 let (mut item, mut queue_arguments) = item_value?;
 
                 let mut arguments = first_arguments.clone();
