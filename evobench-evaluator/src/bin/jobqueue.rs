@@ -14,6 +14,7 @@ use evobench_evaluator::{
         key_val::{Entry, KeyValConfig},
         queue::{Queue, QueueIterationOpts},
     },
+    safe_string::SafeString,
 };
 
 #[derive(clap::Parser, Debug)]
@@ -61,7 +62,7 @@ enum SubCommand {
     Insert {
         /// The arguments to be passed to the program when using the
         /// `run` subcommand
-        arguments: Vec<OsString>,
+        arguments: Vec<SafeString>,
     },
     /// Process the entries in the queue
     Run {
@@ -99,7 +100,7 @@ enum SubCommand {
         /// Program name or path to run
         program: PathBuf,
         /// Program arguments to be prepended to the ones from the queue
-        first_arguments: Vec<OsString>,
+        first_arguments: Vec<SafeString>,
     },
 }
 
@@ -135,7 +136,7 @@ fn main() -> Result<()> {
             .to_string())
     };
 
-    let mut queue: Queue<Vec<OsString>> = Queue::open(&path, KeyValConfig::default())?;
+    let mut queue: Queue<Vec<SafeString>> = Queue::open(&path, KeyValConfig::default())?;
     match subcommand {
         SubCommand::WithExclusiveLock {
             verbose,

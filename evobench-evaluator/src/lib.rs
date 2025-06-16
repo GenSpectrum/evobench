@@ -18,6 +18,7 @@ pub mod log_message;
 pub mod path_util;
 pub mod rayon_util;
 pub mod resolution_unit;
+pub mod safe_string;
 pub mod stats;
 pub mod table;
 pub mod table_field_view;
