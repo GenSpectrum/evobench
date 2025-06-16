@@ -3,6 +3,7 @@ use std::{
     fmt::{Debug, Display},
     path::Path,
     process::{Command, Stdio},
+    str::FromStr,
 };
 
 use anyhow::{anyhow, bail, Context, Result};
@@ -34,7 +35,7 @@ fn decode_hex<const N: usize>(input: &[u8], output: &mut [u8; N]) -> Result<()> 
     Ok(())
 }
 
-#[derive(Clone, Hash, PartialEq, Eq)]
+#[derive(Clone, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct GitHash([u8; 20]);
 
 impl Debug for GitHash {
@@ -64,6 +65,17 @@ impl TryFrom<&[u8]> for GitHash {
         let mut bytes = [0; 20];
         decode_hex(value, &mut bytes)?;
         Ok(Self(bytes))
+    }
+}
+
+impl FromStr for GitHash {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        if s.chars().count() != s.len() {
+            bail!("not an ASCII string: {s:?}")
+        }
+        GitHash::try_from(s.as_bytes())
     }
 }
 
