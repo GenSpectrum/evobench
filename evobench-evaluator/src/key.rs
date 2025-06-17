@@ -78,9 +78,9 @@ pub struct RunParameters {
     /// project
     pub commit_id: GitHash,
 
-    /// Custom "key=value" pairs. They are passed on as environment
-    /// variables when executing the benchmarking runner of the target
-    /// project
+    /// Custom "KEY=value" pair strings. They are passed on as
+    /// environment variables when executing the benchmarking runner
+    /// of the target project
     pub custom_parameters: Vec<KeyVal>,
 }
 
