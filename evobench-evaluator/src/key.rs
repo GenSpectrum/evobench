@@ -20,7 +20,9 @@
 //! Custom parameters can be given and be relevant, e.g. whether
 //! providing input data to an application sorted or not.
 
-use std::num::NonZeroU32;
+use std::{collections::BTreeMap, num::NonZeroU32};
+
+use anyhow::{bail, Result};
 
 use crate::{
     git::GitHash,
@@ -70,8 +72,7 @@ pub struct EarlyContext {
     pub start_datetime: DateTimeWithOffset,
 }
 
-#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize, clap::Parser)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, PartialEq, Clone, clap::Parser)]
 pub struct RunParameters {
     /// The commit of the source code of the target (benchmarked)
     /// project
@@ -81,6 +82,57 @@ pub struct RunParameters {
     /// variables when executing the benchmarking runner of the target
     /// project
     pub custom_parameters: Vec<KeyVal>,
+}
+
+pub fn check_custom_parameters(
+    custom_parameters: &[KeyVal],
+    custom_parameters_required: &BTreeMap<String, bool>,
+) -> Result<BTreeMap<String, String>> {
+    let mut res = BTreeMap::new();
+    for kv in custom_parameters {
+        let KeyVal { key, val } = kv;
+        if !custom_parameters_required.contains_key(key) {
+            bail!("invalid custom parameter name {key:?}")
+        }
+        if res.contains_key(key) {
+            bail!("duplicated custom parameter with name {key:?}")
+        }
+        res.insert(key.to_owned(), val.to_owned());
+    }
+    for (key, required) in custom_parameters_required.iter() {
+        if *required {
+            if !res.contains_key(key) {
+                bail!("missing custom parameter with name {key:?}")
+            }
+        }
+    }
+
+    Ok(res)
+}
+
+#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CheckedRunParameters {
+    pub commit_id: GitHash,
+    pub checked_custom_parameters: BTreeMap<String, String>,
+}
+
+impl RunParameters {
+    pub fn checked(
+        self,
+        custom_parameters_required: &BTreeMap<String, bool>,
+    ) -> Result<CheckedRunParameters> {
+        let Self {
+            commit_id,
+            custom_parameters,
+        } = self;
+        let checked_custom_parameters =
+            check_custom_parameters(&custom_parameters, custom_parameters_required)?;
+        Ok(CheckedRunParameters {
+            commit_id,
+            checked_custom_parameters,
+        })
+    }
 }
 
 /// As output by the benchmark runner of the target project (currently
@@ -100,7 +152,7 @@ pub struct Key {
     pub early_context: EarlyContext,
     /// Parameters requested by the user and passed to the benchmark
     /// runner of the target project.
-    pub run_parameters: RunParameters,
+    pub run_parameters: CheckedRunParameters,
     /// Info gleaned by evobench-run from the output file of the
     /// evobench-probes library after executing a run.
     pub late_context: LateContext,

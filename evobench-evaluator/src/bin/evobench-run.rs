@@ -10,7 +10,10 @@ use evobench_evaluator::{
         queue::Queue,
     },
     load_config_file::LoadConfigFile,
-    run::{benchmark_job::BenchmarkJob, config::RunConfig},
+    run::{
+        benchmark_job::{BenchmarkJob, BenchmarkJobOpts},
+        config::RunConfig,
+    },
 };
 
 #[derive(clap::Parser, Debug)]
@@ -37,7 +40,7 @@ enum SubCommand {
     /// Insert a job
     Insert {
         #[clap(flatten)]
-        benchmark_job: BenchmarkJob,
+        benchmark_job_opts: BenchmarkJobOpts,
     },
 }
 
@@ -83,7 +86,8 @@ fn main() -> Result<()> {
                 println!("{file_name} ({key})\t{locking}\n{val:#?}");
             }
         }
-        SubCommand::Insert { benchmark_job } => {
+        SubCommand::Insert { benchmark_job_opts } => {
+            let benchmark_job = benchmark_job_opts.checked(&conf.custom_parameters_required)?;
             let mut queue = open_queue(true)?;
             queue.push_front(&benchmark_job)?;
         }

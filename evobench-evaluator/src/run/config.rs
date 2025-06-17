@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{collections::BTreeMap, path::PathBuf};
 
 use anyhow::Result;
 
@@ -9,6 +9,10 @@ use crate::{load_config_file::LoadConfigFile, path_util::AppendToPath, utillib::
 pub struct RunConfig {
     /// If not given, `~/.evobench-run-queue/` is used
     run_queue_path: Option<PathBuf>,
+    /// The key names (environment variable names) that are allowed
+    /// (value `false`) or required (value `true`) for benchmarking
+    /// the given project
+    pub custom_parameters_required: BTreeMap<String, bool>,
 }
 
 impl RunConfig {
@@ -26,6 +30,7 @@ impl Default for RunConfig {
     fn default() -> Self {
         Self {
             run_queue_path: None,
+            custom_parameters_required: Default::default(),
         }
     }
 }
