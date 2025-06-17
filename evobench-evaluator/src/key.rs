@@ -26,7 +26,7 @@ use anyhow::{bail, Result};
 
 use crate::{
     git::GitHash,
-    serde::{datetime::DateTimeWithOffset, key_val::KeyVal},
+    serde::{date_and_time::DateTimeWithOffset, key_val::KeyVal},
 };
 
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
