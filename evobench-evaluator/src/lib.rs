@@ -9,6 +9,7 @@ pub mod git;
 pub mod index_by_call_path;
 pub mod io_util;
 pub mod join;
+pub mod json5_from_str;
 pub mod key;
 pub mod key_val_fs;
 pub mod load_config_file;
