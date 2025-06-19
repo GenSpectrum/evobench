@@ -88,6 +88,7 @@ pub struct QueuesConfig {
     pub queues: Vec<(ProperFilename, ScheduleCondition)>,
 }
 
+/// Direct representation of the evobench-run config file
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunConfig {
