@@ -4,7 +4,7 @@ use clap::Parser;
 use std::path::PathBuf;
 
 use evobench_evaluator::{
-    config_file::LoadConfigFile,
+    config_file::{save_config_file, LoadConfigFile},
     get_terminal_width::get_terminal_width,
     key::CheckedRunParameters,
     key_val_fs::key_val::Entry,
@@ -37,6 +37,10 @@ struct Opts {
 
 #[derive(clap::Subcommand, Debug)]
 enum SubCommand {
+    /// Re-encode the config file (serialization type determined by
+    /// file extension) and save at the given path.
+    SaveConfig { output_path: PathBuf },
+
     /// List the current jobs
     List,
     /// Insert a job
@@ -107,6 +111,9 @@ fn main() -> Result<()> {
     let queues = RunQueues::open(&conf.queues_config, true)?;
 
     match subcommand {
+        SubCommand::SaveConfig { output_path } => {
+            save_config_file(&output_path, &conf)?;
+        }
         SubCommand::List => {
             // COPY-PASTE from List action in jobqueue.rs, except
             // printing the job in :#? view on the next line.

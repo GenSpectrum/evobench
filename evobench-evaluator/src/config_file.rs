@@ -3,21 +3,70 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, bail, Context, Result};
-use serde::de::DeserializeOwned;
+use serde::{de::DeserializeOwned, Serialize};
 
 use crate::{json5_from_str::json5_from_str, path_util::add_extension};
 
-/// Returns None if the file does not exist
-pub fn try_load_json_file<T: DeserializeOwned>(path: &Path) -> Result<Option<T>> {
-    match std::fs::read_to_string(&path) {
-        Ok(s) => Ok(Some(json5_from_str(&s).with_context(|| {
-            anyhow!("decoding JSON5 from config file {path:?}")
-        })?)),
-        Err(e) => match e.kind() {
-            std::io::ErrorKind::NotFound => Ok(None),
-            _ => bail!("loading config file from {path:?}: {e}"),
-        },
+#[derive(Debug, Clone, Copy)]
+pub enum ConfigBackend {
+    Json5,
+    Yaml,
+}
+
+impl ConfigBackend {
+    pub fn load_config_file<T: DeserializeOwned>(self, path: &Path) -> Result<T> {
+        let s = std::fs::read_to_string(&path)
+            .with_context(|| anyhow!("loading config file from {path:?}"))?;
+        match self {
+            ConfigBackend::Json5 => json5_from_str(&s)
+                .with_context(|| anyhow!("decoding JSON5 from config file {path:?}")),
+            ConfigBackend::Yaml => serde_yml::from_str(&s)
+                .with_context(|| anyhow!("decoding YAML from config file {path:?}")),
+        }
     }
+
+    pub fn save_config_file<T: Serialize>(self, path: &Path, value: &T) -> Result<()> {
+        let s = match self {
+            ConfigBackend::Json5 => {
+                json5::to_string(value).with_context(|| anyhow!("encoding config as JSON5"))?
+            }
+            ConfigBackend::Yaml => {
+                serde_yml::to_string(value).with_context(|| anyhow!("encoding config as YAML"))?
+            }
+        };
+        std::fs::write(path, s).with_context(|| anyhow!("writing config file to {path:?}"))
+    }
+}
+
+pub const FILE_EXTENSIONS: &[(&str, ConfigBackend)] = &[
+    ("json5", ConfigBackend::Json5),
+    ("json", ConfigBackend::Json5),
+    ("yml", ConfigBackend::Yaml),
+    ("yaml", ConfigBackend::Yaml),
+];
+
+pub fn backend_from_path(path: &Path) -> Result<ConfigBackend> {
+    if let Some(ext) = path.extension() {
+        if let Some(ext) = ext.to_str() {
+            if let Some((_, backend)) = FILE_EXTENSIONS.iter().find(|(e, _b)| *e == ext) {
+                Ok(*backend)
+            } else {
+                bail!("given file path does have an unknown extension {ext:?}: {path:?}")
+            }
+        } else {
+            bail!("given file path does have an extension that is not unicode: {path:?}")
+        }
+    } else {
+        bail!(
+            "given file path does not have an extension \
+                     for determining the file type: {path:?}"
+        )
+    }
+}
+
+pub fn save_config_file<T: Serialize>(path: &Path, value: &T) -> Result<()> {
+    let backend = backend_from_path(path)?;
+    backend.save_config_file(path, value)
 }
 
 pub trait LoadConfigFile: DeserializeOwned {
@@ -38,21 +87,35 @@ pub trait LoadConfigFile: DeserializeOwned {
     ) -> Result<Self> {
         if let Some(path) = path {
             let path = path.as_ref();
-            try_load_json_file(&path)?
-                .ok_or_else(|| anyhow!("file with specified location {path:?} does not exist"))
+            let backend = backend_from_path(path)?;
+            backend.load_config_file(path)
         } else {
             if let Some(path) = Self::default_config_path_without_suffix()? {
-                let paths: Vec<_> = vec!["json5", "json"]
+                let path_and_backends: Vec<_> = FILE_EXTENSIONS
                     .into_iter()
-                    .map(|extension| {
-                        add_extension(&path, extension)
-                            .ok_or_else(|| anyhow!("path is missing a file name: {path:?}"))
+                    .map(|(extension, backend)| {
+                        let path = add_extension(&path, extension)
+                            .ok_or_else(|| anyhow!("path is missing a file name: {path:?}"))?;
+                        if path.exists() {
+                            Ok(Some((path, backend)))
+                        } else {
+                            Ok(None)
+                        }
                     })
+                    .filter_map(|x| x.transpose())
                     .collect::<Result<_>>()?;
-
-                for path in &paths {
-                    if let Some(c) = try_load_json_file(path)? {
-                        return Ok(c);
+                let paths = path_and_backends
+                    .iter()
+                    .map(|(path, _)| path)
+                    .collect::<Vec<_>>();
+                match path_and_backends.len() {
+                    0 => (),
+                    1 => {
+                        let (path, backend) = &path_and_backends[0];
+                        return backend.load_config_file(&path);
+                    }
+                    _ => {
+                        bail!("multiple config file paths found, leading to ambiguity: {paths:?}")
                     }
                 }
                 or_else(format!("tried the default paths: {paths:?}"))
