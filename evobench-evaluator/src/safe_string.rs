@@ -2,8 +2,8 @@
 //! fall back to the original data (lossless) if not possible.
 
 use std::{
+    convert::Infallible,
     ffi::{OsStr, OsString},
-    fmt::Display,
     str::FromStr,
 };
 
@@ -37,20 +37,9 @@ impl From<SafeString> for OsString {
     }
 }
 
-#[derive(Debug)]
-pub struct NeverError;
-
-impl std::error::Error for NeverError {}
-
-impl Display for NeverError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("this error never happens")
-    }
-}
-
 // Required for Clap. Hmm, but does it still handle byte fallbacks??
 impl FromStr for SafeString {
-    type Err = NeverError;
+    type Err = Infallible;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(s.to_owned().into())
