@@ -105,6 +105,9 @@ pub struct QueueIterationOpts {
     pub verbose: bool,
     /// Wait for entries if the queue is empty (i.e. go on forever)
     pub wait: bool,
+    /// Stop at this time if given. Unblocks "wait" (waiting for new
+    /// messages), but not currently blocking on locks of entries!
+    pub stop_at: Option<SystemTime>,
     /// Do not attempt to lock entries (default: false)
     pub no_lock: bool,
     /// Instead of blocking to get a lock on an entry, return with an
@@ -158,6 +161,7 @@ impl<'basedir, V: DeserializeOwned + Serialize> QueueItem<'basedir, V> {
     }
 }
 
+#[derive(Debug)]
 pub struct Queue<V: DeserializeOwned + Serialize>(KeyVal<TimeKey, V>);
 
 fn keyvalerror_from_lock_error<V>(
@@ -185,7 +189,7 @@ impl<V: DeserializeOwned + Serialize + 'static> Queue<V> {
         self.0.lock_shared()
     }
 
-    pub fn push_front(&mut self, val: &V) -> Result<(), KeyValError> {
+    pub fn push_front(&self, val: &V) -> Result<(), KeyValError> {
         let key = TimeKey::now();
         self.0.insert(&key, val, true)
     }
@@ -203,9 +207,10 @@ impl<V: DeserializeOwned + Serialize + 'static> Queue<V> {
     pub fn sorted_entries<'s>(
         &'s self,
         wait_for_entries: bool,
+        stop_at: Option<SystemTime>,
     ) -> impl Iterator<Item = Result<Entry<'s, TimeKey, V>, KeyValError>> + use<'s, V> {
         Gen::new(|co| async move {
-            match self.0.sorted_keys(wait_for_entries) {
+            match self.0.sorted_keys(wait_for_entries, stop_at) {
                 Ok(keys) => {
                     for key in keys {
                         if let Some(res) = self.0.entry(&key).transpose() {
@@ -235,6 +240,7 @@ impl<V: DeserializeOwned + Serialize + 'static> Queue<V> {
             let QueueIterationOpts {
                 verbose,
                 wait,
+                stop_at,
                 no_lock,
                 error_when_locked,
                 delete_first,
@@ -245,7 +251,7 @@ impl<V: DeserializeOwned + Serialize + 'static> Queue<V> {
             let mut got_entry = false;
             loop {
                 if entries.is_none() {
-                    entries = Some(self.sorted_entries(wait));
+                    entries = Some(self.sorted_entries(wait, stop_at));
                     got_entry = false;
                 }
                 if let Some(entry) = entries.as_mut().expect("set 2 lines above").next() {
@@ -309,7 +315,7 @@ impl<V: DeserializeOwned + Serialize + 'static> Queue<V> {
                                 Err(e) => co.yield_(Err(e)).await,
                             }
                         }
-                        Err(_) => todo!(),
+                        Err(e) => co.yield_(Err(e)).await,
                     }
                 } else {
                     entries = None;

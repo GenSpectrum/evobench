@@ -4,10 +4,7 @@
 //! From/Into. Then call locking methods on that to get a guard with
 //! access to the file handle.
 
-use std::{
-    fmt::Display,
-    ops::{Deref, DerefMut},
-};
+use std::{fmt::Display, ops::Deref};
 
 use fs2::{lock_contended_error, FileExt};
 
@@ -17,7 +14,7 @@ pub struct SharedFileLock<'s, F: FileExt> {
     // XX joke: need DerefMut anyway, even reading requires mut
     // access. So the two locks are identical now. TODO: eliminate or
     // ? Parameterize instead?
-    file: &'s mut F,
+    file: &'s F,
 }
 
 impl<'s, F: FileExt> Drop for SharedFileLock<'s, F> {
@@ -34,17 +31,10 @@ impl<'s, F: FileExt> Deref for SharedFileLock<'s, F> {
     }
 }
 
-// XX joke: need DerefMut anyway, even reading requires mut access.
-impl<'s, F: FileExt> DerefMut for SharedFileLock<'s, F> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.file
-    }
-}
-
 // -----------------------------------------------------------------------------
 
 pub struct ExclusiveFileLock<'s, F: FileExt> {
-    file: &'s mut F,
+    file: &'s F,
 }
 
 impl<'s, F: FileExt> Drop for ExclusiveFileLock<'s, F> {
@@ -61,14 +51,9 @@ impl<'s, F: FileExt> Deref for ExclusiveFileLock<'s, F> {
     }
 }
 
-impl<'s, F: FileExt> DerefMut for ExclusiveFileLock<'s, F> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.file
-    }
-}
-
 // -----------------------------------------------------------------------------
 
+#[derive(Debug)]
 pub struct LockableFile<F: FileExt> {
     file: F,
 }
@@ -118,18 +103,14 @@ impl<F: FileExt> LockableFile<F> {
         })
     }
 
-    pub fn lock_shared<'s>(&'s mut self) -> std::io::Result<SharedFileLock<'s, F>> {
+    pub fn lock_shared<'s>(&'s self) -> std::io::Result<SharedFileLock<'s, F>> {
         FileExt::lock_shared(&self.file)?;
-        Ok(SharedFileLock {
-            file: &mut self.file,
-        })
+        Ok(SharedFileLock { file: &self.file })
     }
 
-    pub fn lock_exclusive<'s>(&'s mut self) -> std::io::Result<ExclusiveFileLock<'s, F>> {
+    pub fn lock_exclusive<'s>(&'s self) -> std::io::Result<ExclusiveFileLock<'s, F>> {
         FileExt::lock_exclusive(&self.file)?;
-        Ok(ExclusiveFileLock {
-            file: &mut self.file,
-        })
+        Ok(ExclusiveFileLock { file: &self.file })
     }
 
     pub fn try_lock_shared<'s>(&'s mut self) -> std::io::Result<Option<SharedFileLock<'s, F>>> {

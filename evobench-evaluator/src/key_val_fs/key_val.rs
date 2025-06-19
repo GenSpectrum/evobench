@@ -6,7 +6,7 @@ use std::{
     marker::PhantomData,
     path::{Path, PathBuf},
     thread::sleep,
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 use serde::{de::DeserializeOwned, Serialize};
@@ -50,7 +50,7 @@ fn key_from_file_name<K: AsKey>(
 macro_rules! define_lock_helper {
     { $name:ident, $lock_type:tt, $method:tt } =>  {
         fn $name<'l>(
-            lock_file: &'l mut LockableFile<File>,
+            lock_file: &'l LockableFile<File>,
             base_dir: &PathBuf,
         ) -> Result<$lock_type<'l, File>, KeyValError> {
             lock_file.$method().map_err(|error| KeyValError::IO {
@@ -250,7 +250,7 @@ impl KeyValSync {
         Ok(())
     }
 
-    fn perhaps_sync_dir(self, dir_file: &mut File, base_dir: &Path) -> Result<(), KeyValError> {
+    fn perhaps_sync_dir(self, dir_file: &File, base_dir: &Path) -> Result<(), KeyValError> {
         if self.do_sync_dirs() {
             dir_file.sync_all().map_err(|error| KeyValError::IO {
                 ctx: "sync of the directory",
@@ -283,6 +283,7 @@ impl Default for KeyValConfig {
     }
 }
 
+#[derive(Debug)]
 pub struct KeyVal<K: AsKey, V: DeserializeOwned + Serialize> {
     keys: PhantomData<fn() -> K>,
     vals: PhantomData<fn() -> V>,
@@ -361,7 +362,7 @@ impl<K: AsKey, V: DeserializeOwned + Serialize> KeyVal<K, V> {
     /// Insert a mapping; if `exclusive` is true, give an error if
     /// `key` is already in the map (otherwise the previous value is
     /// silently overwritten).
-    pub fn insert(&mut self, key: &K, val: &V, exclusive: bool) -> Result<(), KeyValError>
+    pub fn insert(&self, key: &K, val: &V, exclusive: bool) -> Result<(), KeyValError>
     where
         K: Debug,
     {
@@ -375,7 +376,7 @@ impl<K: AsKey, V: DeserializeOwned + Serialize> KeyVal<K, V> {
 
         // The lock is required since we only use 1 tmp file path for
         // all processes! Also, for a race-free existence check.
-        let _lock = lock_exclusive(&mut self.lock_file, &self.base_dir)?;
+        let _lock = lock_exclusive(&self.lock_file, &self.base_dir)?;
 
         if exclusive && target_path.exists() {
             return Err(KeyValError::KeyExists {
@@ -412,7 +413,7 @@ impl<K: AsKey, V: DeserializeOwned + Serialize> KeyVal<K, V> {
         })?;
         self.config
             .sync
-            .perhaps_sync_dir(&mut self.dir_file, &self.base_dir)?;
+            .perhaps_sync_dir(&self.dir_file, &self.base_dir)?;
         Ok(())
     }
 
@@ -453,7 +454,9 @@ impl<K: AsKey, V: DeserializeOwned + Serialize> KeyVal<K, V> {
         }
     }
 
-    pub fn wait_for_entries(&self) -> Result<(), KeyValError> {
+    /// Stops waiting at `stop_at` if given. Returns true if it found
+    /// an entry, false if it timed out.
+    pub fn wait_for_entries(&self, stop_at: Option<SystemTime>) -> Result<bool, KeyValError> {
         // XX hack, use file notifications instead
         let mut sleep_time = 1000;
         loop {
@@ -464,15 +467,22 @@ impl<K: AsKey, V: DeserializeOwned + Serialize> KeyVal<K, V> {
                 error,
             })?;
             if dir.next().is_some() {
-                break;
+                return Ok(true);
             }
+
+            if let Some(stop_at) = stop_at {
+                let now = SystemTime::now();
+                if now >= stop_at {
+                    return Ok(false);
+                }
+            }
+
             // dbg!(sleep_time);
             sleep(Duration::from_nanos(sleep_time));
             if sleep_time < 2_000_000_000 {
                 sleep_time = (sleep_time * 101) / 100;
             }
         }
-        Ok(())
     }
 
     /// Get all the keys contained in the map. Their order is not
@@ -486,9 +496,10 @@ impl<K: AsKey, V: DeserializeOwned + Serialize> KeyVal<K, V> {
     pub fn keys<'s>(
         &'s self,
         wait_for_entries: bool,
+        stop_at: Option<SystemTime>,
     ) -> Result<impl Iterator<Item = Result<K, KeyValError>> + use<'s, K, V>, KeyValError> {
         if wait_for_entries {
-            self.wait_for_entries()?;
+            self.wait_for_entries(stop_at)?;
         }
 
         let dir = std::fs::read_dir(&self.base_dir).map_err(|error| KeyValError::IO {
@@ -511,11 +522,17 @@ impl<K: AsKey, V: DeserializeOwned + Serialize> KeyVal<K, V> {
     }
 
     /// Sorted output of `keys()`.
-    pub fn sorted_keys(&self, wait_for_entries: bool) -> Result<Vec<K>, KeyValError>
+    pub fn sorted_keys(
+        &self,
+        wait_for_entries: bool,
+        stop_at: Option<SystemTime>,
+    ) -> Result<Vec<K>, KeyValError>
     where
         K: Ord,
     {
-        let mut keys: Vec<_> = self.keys(wait_for_entries)?.collect::<Result<_, _>>()?;
+        let mut keys: Vec<_> = self
+            .keys(wait_for_entries, stop_at)?
+            .collect::<Result<_, _>>()?;
         keys.sort();
         Ok(keys)
     }

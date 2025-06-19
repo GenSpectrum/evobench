@@ -172,7 +172,7 @@ fn main() -> Result<()> {
         }
         SubCommand::List => {
             let queue = open_queue(false)?;
-            for entry in queue.sorted_entries(false) {
+            for entry in queue.sorted_entries(false, None) {
                 let mut entry = entry?;
                 let file_name = get_filename(&entry)?;
                 let key = entry.key()?;
@@ -185,7 +185,7 @@ fn main() -> Result<()> {
             }
         }
         SubCommand::Insert { arguments } => {
-            let mut queue = open_queue(true)?;
+            let queue = open_queue(true)?;
             queue.push_front(&arguments)?
         }
         SubCommand::Run {
@@ -205,6 +205,7 @@ fn main() -> Result<()> {
                 wait,
                 verbose,
                 delete_first,
+                stop_at: None,
             };
             let items = queue.items(opts);
             let items: Box<dyn Iterator<Item = _>> = if let Some(limit) = limit {

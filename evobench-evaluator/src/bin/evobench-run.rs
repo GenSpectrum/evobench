@@ -1,19 +1,20 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use clap::Parser;
 
 use std::path::PathBuf;
 
 use evobench_evaluator::{
     get_terminal_width::get_terminal_width,
-    key_val_fs::{
-        key_val::{Entry, KeyValConfig, KeyValSync},
-        queue::Queue,
-    },
+    key::CheckedRunParameters,
+    key_val_fs::key_val::Entry,
     load_config_file::LoadConfigFile,
     run::{
-        benchmark_job::{BenchmarkJob, BenchmarkJobOpts},
+        benchmarking_job::BenchmarkingJobOpts,
         config::RunConfig,
+        run_queue::RunQueue,
+        run_queues::{Never, RunQueues},
     },
+    serde::{date_and_time::DateTimeWithOffset, paths::ProperFilename},
 };
 
 #[derive(clap::Parser, Debug)]
@@ -40,7 +41,51 @@ enum SubCommand {
     /// Insert a job
     Insert {
         #[clap(flatten)]
-        benchmark_job_opts: BenchmarkJobOpts,
+        benchmarking_job_opts: BenchmarkingJobOpts,
+    },
+    /// Run the existing jobs
+    Run {
+        /// Show what is done
+        #[clap(short, long)]
+        verbose: bool,
+
+        /// Do not run the jobs, but still consume the queue entries
+        #[clap(short, long)]
+        dry_run: bool,
+
+        #[clap(subcommand)]
+        mode: RunMode,
+    },
+}
+
+#[derive(Debug, Clone, Copy, clap::Subcommand)]
+pub enum DaemonizationAction {
+    Start,
+    /// XX by signal (forcefully) or some file (gracefully)?
+    Stop,
+    /// XX thankfully *can* just set the exit flag for one process,
+    /// start a new one, will take over once the other is done, thanks
+    /// to the locks
+    Restart,
+}
+
+#[derive(Debug, Clone, clap::Subcommand)]
+pub enum RunMode {
+    /// Run through the jobs in one queue, exit if there are no jobs
+    /// left or, if given, the `stop_at` time is reached
+    Once {
+        /// Stop processing at the given time in the local time zone
+        #[clap(short, long)]
+        stop_at: Option<DateTimeWithOffset>,
+
+        queue_name: ProperFilename,
+    },
+    /// Run forever, until terminated
+    Daemon {
+        /// Whether to background or stop the backgrounded daemon; if
+        /// not given, runs in the foreground.
+        #[clap(subcommand)]
+        action: Option<DaemonizationAction>,
     },
 }
 
@@ -56,40 +101,93 @@ fn main() -> Result<()> {
             .to_string())
     };
 
-    let conf = RunConfig::load_config(config)?;
-    let run_queue_path = conf.run_queue_path()?;
+    let conf = RunConfig::load_config(config, |msg| bail!("need a config file, {msg}"))?;
 
-    let open_queue = |create_dir_if_not_exists| -> Result<Queue<BenchmarkJob>> {
-        Ok(Queue::<BenchmarkJob>::open(
-            &run_queue_path,
-            KeyValConfig {
-                sync: KeyValSync::All,
-                create_dir_if_not_exists,
-            },
-        )?)
-    };
+    let queues = RunQueues::open(&conf.queues_config, true)?;
 
     match subcommand {
         SubCommand::List => {
             // COPY-PASTE from List action in jobqueue.rs, except
             // printing the job in :#? view on the next line.
-            let queue = open_queue(false)?;
-            for entry in queue.sorted_entries(false) {
-                let mut entry = entry?;
-                let file_name = get_filename(&entry)?;
-                let key = entry.key()?;
-                let val = entry.get()?;
-                let locking = entry
-                    .take_lockable_file()
-                    .expect("not taken before")
-                    .lock_status()?;
-                println!("{file_name} ({key})\t{locking}\n{val:#?}");
+            for (
+                i,
+                RunQueue {
+                    file_name,
+                    schedule_condition,
+                    queue,
+                },
+            ) in queues.run_queues().iter().enumerate()
+            {
+                println!("------------------------------------------------------------------");
+                println!("{i}. Queue {file_name} ({schedule_condition:?}):");
+                for entry in queue.sorted_entries(false, None) {
+                    let mut entry = entry?;
+                    let file_name = get_filename(&entry)?;
+                    let key = entry.key()?;
+                    let val = entry.get()?;
+                    let locking = entry
+                        .take_lockable_file()
+                        .expect("not taken before")
+                        .lock_status()?;
+                    println!("\n{file_name} ({key})\t{locking}\n{val:#?}");
+                }
             }
+            println!("------------------------------------------------------------------");
         }
-        SubCommand::Insert { benchmark_job_opts } => {
-            let benchmark_job = benchmark_job_opts.checked(&conf.custom_parameters_required)?;
-            let mut queue = open_queue(true)?;
-            queue.push_front(&benchmark_job)?;
+        SubCommand::Insert {
+            benchmarking_job_opts,
+        } => {
+            let benchmarking_job =
+                benchmarking_job_opts.checked(&conf.custom_parameters_required)?;
+            queues.first().push_front(&benchmarking_job)?;
+        }
+        SubCommand::Run {
+            verbose,
+            dry_run,
+            mode,
+        } => {
+            let run_job = |checked_run_parameters| {
+                if dry_run {
+                    println!("dry-run: would run {checked_run_parameters:?}");
+                } else {
+                    let CheckedRunParameters {
+                        commit_id,
+                        checked_custom_parameters,
+                    } = checked_run_parameters;
+
+                    todo!()
+                }
+                Ok(())
+            };
+
+            let run_jobs =
+                |queues: RunQueues<'_>| -> Result<Never> { queues.run(verbose, &run_job) };
+
+            match mode {
+                RunMode::Once {
+                    stop_at,
+                    queue_name,
+                } => {
+                    if let Some((run_queue, next_queue)) = queues.get_run_queue_by_name(&queue_name)
+                    {
+                        let stop_at = stop_at.map(|t| t.to_systemtime());
+                        run_queue.run(false, verbose, stop_at, &run_job, next_queue)?;
+                    } else {
+                        bail!(
+                            "unknown queue {queue_name} -- your configuration defines {:?}",
+                            queues.queue_names()
+                        )
+                    }
+                }
+                RunMode::Daemon { action } => {
+                    if let Some(action) = action {
+                        todo!("daemonization {action:?}")
+                    } else {
+                        run_jobs(queues)?;
+                        println!("this will never be executed"); // XXX remove.
+                    }
+                }
+            }
         }
     }
 
