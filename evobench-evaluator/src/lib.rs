@@ -1,5 +1,6 @@
 pub mod average;
 pub mod change;
+pub mod config_file;
 pub mod digit_num;
 pub mod dynamic_typing;
 pub mod evaluator;
@@ -12,7 +13,6 @@ pub mod join;
 pub mod json5_from_str;
 pub mod key;
 pub mod key_val_fs;
-pub mod load_config_file;
 pub mod lockable_file;
 pub mod log_data_and_tree;
 pub mod log_data_tree;

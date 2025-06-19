@@ -4,10 +4,10 @@ use clap::Parser;
 use std::path::PathBuf;
 
 use evobench_evaluator::{
+    config_file::LoadConfigFile,
     get_terminal_width::get_terminal_width,
     key::CheckedRunParameters,
     key_val_fs::key_val::Entry,
-    load_config_file::LoadConfigFile,
     lockable_file::StandaloneExclusiveFileLock,
     run::{
         benchmarking_job::BenchmarkingJobOpts,

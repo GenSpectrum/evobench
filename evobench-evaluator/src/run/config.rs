@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, fmt::Debug, fs::create_dir, path::PathBuf};
 use anyhow::{anyhow, Context, Result};
 
 use crate::{
-    load_config_file::LoadConfigFile,
+    config_file::LoadConfigFile,
     path_util::AppendToPath,
     serde::{date_and_time::LocalNaiveTime, paths::ProperFilename},
     utillib::home::home_dir,
