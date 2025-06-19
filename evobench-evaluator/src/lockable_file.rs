@@ -4,9 +4,15 @@
 //! From/Into. Then call locking methods on that to get a guard with
 //! access to the file handle.
 
-use std::{fmt::Display, ops::Deref};
+use std::{
+    fmt::Display,
+    fs::File,
+    ops::Deref,
+    path::{Path, PathBuf},
+};
 
 use fs2::{lock_contended_error, FileExt};
+use ouroboros::self_referencing;
 
 // -----------------------------------------------------------------------------
 
@@ -113,11 +119,9 @@ impl<F: FileExt> LockableFile<F> {
         Ok(ExclusiveFileLock { file: &self.file })
     }
 
-    pub fn try_lock_shared<'s>(&'s mut self) -> std::io::Result<Option<SharedFileLock<'s, F>>> {
+    pub fn try_lock_shared<'s>(&'s self) -> std::io::Result<Option<SharedFileLock<'s, F>>> {
         match FileExt::try_lock_shared(&self.file) {
-            Ok(()) => Ok(Some(SharedFileLock {
-                file: &mut self.file,
-            })),
+            Ok(()) => Ok(Some(SharedFileLock { file: &self.file })),
             Err(e) => {
                 if e.kind() == lock_contended_error().kind() {
                     Ok(None)
@@ -128,13 +132,9 @@ impl<F: FileExt> LockableFile<F> {
         }
     }
 
-    pub fn try_lock_exclusive<'s>(
-        &'s mut self,
-    ) -> std::io::Result<Option<ExclusiveFileLock<'s, F>>> {
+    pub fn try_lock_exclusive<'s>(&'s self) -> std::io::Result<Option<ExclusiveFileLock<'s, F>>> {
         match FileExt::try_lock_exclusive(&self.file) {
-            Ok(()) => Ok(Some(ExclusiveFileLock {
-                file: &mut self.file,
-            })),
+            Ok(()) => Ok(Some(ExclusiveFileLock { file: &self.file })),
             Err(e) => {
                 if e.kind() == lock_contended_error().kind() {
                     Ok(None)
@@ -142,6 +142,72 @@ impl<F: FileExt> LockableFile<F> {
                     Err(e)
                 }
             }
+        }
+    }
+}
+
+impl LockableFile<File> {
+    pub fn open<P: AsRef<Path>>(path: P) -> std::io::Result<Self> {
+        File::open(path).and_then(|file| Ok(LockableFile { file }))
+    }
+}
+
+/// A simple file or dir lock based on `flock`; dropping this type
+/// unlocks it and also drops the file handle at the same time, thus
+/// it's less efficient than allocating a `LockableFile<File>` and
+/// then doing the locking operations on it.
+#[self_referencing]
+pub struct StandaloneExclusiveFileLock {
+    lockable: LockableFile<File>,
+    #[borrows(lockable)]
+    #[covariant]
+    lock: Option<ExclusiveFileLock<'this, File>>,
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum StandaloneFileLockError {
+    #[error("error locking {path:?}: {error:#}")]
+    IOError {
+        path: PathBuf,
+        error: std::io::Error,
+    },
+
+    #[error("{msg}: the path {path:?} is already locked")]
+    AlreadyLocked { path: PathBuf, msg: String },
+}
+
+impl StandaloneExclusiveFileLock {
+    pub fn lock_path<P: AsRef<Path>>(path: P) -> std::io::Result<Self> {
+        Self::try_new(LockableFile::open(path)?, |file| {
+            Ok(Some(file.lock_exclusive()?))
+        })
+    }
+
+    /// If the lock is already taken, returns a
+    /// `StandaloneFileLockError::AlreadyLocked` error that includes
+    /// the result of running `already_locked_msg` as the first part
+    /// of the error message.
+    pub fn try_lock_path<P: AsRef<Path>>(
+        path: P,
+        already_locked_msg: impl Fn() -> String,
+    ) -> Result<Self, StandaloneFileLockError> {
+        let us = (|| -> std::io::Result<_> {
+            Self::try_new(LockableFile::open(path.as_ref())?, |file| {
+                file.try_lock_exclusive()
+            })
+        })()
+        .map_err(|error| StandaloneFileLockError::IOError {
+            path: path.as_ref().to_owned(),
+            error,
+        })?;
+        if us.borrow_lock().is_some() {
+            Ok(us)
+        } else {
+            let msg = already_locked_msg();
+            Err(StandaloneFileLockError::AlreadyLocked {
+                path: path.as_ref().to_owned(),
+                msg,
+            })
         }
     }
 }

@@ -80,7 +80,11 @@ impl ScheduleCondition {
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct QueuesConfig {
-    /// If not given, `~/.evobench-run-queues/` is used
+    /// If not given, `~/.evobench-run-queues/` is used. Also used for
+    /// locking the `run` action of evobench-run, to ensure only one
+    /// benchmarking job is executed at the same time--if you
+    /// configure multiple such directories then you don't have this
+    /// guarantee any more.
     pub run_queues_basedir: Option<PathBuf>,
 
     /// The queues to use (file names, without '/'), and their

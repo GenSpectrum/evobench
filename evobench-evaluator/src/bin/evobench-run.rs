@@ -8,6 +8,7 @@ use evobench_evaluator::{
     key::CheckedRunParameters,
     key_val_fs::key_val::Entry,
     load_config_file::LoadConfigFile,
+    lockable_file::StandaloneExclusiveFileLock,
     run::{
         benchmarking_job::BenchmarkingJobOpts,
         config::RunConfig,
@@ -146,6 +147,11 @@ fn main() -> Result<()> {
             dry_run,
             mode,
         } => {
+            let base_dir = conf.queues_config.run_queues_basedir(false)?;
+            let _lock = StandaloneExclusiveFileLock::try_lock_path(&base_dir, || {
+                "another instance of evobench-run is already running".into()
+            })?;
+
             let run_job = |checked_run_parameters| {
                 if dry_run {
                     println!("dry-run: would run {checked_run_parameters:?}");
