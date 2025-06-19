@@ -11,6 +11,7 @@ use crate::{json5_from_str::json5_from_str, path_util::add_extension};
 pub enum ConfigBackend {
     Json5,
     Yaml,
+    Hcl,
 }
 
 impl ConfigBackend {
@@ -22,6 +23,9 @@ impl ConfigBackend {
                 .with_context(|| anyhow!("decoding JSON5 from config file {path:?}")),
             ConfigBackend::Yaml => serde_yml::from_str(&s)
                 .with_context(|| anyhow!("decoding YAML from config file {path:?}")),
+            ConfigBackend::Hcl => {
+                hcl::from_str(&s).with_context(|| anyhow!("decoding HCL from config file {path:?}"))
+            }
         }
     }
 
@@ -33,6 +37,9 @@ impl ConfigBackend {
             ConfigBackend::Yaml => {
                 serde_yml::to_string(value).with_context(|| anyhow!("encoding config as YAML"))?
             }
+            ConfigBackend::Hcl => {
+                hcl::to_string(value).with_context(|| anyhow!("encoding config as HCL"))?
+            }
         };
         std::fs::write(path, s).with_context(|| anyhow!("writing config file to {path:?}"))
     }
@@ -43,6 +50,7 @@ pub const FILE_EXTENSIONS: &[(&str, ConfigBackend)] = &[
     ("json", ConfigBackend::Json5),
     ("yml", ConfigBackend::Yaml),
     ("yaml", ConfigBackend::Yaml),
+    ("hcl", ConfigBackend::Hcl),
 ];
 
 pub fn backend_from_path(path: &Path) -> Result<ConfigBackend> {
