@@ -31,6 +31,7 @@ inferno = { version = "0.11.21", default-features = false, features = [] }
 ouroboros = "0.18.5"
 fs2 = "0.4.3"
 json5 = "0.4.1"
+serde_yml = "0.0.12"
 
 chrono = "0.4"
 walkdir = "2"
