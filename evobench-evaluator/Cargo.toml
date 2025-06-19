@@ -32,6 +32,7 @@ ouroboros = "0.18.5"
 fs2 = "0.4.3"
 json5 = "0.4.1"
 serde_yml = "0.0.12"
+hcl-rs = "=0.18.2"
 
 chrono = "0.4"
 walkdir = "2"
