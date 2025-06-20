@@ -86,7 +86,8 @@ fn t_file_extension() {
 }
 
 /// Transparently decompress zstd files if they have a .zstd suffix;
-/// after that, expecting the `expected_suffix`
+/// after that, expecting the `expected_suffix` (which must be given
+/// *without* a leading dot)
 pub fn decompressed_file(path: &Path, expected_suffix: &str) -> Result<Box<dyn Read>> {
     let ext = file_extension(path, expected_suffix)?;
 
