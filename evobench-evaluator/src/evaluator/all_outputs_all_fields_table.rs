@@ -265,6 +265,13 @@ impl<Kind: AllFieldsTableKind> AllOutputsAllFieldsTable<Kind> {
                         .to_string_lossy();
 
                     for table in tables {
+                        if table.table_key_vals(flame_field).next().is_none() {
+                            // Attempting to generate flame graphs
+                            // without data is giving an error from
+                            // the library, thus skip this table
+                            continue;
+                        }
+
                         let mut path = flame_base_dir.to_owned();
                         path.push(format!("{flame_base_name}-{}.svg", table.table_name()));
                         (|| -> Result<()> {
