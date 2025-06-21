@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use anyhow::Result;
 
-use crate::key::{CheckedRunParameters, RunParameters};
+use crate::key::{RunParameters, RunParametersOpts};
 
 #[derive(Debug, PartialEq, Clone, clap::Args)]
 pub struct BenchmarkingJobOpts {
@@ -12,14 +12,14 @@ pub struct BenchmarkingJobOpts {
     count: u8,
 
     #[clap(flatten)]
-    pub run_parameters: RunParameters,
+    pub run_parameters: RunParametersOpts,
 }
 
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BenchmarkingJob {
     pub remaining_count: u8,
-    pub run_parameters: CheckedRunParameters,
+    pub run_parameters: RunParameters,
 }
 
 impl BenchmarkingJobOpts {

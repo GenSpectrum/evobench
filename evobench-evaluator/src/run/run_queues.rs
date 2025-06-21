@@ -11,7 +11,7 @@ use itertools::{EitherOrBoth, Itertools};
 
 use crate::{
     info_if,
-    key::CheckedRunParameters,
+    key::RunParameters,
     key_val_fs::{
         key_val::{KeyValConfig, KeyValError, KeyValSync},
         queue::Queue,
@@ -147,7 +147,7 @@ impl<'conf> RunQueues<'conf> {
     pub fn run(
         &self,
         verbose: bool,
-        mut execute: impl FnMut(CheckedRunParameters) -> Result<()>,
+        mut execute: impl FnMut(RunParameters) -> Result<()>,
     ) -> Result<Never> {
         let (immediate_queues, ranged_queues_by_time) = self.immediate_and_ranged_queues();
 

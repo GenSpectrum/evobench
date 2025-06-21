@@ -4,7 +4,7 @@ use anyhow::Result;
 
 use crate::{
     info_if,
-    key::CheckedRunParameters,
+    key::RunParameters,
     key_val_fs::{
         key_val::KeyValError,
         queue::{Queue, QueueIterationOpts},
@@ -39,7 +39,7 @@ impl<'conf> RunQueue<'conf> {
         stop_at: Option<SystemTime>,
         // Have to give ownership to CheckedRunParameters, don't
         // understand why.
-        mut execute: impl FnMut(CheckedRunParameters) -> Result<()>,
+        mut execute: impl FnMut(RunParameters) -> Result<()>,
         next_queue: Option<&Self>,
     ) -> Result<TerminationReason>
     where

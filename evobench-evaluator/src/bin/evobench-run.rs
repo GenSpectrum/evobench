@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use evobench_evaluator::{
     config_file::{save_config_file, LoadConfigFile},
     get_terminal_width::get_terminal_width,
-    key::CheckedRunParameters,
+    key::RunParameters,
     key_val_fs::key_val::Entry,
     lockable_file::StandaloneExclusiveFileLock,
     run::{
@@ -163,7 +163,7 @@ fn main() -> Result<()> {
                 if dry_run {
                     println!("dry-run: would run {checked_run_parameters:?}");
                 } else {
-                    let CheckedRunParameters {
+                    let RunParameters {
                         commit_id,
                         checked_custom_parameters,
                     } = checked_run_parameters;

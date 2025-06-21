@@ -73,7 +73,7 @@ pub struct EarlyContext {
 }
 
 #[derive(Debug, PartialEq, Clone, clap::Parser)]
-pub struct RunParameters {
+pub struct RunParametersOpts {
     /// The commit of the source code of the target (benchmarked)
     /// project
     pub commit_id: GitHash,
@@ -112,23 +112,23 @@ pub fn check_custom_parameters(
 
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct CheckedRunParameters {
+pub struct RunParameters {
     pub commit_id: GitHash,
     pub checked_custom_parameters: BTreeMap<String, String>,
 }
 
-impl RunParameters {
+impl RunParametersOpts {
     pub fn checked(
         self,
         custom_parameters_required: &BTreeMap<String, bool>,
-    ) -> Result<CheckedRunParameters> {
+    ) -> Result<RunParameters> {
         let Self {
             commit_id,
             custom_parameters,
         } = self;
         let checked_custom_parameters =
             check_custom_parameters(&custom_parameters, custom_parameters_required)?;
-        Ok(CheckedRunParameters {
+        Ok(RunParameters {
             commit_id,
             checked_custom_parameters,
         })
@@ -152,7 +152,7 @@ pub struct Key {
     pub early_context: EarlyContext,
     /// Parameters requested by the user and passed to the benchmark
     /// runner of the target project.
-    pub run_parameters: CheckedRunParameters,
+    pub run_parameters: RunParameters,
     /// Info gleaned by evobench-run from the output file of the
     /// evobench-probes library after executing a run.
     pub late_context: LateContext,
