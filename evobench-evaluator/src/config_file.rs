@@ -2,10 +2,10 @@
 
 use std::path::{Path, PathBuf};
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, bail, Result};
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::{json5_from_str::json5_from_str, path_util::add_extension};
+use crate::{ctx, json5_from_str::json5_from_str, path_util::add_extension};
 
 #[derive(Debug, Clone, Copy)]
 pub enum ConfigBackend {
@@ -16,31 +16,32 @@ pub enum ConfigBackend {
 
 impl ConfigBackend {
     pub fn load_config_file<T: DeserializeOwned>(self, path: &Path) -> Result<T> {
-        let s = std::fs::read_to_string(&path)
-            .with_context(|| anyhow!("loading config file from {path:?}"))?;
+        let s =
+            std::fs::read_to_string(&path).map_err(ctx!("loading config file from {path:?}"))?;
         match self {
-            ConfigBackend::Json5 => json5_from_str(&s)
-                .with_context(|| anyhow!("decoding JSON5 from config file {path:?}")),
-            ConfigBackend::Yaml => serde_yml::from_str(&s)
-                .with_context(|| anyhow!("decoding YAML from config file {path:?}")),
+            ConfigBackend::Json5 => {
+                json5_from_str(&s).map_err(ctx!("decoding JSON5 from config file {path:?}"))
+            }
+            ConfigBackend::Yaml => {
+                serde_yml::from_str(&s).map_err(ctx!("decoding YAML from config file {path:?}"))
+            }
             ConfigBackend::Hcl => {
-                hcl::from_str(&s).with_context(|| anyhow!("decoding HCL from config file {path:?}"))
+                hcl::from_str(&s).map_err(ctx!("decoding HCL from config file {path:?}"))
             }
         }
     }
 
     pub fn save_config_file<T: Serialize>(self, path: &Path, value: &T) -> Result<()> {
         let s = match self {
-            ConfigBackend::Json5 => serde_json::to_string_pretty(value)
-                .with_context(|| anyhow!("encoding config as JSON5"))?,
+            ConfigBackend::Json5 => {
+                serde_json::to_string_pretty(value).map_err(ctx!("encoding config as JSON5"))?
+            }
             ConfigBackend::Yaml => {
-                serde_yml::to_string(value).with_context(|| anyhow!("encoding config as YAML"))?
+                serde_yml::to_string(value).map_err(ctx!("encoding config as YAML"))?
             }
-            ConfigBackend::Hcl => {
-                hcl::to_string(value).with_context(|| anyhow!("encoding config as HCL"))?
-            }
+            ConfigBackend::Hcl => hcl::to_string(value).map_err(ctx!("encoding config as HCL"))?,
         };
-        std::fs::write(path, s).with_context(|| anyhow!("writing config file to {path:?}"))
+        std::fs::write(path, s).map_err(ctx!("writing config file to {path:?}"))
     }
 }
 
