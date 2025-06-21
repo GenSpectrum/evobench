@@ -31,9 +31,8 @@ impl ConfigBackend {
 
     pub fn save_config_file<T: Serialize>(self, path: &Path, value: &T) -> Result<()> {
         let s = match self {
-            ConfigBackend::Json5 => {
-                json5::to_string(value).with_context(|| anyhow!("encoding config as JSON5"))?
-            }
+            ConfigBackend::Json5 => serde_json::to_string_pretty(value)
+                .with_context(|| anyhow!("encoding config as JSON5"))?,
             ConfigBackend::Yaml => {
                 serde_yml::to_string(value).with_context(|| anyhow!("encoding config as YAML"))?
             }
