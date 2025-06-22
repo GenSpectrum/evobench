@@ -1,9 +1,10 @@
-use std::{collections::BTreeMap, fmt::Debug, fs::create_dir, path::PathBuf};
+use std::{collections::BTreeMap, fmt::Debug, path::PathBuf};
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::Result;
 
 use crate::{
     config_file::LoadConfigFile,
+    io_util::create_dir_if_not_exists,
     path_util::AppendToPath,
     serde::{date_and_time::LocalNaiveTime, paths::ProperFilename},
     utillib::home::home_dir,
@@ -117,14 +118,7 @@ impl QueuesConfig {
     pub fn run_queues_basedir(&self, create_if_not_exists: bool) -> Result<PathBuf> {
         let base_dir = self._run_queues_basedir()?;
         if create_if_not_exists {
-            match create_dir(&base_dir) {
-                Ok(()) => (),
-                Err(e) => match e.kind() {
-                    std::io::ErrorKind::AlreadyExists => (),
-                    _ => Err(e)
-                        .with_context(|| anyhow!("creating queues base directory {base_dir:?}"))?,
-                },
-            }
+            create_dir_if_not_exists(&base_dir, "queues base directory")?;
         }
         Ok(base_dir)
     }
