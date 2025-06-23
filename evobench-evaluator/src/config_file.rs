@@ -1,4 +1,6 @@
-//! Generic config file loader
+//! Simple generic config file loader.
+
+//! TODO: integrate `serde_path_to_error` crate
 
 use std::path::{Path, PathBuf};
 
@@ -67,7 +69,7 @@ pub fn backend_from_path(path: &Path) -> Result<ConfigBackend> {
     } else {
         bail!(
             "given file path does not have an extension \
-                     for determining the file type: {path:?}"
+             for determining the file type: {path:?}"
         )
     }
 }
