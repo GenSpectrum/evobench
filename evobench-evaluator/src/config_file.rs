@@ -78,8 +78,9 @@ pub fn save_config_file<T: Serialize>(path: &Path, value: &T) -> Result<()> {
 }
 
 pub trait LoadConfigFile: DeserializeOwned {
-    /// ".json5" and ".json" will be appended (and tried in order, but
-    /// the chosen suffix has no effect on the parser)
+    /// `load_config` tries a list of file name extensions, appended
+    /// to this path, and one path is then expected to exist (or the
+    /// `or_else` fallback is called)
     fn default_config_path_without_suffix() -> Result<Option<PathBuf>>;
 
     /// If `path` is given, the file must exist or an error is
