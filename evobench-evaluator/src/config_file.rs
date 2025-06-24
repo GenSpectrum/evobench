@@ -15,6 +15,7 @@ use crate::{
 
 #[derive(Debug, Clone, Copy)]
 pub enum ConfigBackend {
+    Ron,
     Json5,
     Yaml,
     Hcl,
@@ -25,6 +26,15 @@ impl ConfigBackend {
         let s =
             std::fs::read_to_string(&path).map_err(ctx!("loading config file from {path:?}"))?;
         match self {
+            ConfigBackend::Ron => ron::from_str(&s)
+                .map_err(|error| {
+                    let ron::error::SpannedError {
+                        code,
+                        position: ron::error::Position { line, col },
+                    } = error;
+                    anyhow!("{code} at line:column {line}:{col}")
+                })
+                .map_err(ctx!("decoding RON from config file {path:?}")),
             ConfigBackend::Json5 => {
                 // https://crates.io/crates/json5
                 // https://crates.io/crates/serde_json5 <-- currently used, fork of json5
@@ -56,6 +66,8 @@ impl ConfigBackend {
 
     pub fn save_config_file<T: Serialize>(self, path: &Path, value: &T) -> Result<()> {
         let s = match self {
+            ConfigBackend::Ron => ron::Options::default()
+                .to_string_pretty(value, ron::ser::PrettyConfig::default())?,
             ConfigBackend::Json5 => {
                 serde_json::to_string_pretty(value).map_err(ctx!("encoding config as JSON5"))?
             }
@@ -69,6 +81,7 @@ impl ConfigBackend {
 }
 
 pub const FILE_EXTENSIONS: &[(&str, ConfigBackend)] = &[
+    ("ron", ConfigBackend::Ron),
     ("json5", ConfigBackend::Json5),
     ("json", ConfigBackend::Json5),
     ("yml", ConfigBackend::Yaml),
