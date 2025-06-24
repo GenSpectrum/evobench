@@ -256,7 +256,7 @@ impl<'conf> RunQueues<'conf> {
 
         let open_queues = |create_dir_if_not_exists| -> Result<Vec<RunQueue>, KeyValError> {
             config
-                .queues
+                .pipeline
                 .iter()
                 .map(|(filename, schedule_condition)| {
                     let run_queue_path = (&run_queues_basedir).append(filename.as_str());

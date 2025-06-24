@@ -92,7 +92,7 @@ pub struct QueuesConfig {
 
     /// The queues to use (file names, without '/'), and their
     /// scheduled execution condition
-    pub queues: Vec<(ProperFilename, ScheduleCondition)>,
+    pub pipeline: Vec<(ProperFilename, ScheduleCondition)>,
 }
 
 /// Direct representation of the evobench-run config file
