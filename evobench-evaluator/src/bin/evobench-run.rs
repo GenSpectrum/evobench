@@ -120,7 +120,7 @@ fn main() -> Result<()> {
 
     let conf = RunConfig::load_config(config, |msg| bail!("need a config file, {msg}"))?;
 
-    let queues = RunQueues::open(&conf.queues_config, true)?;
+    let queues = RunQueues::open(&conf.queues, true)?;
 
     match subcommand {
         SubCommand::SaveConfig { output_path } => {
@@ -200,7 +200,7 @@ fn main() -> Result<()> {
             };
 
             let mut working_directories =
-                WorkingDirectoryPool::open(conf.working_directory_pool_opts, true)?;
+                WorkingDirectoryPool::open(conf.working_directory_pool, true)?;
 
             match mode {
                 RunMode::Once {

@@ -99,11 +99,9 @@ pub struct QueuesConfig {
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunConfig {
-    #[serde(flatten)]
-    pub queues_config: QueuesConfig,
+    pub queues: QueuesConfig,
 
-    #[serde(flatten)]
-    pub working_directory_pool_opts: WorkingDirectoryPoolOpts,
+    pub working_directory_pool: WorkingDirectoryPoolOpts,
 
     /// The key names (environment variable names) that are allowed
     /// (value `false`) or required (value `true`) for benchmarking
