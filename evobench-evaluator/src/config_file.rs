@@ -7,7 +7,11 @@ use std::path::{Path, PathBuf};
 use anyhow::{anyhow, bail, Result};
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::{ctx, json5_from_str::Json5FromStrError, path_util::add_extension};
+use crate::{
+    ctx,
+    json5_from_str::{json5_from_str, Json5FromStrError},
+    path_util::add_extension,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub enum ConfigBackend {
@@ -22,13 +26,24 @@ impl ConfigBackend {
             std::fs::read_to_string(&path).map_err(ctx!("loading config file from {path:?}"))?;
         match self {
             ConfigBackend::Json5 => {
-                let mut d = serde_json5::Deserializer::from_str(&s)
-                    .map_err(Json5FromStrError)
-                    .map_err(ctx!(
-                        "decoding JSON5 from config file {path:?} -- step 1, too early?"
-                    ))?;
-                serde_path_to_error::deserialize(&mut d)
-                    .map_err(ctx!("decoding JSON5 from config file {path:?}"))
+                // https://crates.io/crates/json5
+                // https://crates.io/crates/serde_json5 <-- currently used, fork of json5
+                // https://crates.io/crates/json5_nodes
+                if false {
+                    // Sadly this doesn't actually track paths,
+                    // probably because the constructor already does
+                    // the deserialisation.
+                    let mut d = serde_json5::Deserializer::from_str(&s)
+                        .map_err(Json5FromStrError)
+                        .map_err(ctx!(
+                            "decoding JSON5 from config file {path:?} -- step 1, too early?"
+                        ))?;
+                    // Also even loses location info this way.
+                    serde_path_to_error::deserialize(&mut d)
+                        .map_err(ctx!("decoding JSON5 from config file {path:?}"))
+                } else {
+                    json5_from_str(&s).map_err(ctx!("decoding JSON5 from config file {path:?}"))
+                }
             }
             ConfigBackend::Yaml => {
                 serde_yml::from_str(&s).map_err(ctx!("decoding YAML from config file {path:?}"))
