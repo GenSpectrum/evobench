@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{anyhow, bail, Result};
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::{ctx, json5_from_str::json5_from_str, path_util::add_extension};
+use crate::{ctx, json5_from_str::Json5FromStrError, path_util::add_extension};
 
 #[derive(Debug, Clone, Copy)]
 pub enum ConfigBackend {
@@ -22,7 +22,13 @@ impl ConfigBackend {
             std::fs::read_to_string(&path).map_err(ctx!("loading config file from {path:?}"))?;
         match self {
             ConfigBackend::Json5 => {
-                json5_from_str(&s).map_err(ctx!("decoding JSON5 from config file {path:?}"))
+                let mut d: json5::Deserializer<'_> = json5::Deserializer::from_str(&s)
+                    .map_err(Json5FromStrError)
+                    .map_err(ctx!(
+                        "decoding JSON5 from config file {path:?} -- step 1, too early?"
+                    ))?;
+                serde_path_to_error::deserialize(&mut d)
+                    .map_err(ctx!("decoding JSON5 from config file {path:?}"))
             }
             ConfigBackend::Yaml => {
                 serde_yml::from_str(&s).map_err(ctx!("decoding YAML from config file {path:?}"))
