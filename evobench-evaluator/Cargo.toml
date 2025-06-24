@@ -13,6 +13,7 @@ overflow-checks = true
 [dependencies]
 anyhow = { version = "1.0.65", features = ["backtrace"]}
 clap = { version = "3", features = ["derive"] }
+run-git  = { path = "../../xmlhub-indexer/libs/run-git" }
 terminal_size = "0.2"
 lazy_static = "1.4"
 itertools = "0.11.0"
