@@ -5,8 +5,8 @@
 
 use std::fmt::Display;
 
-use json5::Location;
 use serde::Deserialize;
+use serde_json5::Location;
 
 pub struct Json5FromStrLocation(pub Location);
 
@@ -17,21 +17,21 @@ impl Display for Json5FromStrLocation {
     }
 }
 
-pub fn json5_error_location(e: &json5::Error) -> Option<Json5FromStrLocation> {
+pub fn json5_error_location(e: &serde_json5::Error) -> Option<Json5FromStrLocation> {
     match e {
-        json5::Error::Message { msg: _, location } => location
+        serde_json5::Error::Message { msg: _, location } => location
             .as_ref()
             .map(|location| Json5FromStrLocation(location.clone())),
     }
 }
 
 #[derive(Debug, thiserror::Error)]
-pub struct Json5FromStrError(pub json5::Error);
+pub struct Json5FromStrError(pub serde_json5::Error);
 
 impl Json5FromStrError {
     pub fn message_without_location(&self) -> &str {
         match &self.0 {
-            json5::Error::Message { msg, location: _ } => msg,
+            serde_json5::Error::Message { msg, location: _ } => msg,
         }
     }
 
@@ -52,5 +52,5 @@ impl Display for Json5FromStrError {
 }
 
 pub fn json5_from_str<'t, T: Deserialize<'t>>(s: &'t str) -> Result<T, Json5FromStrError> {
-    json5::from_str(s).map_err(Json5FromStrError)
+    serde_json5::from_str(s).map_err(Json5FromStrError)
 }

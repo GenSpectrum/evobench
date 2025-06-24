@@ -22,7 +22,7 @@ impl ConfigBackend {
             std::fs::read_to_string(&path).map_err(ctx!("loading config file from {path:?}"))?;
         match self {
             ConfigBackend::Json5 => {
-                let mut d: json5::Deserializer<'_> = json5::Deserializer::from_str(&s)
+                let mut d = serde_json5::Deserializer::from_str(&s)
                     .map_err(Json5FromStrError)
                     .map_err(ctx!(
                         "decoding JSON5 from config file {path:?} -- step 1, too early?"
