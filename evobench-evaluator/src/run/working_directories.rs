@@ -124,9 +124,9 @@ impl WorkingDirectoryPool {
             add_extension(&new_dir_path, "processing_error").expect("added file name above");
         let processing_error_string = serde_yml::to_string(&processing_error)?;
         std::fs::rename(&old_dir_path, &new_dir_path)
-            .map_err(ctx!("renaming {old_dir_path} to {new_dir_path}"))?;
+            .map_err(ctx!("renaming {old_dir_path:?} to {new_dir_path:?}"))?;
         std::fs::write(&error_file_path, &processing_error_string)
-            .map_err(ctx!("writing to {error_file_path}"))
+            .map_err(ctx!("writing to {error_file_path:?}"))
     }
 
     fn next_id(&mut self) -> u64 {

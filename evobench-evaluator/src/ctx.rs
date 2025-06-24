@@ -1,10 +1,10 @@
 #[macro_export]
 macro_rules! ctx {
-    ($msg:expr) => {
-        |e| anyhow::Context::context(Result::<(), _>::Err(e), $msg)
+    ($fmt:tt) => {
+        |e| anyhow::Context::context(Result::<(), _>::Err(e), format!($fmt))
             .err().unwrap()
     };
-    ($fmt:literal, $($arg:tt)*) => {
+    ($fmt:tt, $($arg:tt)*) => {
         |e| anyhow::Context::context(Result::<(), _>::Err(e), format!($fmt, $($arg)*))
             .err().unwrap()
     };
