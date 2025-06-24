@@ -19,7 +19,8 @@ use crate::{
 
 use super::working_directory::WorkingDirectory;
 
-#[derive(clap::Args, Debug, Clone)]
+// clap::Args?
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct WorkingDirectoryPoolOpts {
     /// Path to a directory where clones of the project to be
     /// benchmarked should be kept
@@ -40,7 +41,7 @@ pub struct WorkingDirectoryPool {
     next_id: u64,
     entries: BTreeMap<u64, WorkingDirectory>,
     /// Only one process may use this pool at the same time
-    lock: StandaloneExclusiveFileLock,
+    _lock: StandaloneExclusiveFileLock,
 }
 
 #[derive(Debug, Serialize)]
@@ -89,7 +90,7 @@ impl WorkingDirectoryPool {
 
         Ok(Self {
             opts,
-            lock,
+            _lock: lock,
             next_id: 0,
             entries,
         })
@@ -149,7 +150,7 @@ impl WorkingDirectoryPool {
     /// commit, and if possible already built or even tested for
     /// it. Returns its id so that the right kind of fresh borrow can
     /// be done.
-    pub fn get_best_working_directory_for_commit(&self, commit: &GitHash) -> Option<u64> {
+    pub fn try_get_best_working_directory_for_commit(&self, commit: &GitHash) -> Option<u64> {
         let mut dirs: Vec<(&u64, &WorkingDirectory)> = self
             .entries
             .iter()
@@ -169,7 +170,7 @@ impl WorkingDirectoryPool {
         &'s mut self,
         commit: &'s GitHash,
     ) -> Result<&'s mut WorkingDirectory> {
-        if let Some(id) = self.get_best_working_directory_for_commit(commit) {
+        if let Some(id) = self.try_get_best_working_directory_for_commit(commit) {
             Ok(self.entries.get_mut(&id).expect("just got the id"))
         } else {
             if self.len() < self.capacity() {

@@ -1,19 +1,17 @@
 use anyhow::{anyhow, bail, Result};
 use clap::Parser;
+use strum_macros::EnumString;
 
-use std::path::PathBuf;
+use std::{path::PathBuf, process::Command};
 
 use evobench_evaluator::{
     config_file::{save_config_file, LoadConfigFile},
     get_terminal_width::get_terminal_width,
     key::RunParameters,
     key_val_fs::key_val::Entry,
-    lockable_file::StandaloneExclusiveFileLock,
     run::{
-        benchmarking_job::BenchmarkingJobOpts,
-        config::RunConfig,
-        run_queue::RunQueue,
-        run_queues::{Never, RunQueues},
+        benchmarking_job::BenchmarkingJobOpts, config::RunConfig, run_queue::RunQueue,
+        run_queues::RunQueues, working_directories::WorkingDirectoryPool,
     },
     serde::{date_and_time::DateTimeWithOffset, paths::ProperFilename},
 };
@@ -33,6 +31,20 @@ struct Opts {
     /// get a list of the allowed options there.
     #[clap(subcommand)]
     subcommand: SubCommand,
+}
+
+#[derive(Debug, EnumString, PartialEq, Clone, Copy)]
+#[repr(u8)]
+enum DryRun {
+    DoNothing,
+    DoWorkingDir,
+    DoAll,
+}
+
+impl DryRun {
+    fn means(self, done: Self) -> bool {
+        self as u8 <= done as u8
+    }
 }
 
 #[derive(clap::Subcommand, Debug)]
@@ -55,8 +67,8 @@ enum SubCommand {
         verbose: bool,
 
         /// Do not run the jobs, but still consume the queue entries
-        #[clap(short, long)]
-        dry_run: bool,
+        #[clap(short, long, default_value = "DoAll")]
+        dry_run: DryRun,
 
         #[clap(subcommand)]
         mode: RunMode,
@@ -154,27 +166,41 @@ fn main() -> Result<()> {
             dry_run,
             mode,
         } => {
-            let base_dir = conf.queues_config.run_queues_basedir(false)?;
-            let _lock = StandaloneExclusiveFileLock::try_lock_path(&base_dir, || {
-                "another instance of evobench-run is already running".into()
-            })?;
-
-            let run_job = |checked_run_parameters| {
-                if dry_run {
-                    println!("dry-run: would run {checked_run_parameters:?}");
-                } else {
+            let run_job = |working_directories: &mut WorkingDirectoryPool,
+                           checked_run_parameters: RunParameters|
+             -> Result<_> {
+                {
+                    if dry_run.means(DryRun::DoNothing) {
+                        println!("dry-run: would run {checked_run_parameters:?}");
+                        return Ok(());
+                    }
                     let RunParameters {
                         commit_id,
                         checked_custom_parameters,
                     } = checked_run_parameters;
 
-                    todo!()
+                    let working_directory =
+                        working_directories.get_working_directory_for_commit(&commit_id)?;
+
+                    working_directory.checkout(commit_id.clone())?;
+
+                    if dry_run.means(DryRun::DoWorkingDir) {
+                        println!("checked out working directory: {working_directory:?}");
+                        return Ok(());
+                    }
+
+                    // XXX  build etc run now
+                    let mut cmd = Command::new("printenv")
+                        .envs(&checked_custom_parameters)
+                        .spawn()?;
+                    let status = cmd.wait()?;
+                    dbg!(status);
+                    Ok(())
                 }
-                Ok(())
             };
 
-            let run_jobs =
-                |queues: RunQueues<'_>| -> Result<Never> { queues.run(verbose, &run_job) };
+            let mut working_directories =
+                WorkingDirectoryPool::open(conf.working_directory_pool_opts, true)?;
 
             match mode {
                 RunMode::Once {
@@ -184,7 +210,13 @@ fn main() -> Result<()> {
                     if let Some((run_queue, next_queue)) = queues.get_run_queue_by_name(&queue_name)
                     {
                         let stop_at = stop_at.map(|t| t.to_systemtime());
-                        run_queue.run(false, verbose, stop_at, &run_job, next_queue)?;
+                        run_queue.run(
+                            false,
+                            verbose,
+                            stop_at,
+                            |run_parameters| run_job(&mut working_directories, run_parameters),
+                            next_queue,
+                        )?;
                     } else {
                         bail!(
                             "unknown queue {queue_name} -- your configuration defines {:?}",
@@ -196,8 +228,9 @@ fn main() -> Result<()> {
                     if let Some(action) = action {
                         todo!("daemonization {action:?}")
                     } else {
-                        run_jobs(queues)?;
-                        println!("this will never be executed"); // XXX remove.
+                        queues.run(verbose, |run_parameters| {
+                            run_job(&mut working_directories, run_parameters)
+                        })?;
                     }
                 }
             }

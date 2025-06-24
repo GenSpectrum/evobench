@@ -10,6 +10,8 @@ use crate::{
     utillib::home::home_dir,
 };
 
+use super::working_directories::WorkingDirectoryPoolOpts;
+
 #[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ScheduleCondition {
     /// Run jobs in this queue once right away
@@ -99,6 +101,9 @@ pub struct QueuesConfig {
 pub struct RunConfig {
     #[serde(flatten)]
     pub queues_config: QueuesConfig,
+
+    #[serde(flatten)]
+    pub working_directory_pool_opts: WorkingDirectoryPoolOpts,
 
     /// The key names (environment variable names) that are allowed
     /// (value `false`) or required (value `true`) for benchmarking

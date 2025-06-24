@@ -3,9 +3,10 @@
 
 use std::{path::PathBuf, time::SystemTime};
 
-use anyhow::Result;
+use anyhow::{anyhow, bail, Result};
+use run_git::git::{git_clone, GitWorkingDir};
 
-use crate::{git::GitHash, serde::git_url::GitUrl};
+use crate::{ctx, git::GitHash, serde::git_url::GitUrl};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
@@ -38,7 +39,7 @@ impl Ord for Status {
 
 #[derive(Debug)]
 pub struct WorkingDirectory {
-    pub path: PathBuf,
+    pub git_working_dir: GitWorkingDir,
     pub commit: GitHash,
     pub status: Status,
     /// last use time: mtime of the folder, which is touched on every
@@ -48,26 +49,65 @@ pub struct WorkingDirectory {
 
 impl WorkingDirectory {
     pub fn open(path: PathBuf) -> Result<Self> {
-        todo!()
+        // let quiet = false;
+        let git_working_dir = GitWorkingDir::from(path);
+        let mtime = {
+            let path = git_working_dir.working_dir_path_ref();
+            std::fs::metadata(path)
+                .map_err(ctx!("WorkingDirectory::open({path:?})"))?
+                .modified()?
+        };
+        let commit: GitHash = git_working_dir.get_head_commit_id()?.parse()?;
+        let status = Status::CheckedOut;
+        Ok(Self {
+            git_working_dir,
+            commit,
+            status,
+            mtime,
+        })
     }
 
     pub fn clone_repo(path: PathBuf, url: &GitUrl) -> Result<Self> {
-        // git_clone_to(&path, url)?;
-        // let commit = git_rev_parse(&path, "HEAD")?.parse()?;
+        let quiet = false;
+        let git_working_dir = git_clone(
+            &path,
+            [],
+            url.as_str(),
+            path.file_name().ok_or_else(|| {
+                anyhow!("clone_repo: given path {path:?} does not end in a file name")
+            })?,
+            quiet,
+        )?;
+        let commit: GitHash = git_working_dir.get_head_commit_id()?.parse()?;
         let status = Status::CheckedOut;
-        // Ok(Self {
-        //     path,
-        //     commit,
-        //     status,
-        // })
-        todo!()
+        let mtime = std::fs::metadata(git_working_dir.working_dir_path_ref())?.modified()?;
+        Ok(Self {
+            git_working_dir,
+            commit,
+            status,
+            mtime,
+        })
     }
 
+    /// Checks and is a no-op if already on the commit.
     pub fn checkout(&mut self, commit: GitHash) -> Result<()> {
-        // First stash, merge --abort, cherry-pick --abort, and all
-        // that jazz? No, have such a dir just go set aside with error
-        // for manual fixing/removal.
-        // git(&self.path, ["checkout", "-b", branch_name]);
-        todo!()
+        let quiet = false;
+        let current_commit = self.git_working_dir.get_head_commit_id()?;
+        if current_commit == commit.to_string() {
+            if self.commit != commit {
+                bail!("consistency failure: dir on disk has different commit id from obj")
+            }
+            Ok(())
+        } else {
+            // First stash, merge --abort, cherry-pick --abort, and all
+            // that jazz? No, have such a dir just go set aside with error
+            // for manual fixing/removal.
+            self.git_working_dir
+                .git(&["reset", "--hard", &commit.to_string()], quiet)
+                .map_err(ctx!("git reset --hard {commit}"))?;
+            self.commit = commit;
+            self.status = Status::CheckedOut;
+            Ok(())
+        }
     }
 }
