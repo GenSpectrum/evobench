@@ -1,6 +1,8 @@
-//! If there are errors, the WorkingDirectory is renamed but stays in
-//! the pool directory. I.e. only directories with names that are
-//! parseable as u64 are treated as usable entries.
+//! A pool of `WorkingDirectory`.
+
+//! Error concept: if there are errors, the WorkingDirectory is
+//! renamed but stays in the pool directory. (Only directories with
+//! names that are parseable as u64 are treated as usable entries.)
 
 use std::{collections::BTreeMap, num::NonZeroU8, path::PathBuf, u64};
 
@@ -36,10 +38,19 @@ pub struct WorkingDirectoryPoolOpts {
     pub url: GitUrl,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct WorkingDirectoryId(u64);
+
+impl WorkingDirectoryId {
+    pub fn to_directory_file_name(self) -> String {
+        format!("{}", self.0)
+    }
+}
+
 pub struct WorkingDirectoryPool {
     opts: WorkingDirectoryPoolOpts,
     next_id: u64,
-    entries: BTreeMap<u64, WorkingDirectory>,
+    entries: BTreeMap<WorkingDirectoryId, WorkingDirectory>,
     /// Only one process may use this pool at the same time
     _lock: StandaloneExclusiveFileLock,
 }
@@ -59,27 +70,29 @@ impl WorkingDirectoryPool {
             io_util::create_dir_if_not_exists(path, "working pool directory")?;
         }
 
-        let entries = std::fs::read_dir(path)
+        let entries: BTreeMap<WorkingDirectoryId, WorkingDirectory> = std::fs::read_dir(path)
             .map_err(ctx!("opening working pool directory {path:?}"))?
-            .map(|entry| -> Result<Option<(u64, WorkingDirectory)>> {
-                let entry = entry?;
-                let ft = entry.file_type()?;
-                if !ft.is_dir() {
-                    return Ok(None);
-                }
-                let id = if let Some(fname) = entry.file_name().to_str() {
-                    if let Ok(id) = fname.parse() {
-                        id
-                    } else {
+            .map(
+                |entry| -> Result<Option<(WorkingDirectoryId, WorkingDirectory)>> {
+                    let entry = entry?;
+                    let ft = entry.file_type()?;
+                    if !ft.is_dir() {
                         return Ok(None);
                     }
-                } else {
-                    return Ok(None);
-                };
-                let path = entry.path();
-                let wd = WorkingDirectory::open(path)?;
-                Ok(Some((id, wd)))
-            })
+                    let id = if let Some(fname) = entry.file_name().to_str() {
+                        if let Ok(id) = fname.parse() {
+                            WorkingDirectoryId(id)
+                        } else {
+                            return Ok(None);
+                        }
+                    } else {
+                        return Ok(None);
+                    };
+                    let path = entry.path();
+                    let wd = WorkingDirectory::open(path)?;
+                    Ok(Some((id, wd)))
+                },
+            )
             .filter_map(|r| r.transpose())
             .collect::<Result<_>>()
             .map_err(ctx!("reading contents of working pool directory {path:?}"))?;
@@ -91,7 +104,7 @@ impl WorkingDirectoryPool {
         Ok(Self {
             opts,
             _lock: lock,
-            next_id: 0,
+            next_id: entries.keys().max().map(|x| x.0 + 1).unwrap_or(0),
             entries,
         })
     }
@@ -115,12 +128,14 @@ impl WorkingDirectoryPool {
 
     pub fn set_processing_error(
         &mut self,
-        id: u64,
+        id: WorkingDirectoryId,
         processing_error: ProcessingError,
     ) -> Result<()> {
         let now = DateTimeWithOffset::now();
-        let old_dir_path = self.base_dir().append(format!("{id}"));
-        let new_dir_path = self.base_dir().append(format!("{id}.error_at_{now}"));
+        let old_dir_path = self.base_dir().append(id.to_directory_file_name());
+        let new_dir_path = self
+            .base_dir()
+            .append(format!("{}.error_at_{now}", id.to_directory_file_name()));
         let error_file_path =
             add_extension(&new_dir_path, "processing_error").expect("added file name above");
         let processing_error_string = serde_yml::to_string(&processing_error)?;
@@ -130,10 +145,45 @@ impl WorkingDirectoryPool {
             .map_err(ctx!("writing to {error_file_path:?}"))
     }
 
-    fn next_id(&mut self) -> u64 {
+    ///  Runs the given action on the requested working directory, and
+    ///  if there are errors, store them as metadata with the
+    ///  directory and remove it from the pool. Panics if a working
+    ///  directory with the given id doesn't exist. `run_parameters`
+    ///  and `context` are only used to be stored with the error, if
+    ///  any.
+    pub fn process_working_directory<T>(
+        &mut self,
+        working_directory_id: WorkingDirectoryId,
+        action: impl FnOnce(&mut WorkingDirectory) -> Result<T>,
+        run_parameters: &RunParameters,
+        context: &str,
+    ) -> Result<T> {
+        let wd = self
+            .entries
+            .get_mut(&working_directory_id)
+            .expect("working directory id must still exist");
+        match action(wd) {
+            Ok(v) => Ok(v),
+            Err(error) => {
+                let err = format!("{error:#?}");
+                self.set_processing_error(
+                    working_directory_id,
+                    ProcessingError {
+                        run_parameters: run_parameters.clone(),
+                        context: context.to_string(),
+                        error: err.clone(),
+                    },
+                )
+                .map_err(ctx!("error storing the error {err}"))?;
+                Err(error)
+            }
+        }
+    }
+
+    fn next_id(&mut self) -> WorkingDirectoryId {
         let id = self.next_id;
         self.next_id += 1;
-        id
+        WorkingDirectoryId(id)
     }
 
     // /// All working directories (ids) checked out for the given commit
@@ -150,8 +200,11 @@ impl WorkingDirectoryPool {
     /// commit, and if possible already built or even tested for
     /// it. Returns its id so that the right kind of fresh borrow can
     /// be done.
-    pub fn try_get_best_working_directory_for_commit(&self, commit: &GitHash) -> Option<u64> {
-        let mut dirs: Vec<(&u64, &WorkingDirectory)> = self
+    pub fn try_get_best_working_directory_for_commit(
+        &self,
+        commit: &GitHash,
+    ) -> Option<WorkingDirectoryId> {
+        let mut dirs: Vec<(&WorkingDirectoryId, &WorkingDirectory)> = self
             .entries
             .iter()
             .filter(|(_, entry)| entry.commit == *commit)
@@ -166,27 +219,32 @@ impl WorkingDirectoryPool {
     /// new clone if the configured capacity hasn't been reached or
     /// returns the least-recently used clone (XX or closest to the
     /// commit?). Does *not* check out the requested commit!
-    pub fn get_working_directory_for_commit<'s>(
+    pub fn get_a_working_directory_for_commit<'s>(
         &'s mut self,
         commit: &'s GitHash,
-    ) -> Result<&'s mut WorkingDirectory> {
+    ) -> Result<WorkingDirectoryId> {
         if let Some(id) = self.try_get_best_working_directory_for_commit(commit) {
-            Ok(self.entries.get_mut(&id).expect("just got the id"))
+            Ok(id)
         } else {
             if self.len() < self.capacity() {
                 // allocate a new one
                 let id = self.next_id();
-                let path = self.base_dir().append(format!("{id}"));
-                let dir = WorkingDirectory::clone_repo(path, self.git_url())?;
+                let dir = WorkingDirectory::clone_repo(
+                    self.base_dir(),
+                    &id.to_directory_file_name(),
+                    self.git_url(),
+                )?;
                 self.entries.insert(id, dir);
-                Ok(self.entries.get_mut(&id).unwrap())
+                Ok(id)
             } else {
                 // get the least-recently used one
                 Ok(self
                     .entries
-                    .values_mut()
-                    .min_by_key(|entry| entry.mtime)
-                    .expect("capacity is guaranteed >= 1"))
+                    .iter()
+                    .min_by_key(|(_, entry)| entry.mtime)
+                    .expect("capacity is guaranteed >= 1")
+                    .0
+                    .clone())
             }
         }
     }

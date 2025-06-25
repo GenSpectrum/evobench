@@ -1,12 +1,17 @@
 //! An abstraction for an *existing* directory, and one that should be
-//! usable (i.e. is worth trying to use)
+//! usable (i.e. is worth trying to use).
 
-use std::{path::PathBuf, time::SystemTime};
+use std::{
+    path::{Path, PathBuf},
+    time::SystemTime,
+};
 
-use anyhow::{anyhow, bail, Result};
-use run_git::git::{git_clone, GitWorkingDir};
+use anyhow::{bail, Result};
+use run_git::git::{git_clone, GitResetMode, GitWorkingDir};
 
 use crate::{ctx, git::GitHash, serde::git_url::GitUrl};
+
+const NO_OPTIONS: &[&str] = &[];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
@@ -67,17 +72,9 @@ impl WorkingDirectory {
         })
     }
 
-    pub fn clone_repo(path: PathBuf, url: &GitUrl) -> Result<Self> {
+    pub fn clone_repo(base_dir: &Path, dir_file_name: &str, url: &GitUrl) -> Result<Self> {
         let quiet = false;
-        let git_working_dir = git_clone(
-            &path,
-            [],
-            url.as_str(),
-            path.file_name().ok_or_else(|| {
-                anyhow!("clone_repo: given path {path:?} does not end in a file name")
-            })?,
-            quiet,
-        )?;
+        let git_working_dir = git_clone(&base_dir, [], url.as_str(), dir_file_name, quiet)?;
         let commit: GitHash = git_working_dir.get_head_commit_id()?.parse()?;
         let status = Status::CheckedOut;
         let mtime = std::fs::metadata(git_working_dir.working_dir_path_ref())?.modified()?;
@@ -102,9 +99,12 @@ impl WorkingDirectory {
             // First stash, merge --abort, cherry-pick --abort, and all
             // that jazz? No, have such a dir just go set aside with error
             // for manual fixing/removal.
-            self.git_working_dir
-                .git(&["reset", "--hard", &commit.to_string()], quiet)
-                .map_err(ctx!("git reset --hard {commit}"))?;
+            self.git_working_dir.git_reset(
+                GitResetMode::Hard,
+                NO_OPTIONS,
+                &commit.to_string(),
+                quiet,
+            )?;
             self.commit = commit;
             self.status = Status::CheckedOut;
             Ok(())

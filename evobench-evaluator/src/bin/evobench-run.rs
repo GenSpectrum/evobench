@@ -1,17 +1,19 @@
 use anyhow::{anyhow, bail, Result};
 use clap::Parser;
-use strum_macros::EnumString;
 
-use std::{path::PathBuf, process::Command};
+use std::path::PathBuf;
 
 use evobench_evaluator::{
     config_file::{save_config_file, LoadConfigFile},
     get_terminal_width::get_terminal_width,
-    key::RunParameters,
     key_val_fs::key_val::Entry,
     run::{
-        benchmarking_job::BenchmarkingJobOpts, config::RunConfig, run_queue::RunQueue,
-        run_queues::RunQueues, working_directories::WorkingDirectoryPool,
+        benchmarking_job::BenchmarkingJobOpts,
+        config::RunConfig,
+        run_job::{run_job, DryRun},
+        run_queue::RunQueue,
+        run_queues::RunQueues,
+        working_directories::WorkingDirectoryPool,
     },
     serde::{date_and_time::DateTimeWithOffset, paths::ProperFilename},
 };
@@ -31,20 +33,6 @@ struct Opts {
     /// get a list of the allowed options there.
     #[clap(subcommand)]
     subcommand: SubCommand,
-}
-
-#[derive(Debug, EnumString, PartialEq, Clone, Copy)]
-#[repr(u8)]
-enum DryRun {
-    DoNothing,
-    DoWorkingDir,
-    DoAll,
-}
-
-impl DryRun {
-    fn means(self, done: Self) -> bool {
-        self as u8 <= done as u8
-    }
 }
 
 #[derive(clap::Subcommand, Debug)]
@@ -166,39 +154,6 @@ fn main() -> Result<()> {
             dry_run,
             mode,
         } => {
-            let run_job = |working_directories: &mut WorkingDirectoryPool,
-                           checked_run_parameters: RunParameters|
-             -> Result<_> {
-                {
-                    if dry_run.means(DryRun::DoNothing) {
-                        println!("dry-run: would run {checked_run_parameters:?}");
-                        return Ok(());
-                    }
-                    let RunParameters {
-                        commit_id,
-                        checked_custom_parameters,
-                    } = checked_run_parameters;
-
-                    let working_directory =
-                        working_directories.get_working_directory_for_commit(&commit_id)?;
-
-                    working_directory.checkout(commit_id.clone())?;
-
-                    if dry_run.means(DryRun::DoWorkingDir) {
-                        println!("checked out working directory: {working_directory:?}");
-                        return Ok(());
-                    }
-
-                    // XXX  build etc run now
-                    let mut cmd = Command::new("printenv")
-                        .envs(&checked_custom_parameters)
-                        .spawn()?;
-                    let status = cmd.wait()?;
-                    dbg!(status);
-                    Ok(())
-                }
-            };
-
             let mut working_directories =
                 WorkingDirectoryPool::open(conf.working_directory_pool, true)?;
 
@@ -214,7 +169,9 @@ fn main() -> Result<()> {
                             false,
                             verbose,
                             stop_at,
-                            |run_parameters| run_job(&mut working_directories, run_parameters),
+                            |run_parameters| {
+                                run_job(&mut working_directories, run_parameters, dry_run)
+                            },
                             next_queue,
                         )?;
                     } else {
@@ -229,7 +186,7 @@ fn main() -> Result<()> {
                         todo!("daemonization {action:?}")
                     } else {
                         queues.run(verbose, |run_parameters| {
-                            run_job(&mut working_directories, run_parameters)
+                            run_job(&mut working_directories, run_parameters, dry_run)
                         })?;
                     }
                 }
