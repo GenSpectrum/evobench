@@ -145,17 +145,13 @@ fn main() -> Result<()> {
             save_config_file(&output_path, &*conf)?;
         }
         SubCommand::List => {
-            // COPY-PASTE from List action in jobqueue.rs, except
-            // printing the job in :#? view on the next line.
-            for (
-                i,
-                RunQueue {
+            let show_queue = |i: &str, run_queue: &RunQueue| -> Result<()> {
+                let RunQueue {
                     file_name,
                     schedule_condition,
                     queue,
-                },
-            ) in queues.run_queues().iter().enumerate()
-            {
+                } = run_queue;
+
                 println!("------------------------------------------------------------------");
                 println!("{i}. Queue {file_name} ({schedule_condition:?}):");
                 for entry in queue.sorted_entries(false, None) {
@@ -169,6 +165,22 @@ fn main() -> Result<()> {
                         .lock_status()?;
                     println!("\n{file_name} ({key})\t{locking}\n{val:#?}");
                 }
+                Ok(())
+            };
+
+            // Originally COPY-PASTE from List action in jobqueue.rs, except
+            // printing the job in :#? view on the next line.
+            for (i, run_queue) in queues.run_queues().iter().enumerate() {
+                show_queue(&i.to_string(), run_queue)?;
+            }
+            println!("------------------------------------------------------------------");
+            if let Some(run_queue) = queues.erroneous_jobs_queue() {
+                show_queue("erroneous_jobs_queue", run_queue)?;
+            } else {
+                println!(
+                    "No erroneous_jobs_queue is configured (it would collect \
+                     failing jobs"
+                )
             }
             println!("------------------------------------------------------------------");
         }
