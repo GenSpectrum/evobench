@@ -119,6 +119,17 @@ pub trait LoadConfigFile: DeserializeOwned {
     /// `or_else` fallback is called)
     fn default_config_path_without_suffix() -> Result<Option<PathBuf>>;
 
+    /// Attempt to load config again, if successful, overwrite self
+    /// with it. Returns true if it did reload.
+    fn reload_config<P: AsRef<Path>>(&mut self, path: Option<P>) -> bool {
+        if let Ok(val) = Self::load_config(path, |_| bail!("no new config")) {
+            *self = val;
+            true
+        } else {
+            false
+        }
+    }
+
     /// If `path` is given, the file must exist or an error is
     /// returned. Otherwise, a default location is checked
     /// (`default_config_path_without_suffix`) and if a file with one
