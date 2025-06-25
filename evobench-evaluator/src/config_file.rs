@@ -2,7 +2,11 @@
 
 //! TODO: integrate `serde_path_to_error` crate
 
-use std::path::{Path, PathBuf};
+use std::{
+    ops::Deref,
+    path::{Path, PathBuf},
+    time::SystemTime,
+};
 
 use anyhow::{anyhow, bail, Result};
 use serde::{de::DeserializeOwned, Serialize};
@@ -113,18 +117,61 @@ pub fn save_config_file<T: Serialize>(path: &Path, value: &T) -> Result<()> {
     backend.save_config_file(path, value)
 }
 
-pub trait LoadConfigFile: DeserializeOwned {
+pub trait DefaultConfigPath: DeserializeOwned {
     /// `load_config` tries a list of file name extensions, appended
     /// to this path, and one path is then expected to exist (or the
     /// `or_else` fallback is called)
     fn default_config_path_without_suffix() -> Result<Option<PathBuf>>;
+}
 
-    /// Attempt to load config again, if successful, overwrite self
-    /// with it. Returns true if it did reload.
-    fn reload_config<P: AsRef<Path>>(&mut self, path: Option<P>) -> bool {
-        if let Ok(val) = Self::load_config(path, |_| bail!("no new config")) {
-            *self = val;
-            true
+struct PathAndTrack {
+    path: PathBuf,
+    mtime: SystemTime,
+}
+
+/// Wrapper around a configuration type T that remembers where it was
+/// loaded from and the modification time of the file, and can reload
+/// a config if it changed.
+pub struct ConfigFile<T> {
+    config: T,
+    path_and_track: Option<PathAndTrack>,
+}
+
+impl<T> Deref for ConfigFile<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.config
+    }
+}
+
+impl<T: DeserializeOwned + DefaultConfigPath> ConfigFile<T> {
+    /// Check if the file that the config was loaded from has changed,
+    /// if so, attempt to load it, if successful, overwrite self with
+    /// the new value. Returns true if it did reload. Currently only
+    /// checks the file that it was loaded from for changes; if this
+    /// config was a default from `or_else`, no check is done at all.
+    pub fn perhaps_reload_config<P: AsRef<Path>>(&mut self, provided_path: Option<P>) -> bool {
+        if let Some(PathAndTrack { path, mtime }) = self.path_and_track.as_ref() {
+            match std::fs::metadata(path) {
+                Ok(s) => match s.modified() {
+                    Ok(m) => {
+                        if m == *mtime {
+                            false
+                        } else {
+                            match Self::load_config(provided_path, |_| bail!("config missing")) {
+                                Ok(val) => {
+                                    *self = val;
+                                    true
+                                }
+                                Err(_) => false,
+                            }
+                        }
+                    }
+                    Err(_) => false,
+                },
+                Err(_) => false,
+            }
         } else {
             false
         }
@@ -137,16 +184,28 @@ pub trait LoadConfigFile: DeserializeOwned {
     /// otherwise `or_else` is called with a message mentioning what
     /// was tried; it can issue an error or generate a default config
     /// value.
-    fn load_config<P: AsRef<Path>>(
+    pub fn load_config<P: AsRef<Path>>(
         path: Option<P>,
-        or_else: impl FnOnce(String) -> Result<Self>,
+        or_else: impl FnOnce(String) -> Result<T>,
     ) -> Result<Self> {
+        let load_config = |path: &Path, backend: ConfigBackend| {
+            let config = backend.load_config_file(path)?;
+            let mtime = std::fs::metadata(path)?.modified()?;
+            Ok(Self {
+                config,
+                path_and_track: Some(PathAndTrack {
+                    path: path.to_owned(),
+                    mtime,
+                }),
+            })
+        };
+
         if let Some(path) = path {
             let path = path.as_ref();
             let backend = backend_from_path(path)?;
-            backend.load_config_file(path)
+            load_config(path, backend)
         } else {
-            if let Some(path) = Self::default_config_path_without_suffix()? {
+            if let Some(path) = T::default_config_path_without_suffix()? {
                 let path_and_backends: Vec<_> = FILE_EXTENSIONS
                     .into_iter()
                     .map(|(extension, backend)| {
@@ -168,18 +227,26 @@ pub trait LoadConfigFile: DeserializeOwned {
                     0 => (),
                     1 => {
                         let (path, backend) = &path_and_backends[0];
-                        return backend.load_config_file(&path);
+                        return load_config(&path, **backend);
                     }
                     _ => {
                         bail!("multiple config file paths found, leading to ambiguity: {paths:?}")
                     }
                 }
-                or_else(format!("tried the default paths: {paths:?}"))
+                let config = or_else(format!("tried the default paths: {paths:?}"))?;
+                Ok(Self {
+                    config,
+                    path_and_track: None,
+                })
             } else {
-                or_else(format!(
+                let config = or_else(format!(
                     "no path was given and there is no default \
                      config location for this type"
-                ))
+                ))?;
+                Ok(Self {
+                    config,
+                    path_and_track: None,
+                })
             }
         }
     }

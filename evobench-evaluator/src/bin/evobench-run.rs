@@ -4,7 +4,7 @@ use clap::Parser;
 use std::path::PathBuf;
 
 use evobench_evaluator::{
-    config_file::{save_config_file, LoadConfigFile},
+    config_file::{save_config_file, ConfigFile},
     get_terminal_width::get_terminal_width,
     key_val_fs::key_val::Entry,
     run::{
@@ -97,7 +97,7 @@ pub enum RunMode {
 /// Run through the queues forever, but pick up config changes
 fn run_queues(
     config_path: Option<PathBuf>,
-    mut conf: RunConfig,
+    mut conf: ConfigFile<RunConfig>,
     mut queues: RunQueues,
     mut working_directories: WorkingDirectoryPool,
     verbose: bool,
@@ -108,7 +108,7 @@ fn run_queues(
         queues.run(verbose, |run_parameters| {
             run_job(&mut working_directories, run_parameters, dry_run)
         })?;
-        if conf.reload_config(config_path.as_ref()) {
+        if conf.perhaps_reload_config(config_path.as_ref()) {
             // XXX only if changed
             eprintln!("reloaded configuration, re-initializing");
             // Drop locks before getting new ones
@@ -134,13 +134,15 @@ fn main() -> Result<()> {
             .to_string())
     };
 
-    let conf = RunConfig::load_config(config.as_ref(), |msg| bail!("need a config file, {msg}"))?;
+    let conf = ConfigFile::<RunConfig>::load_config(config.as_ref(), |msg| {
+        bail!("need a config file, {msg}")
+    })?;
 
     let queues = RunQueues::open(conf.queues.clone(), true)?;
 
     match subcommand {
         SubCommand::SaveConfig { output_path } => {
-            save_config_file(&output_path, &conf)?;
+            save_config_file(&output_path, &*conf)?;
         }
         SubCommand::List => {
             // COPY-PASTE from List action in jobqueue.rs, except

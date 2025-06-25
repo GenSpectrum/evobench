@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, fmt::Debug, path::PathBuf, sync::Arc};
 use anyhow::Result;
 
 use crate::{
-    config_file::LoadConfigFile,
+    config_file::DefaultConfigPath,
     io_util::create_dir_if_not_exists,
     path_util::AppendToPath,
     serde::{date_and_time::LocalNaiveTime, paths::ProperFilename},
@@ -132,7 +132,7 @@ impl QueuesConfig {
     }
 }
 
-impl LoadConfigFile for RunConfig {
+impl DefaultConfigPath for RunConfig {
     fn default_config_path_without_suffix() -> Result<Option<PathBuf>> {
         let home = home_dir()?;
         Ok(Some(home.append(".evobench-run")))
