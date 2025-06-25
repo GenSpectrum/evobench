@@ -126,7 +126,7 @@ impl serde::Serialize for LocalNaiveTime {
             minute,
             second,
         } = self;
-        let s = format!("{hour}:{minute:02}:{second:02}");
+        let s = format!("{hour:02}:{minute:02}:{second:02}");
         serializer.serialize_str(&s)
     }
 }
