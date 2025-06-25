@@ -1,6 +1,7 @@
 use std::{
     convert::Infallible,
     ops::Deref,
+    sync::Arc,
     thread::sleep,
     time::{Duration, SystemTime},
 };
@@ -13,7 +14,7 @@ use crate::{
     info_if,
     key::RunParameters,
     key_val_fs::{
-        key_val::{KeyValConfig, KeyValError, KeyValSync},
+        key_val::{KeyValConfig, KeyValSync},
         queue::Queue,
     },
     path_util::AppendToPath,
@@ -45,16 +46,19 @@ impl<'conf, 'r> Deref for RunQueueWithNext<'conf, 'r> {
 
 pub type Never = Infallible;
 
-pub struct RunQueues<'conf> {
-    pub config: &'conf QueuesConfig,
+#[ouroboros::self_referencing]
+pub struct RunQueues {
+    pub config: Arc<QueuesConfig>,
     // Checked to be at least 1, at most one is `Immediately`,
     // etc. (private field to prevent by-passing the constructor)
-    run_queues: Vec<RunQueue<'conf>>,
+    #[borrows(config)]
+    #[covariant]
+    run_queues: Vec<RunQueue<'this>>,
 }
 
-impl<'conf> RunQueues<'conf> {
-    pub fn run_queues(&self) -> &[RunQueue<'conf>] {
-        &self.run_queues
+impl RunQueues {
+    pub fn run_queues(&self) -> &[RunQueue] {
+        self.borrow_run_queues()
     }
 
     pub fn queue_names(&self) -> Vec<&str> {
@@ -64,16 +68,16 @@ impl<'conf> RunQueues<'conf> {
             .collect()
     }
 
-    pub fn first(&self) -> &RunQueue<'conf> {
-        &self.run_queues[0]
+    pub fn first(&self) -> &RunQueue {
+        &self.run_queues()[0]
     }
 
     /// Also returns the queue following the requested one, if any
     pub fn get_run_queue_by_name(
         &self,
         file_name: &ProperFilename,
-    ) -> Option<(&RunQueue<'conf>, Option<&RunQueue<'conf>>)> {
-        let mut queues = self.run_queues.iter();
+    ) -> Option<(&RunQueue, Option<&RunQueue>)> {
+        let mut queues = self.run_queues().iter();
         while let Some(run_queue) = queues.next() {
             if &run_queue.file_name == file_name {
                 let next_queue = queues.next();
@@ -85,10 +89,10 @@ impl<'conf> RunQueues<'conf> {
 
     /// The `RunQueue`s paired with their successor (still in the
     /// original, configured, order)
-    pub fn run_queue_with_nexts<'s>(&'s self) -> Vec<RunQueueWithNext<'conf, 's>> {
-        self.run_queues
+    pub fn run_queue_with_nexts<'s>(&'s self) -> Vec<RunQueueWithNext<'s, 's>> {
+        self.run_queues()
             .iter()
-            .zip_longest(self.run_queues.iter().skip(1))
+            .zip_longest(self.run_queues().iter().skip(1))
             .map(|either_or_both| match either_or_both {
                 EitherOrBoth::Both(current, next) => RunQueueWithNext {
                     current,
@@ -143,77 +147,79 @@ impl<'conf> RunQueues<'conf> {
         (immediate_queues, ranged_queues)
     }
 
-    /// Run jobs in the queues forever
+    /// Run jobs in the queues, for one cycle; this needs to be run in
+    /// a loop forever for daemon style processing. The reason this
+    /// doesn't do the looping inside is to allow for a reload of the
+    /// queue config and then queues.
     pub fn run(
         &self,
         verbose: bool,
         mut execute: impl FnMut(RunParameters) -> Result<()>,
-    ) -> Result<Never> {
+    ) -> Result<()> {
         let (immediate_queues, ranged_queues_by_time) = self.immediate_and_ranged_queues();
 
-        loop {
-            // Immediate queries always have priority, regardless of
-            // concurrent ranged queues. Do not pass a timeout.
-            for q in &immediate_queues {
-                q.run(false, verbose, None, &mut execute, q.next)?;
-            }
+        // Immediate queries always have priority, regardless of
+        // concurrent ranged queues. Do not pass a timeout.
+        for q in &immediate_queues {
+            q.run(false, verbose, None, &mut execute, q.next)?;
+        }
 
-            for ((from, to), q) in &ranged_queues_by_time {
-                let now_system = SystemTime::now();
-                let now_chrono = DateTime::<Local>::from(now_system);
-                let now = now_chrono.naive_local();
-                info_if!(
-                    verbose,
-                    "it is now {now_chrono:?}, {now} -- \
+        for ((from, to), q) in &ranged_queues_by_time {
+            let now_system = SystemTime::now();
+            let now_chrono = DateTime::<Local>::from(now_system);
+            let now = now_chrono.naive_local();
+            info_if!(
+                verbose,
+                "it is now {now_chrono:?}, {now} -- \
                      checking queue {} with time range {from}..{to}",
-                    q.file_name
-                );
-                if let Some((from, to)) = (|| -> Option<_> {
-                    let from = from.with_date_as_unambiguous_local(now.date())?;
-                    let to = to.with_date_as_unambiguous_local(now.date())?;
-                    Some((from, to))
-                })() {
-                    if from <= now_chrono && now_chrono < to {
-                        info_if!(
-                            verbose,
-                            "it is now {now_chrono:?}, {now} -> processing queue {}",
-                            q.file_name
-                        );
-                        match q.run(false, verbose, Some(to.into()), &mut execute, q.next)? {
-                            TerminationReason::Timeout => {
-                                info_if!(verbose, "ran out of time in queue {}", q.file_name);
-                                if q.schedule_condition.move_on_timeout() {
-                                    let mut count = 0;
-                                    for entry in q.current.queue.sorted_entries(false, None) {
-                                        // XX continue in the face of
-                                        // errors? Just globally in
-                                        // the queue?
-                                        let mut entry = entry?;
-                                        let val = entry.get()?;
-                                        if let Some(next) = q.next {
-                                            next.push_front(&val)?;
-                                        }
-                                        entry.delete()?;
-                                        count += 1;
+                q.file_name
+            );
+            if let Some((from, to)) = (|| -> Option<_> {
+                let from = from.with_date_as_unambiguous_local(now.date())?;
+                let to = to.with_date_as_unambiguous_local(now.date())?;
+                Some((from, to))
+            })() {
+                if from <= now_chrono && now_chrono < to {
+                    info_if!(
+                        verbose,
+                        "it is now {now_chrono:?}, {now} -> processing queue {}",
+                        q.file_name
+                    );
+                    match q.run(false, verbose, Some(to.into()), &mut execute, q.next)? {
+                        TerminationReason::Timeout => {
+                            info_if!(verbose, "ran out of time in queue {}", q.file_name);
+                            if q.schedule_condition.move_on_timeout() {
+                                let mut count = 0;
+                                for entry in q.current.queue.sorted_entries(false, None) {
+                                    // XX continue in the face of
+                                    // errors? Just globally in
+                                    // the queue?
+                                    let mut entry = entry?;
+                                    let val = entry.get()?;
+                                    if let Some(next) = q.next {
+                                        next.push_front(&val)?;
                                     }
-                                    info_if!(
-                                        verbose,
-                                        "moved {count} entries to queue {:?}",
-                                        q.next.map(|q| &q.file_name)
-                                    );
+                                    entry.delete()?;
+                                    count += 1;
                                 }
+                                info_if!(
+                                    verbose,
+                                    "moved {count} entries to queue {:?}",
+                                    q.next.map(|q| &q.file_name)
+                                );
                             }
-                            TerminationReason::QueueEmpty => (),
-                            TerminationReason::GraveYard => unreachable!("not a ranged queue"),
                         }
+                        TerminationReason::QueueEmpty => (),
+                        TerminationReason::GraveYard => unreachable!("not a ranged queue"),
                     }
                 }
             }
-            sleep(Duration::from_secs(5));
         }
+        sleep(Duration::from_secs(5));
+        Ok(())
     }
 
-    pub fn new(config: &'conf QueuesConfig, run_queues: Vec<RunQueue<'conf>>) -> Result<Self> {
+    pub fn check_run_queues(run_queues: &Vec<RunQueue>) -> Result<()> {
         if run_queues.is_empty() {
             bail!(
                 "no queues defined -- need at least one, also \
@@ -221,7 +227,7 @@ impl<'conf> RunQueues<'conf> {
             )
         }
         let mut grave_yard_count = 0;
-        for run_queue in &run_queues {
+        for run_queue in run_queues {
             match run_queue.schedule_condition {
                 ScheduleCondition::Immediately => (),
                 ScheduleCondition::LocalNaiveTimeRange {
@@ -248,14 +254,14 @@ impl<'conf> RunQueues<'conf> {
             }
         }
 
-        Ok(Self { config, run_queues })
+        Ok(())
     }
 
-    pub fn open(config: &'conf QueuesConfig, create_dirs_if_not_exist: bool) -> Result<Self> {
+    pub fn open(config: Arc<QueuesConfig>, create_dirs_if_not_exist: bool) -> Result<Self> {
         let run_queues_basedir = config.run_queues_basedir(create_dirs_if_not_exist)?;
 
-        let open_queues = |create_dir_if_not_exists| -> Result<Vec<RunQueue>, KeyValError> {
-            config
+        Self::try_new(config, |config| {
+            let queues = config
                 .pipeline
                 .iter()
                 .map(|(filename, schedule_condition)| {
@@ -267,14 +273,14 @@ impl<'conf> RunQueues<'conf> {
                             &run_queue_path,
                             KeyValConfig {
                                 sync: KeyValSync::All,
-                                create_dir_if_not_exists,
+                                create_dir_if_not_exists: create_dirs_if_not_exist,
                             },
                         )?,
                     })
                 })
-                .collect()
-        };
-        let queues = open_queues(create_dirs_if_not_exist)?;
-        Ok(RunQueues::new(config, queues)?)
+                .collect::<Result<_>>()?;
+            Self::check_run_queues(&queues)?;
+            Ok(queues)
+        })
     }
 }

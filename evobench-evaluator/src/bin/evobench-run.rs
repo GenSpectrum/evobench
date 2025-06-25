@@ -12,7 +12,7 @@ use evobench_evaluator::{
         config::RunConfig,
         run_job::{run_job, DryRun},
         run_queue::RunQueue,
-        run_queues::RunQueues,
+        run_queues::{Never, RunQueues},
         working_directories::WorkingDirectoryPool,
     },
     serde::{date_and_time::DateTimeWithOffset, paths::ProperFilename},
@@ -94,6 +94,34 @@ pub enum RunMode {
     },
 }
 
+/// Run through the queues forever, but pick up config changes
+fn run_queues(
+    config_path: Option<PathBuf>,
+    mut conf: RunConfig,
+    mut queues: RunQueues,
+    mut working_directories: WorkingDirectoryPool,
+    verbose: bool,
+    dry_run: DryRun,
+) -> Result<Never> {
+    loop {
+        // XX handle errors without exiting? Or do that above
+        queues.run(verbose, |run_parameters| {
+            run_job(&mut working_directories, run_parameters, dry_run)
+        })?;
+        if conf.reload_config(config_path.as_ref()) {
+            // XXX only if changed
+            eprintln!("reloaded configuration, re-initializing");
+            // Drop locks before getting new ones
+            drop(queues);
+            drop(working_directories);
+            // XX handle errors without exiting? Or do that above
+            queues = RunQueues::open(conf.queues.clone(), true)?;
+            working_directories =
+                WorkingDirectoryPool::open(conf.working_directory_pool.clone(), true)?;
+        }
+    }
+}
+
 fn main() -> Result<()> {
     let Opts { config, subcommand } = Opts::parse();
 
@@ -106,9 +134,9 @@ fn main() -> Result<()> {
             .to_string())
     };
 
-    let conf = RunConfig::load_config(config, |msg| bail!("need a config file, {msg}"))?;
+    let conf = RunConfig::load_config(config.as_ref(), |msg| bail!("need a config file, {msg}"))?;
 
-    let queues = RunQueues::open(&conf.queues, true)?;
+    let queues = RunQueues::open(conf.queues.clone(), true)?;
 
     match subcommand {
         SubCommand::SaveConfig { output_path } => {
@@ -155,7 +183,7 @@ fn main() -> Result<()> {
             mode,
         } => {
             let mut working_directories =
-                WorkingDirectoryPool::open(conf.working_directory_pool, true)?;
+                WorkingDirectoryPool::open(conf.working_directory_pool.clone(), true)?;
 
             match mode {
                 RunMode::Once {
@@ -185,9 +213,7 @@ fn main() -> Result<()> {
                     if let Some(action) = action {
                         todo!("daemonization {action:?}")
                     } else {
-                        queues.run(verbose, |run_parameters| {
-                            run_job(&mut working_directories, run_parameters, dry_run)
-                        })?;
+                        run_queues(config, conf, queues, working_directories, verbose, dry_run)?;
                     }
                 }
             }

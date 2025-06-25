@@ -4,7 +4,7 @@
 //! renamed but stays in the pool directory. (Only directories with
 //! names that are parseable as u64 are treated as usable entries.)
 
-use std::{collections::BTreeMap, num::NonZeroU8, path::PathBuf, u64};
+use std::{collections::BTreeMap, num::NonZeroU8, path::PathBuf, sync::Arc, u64};
 
 use anyhow::Result;
 use serde::Serialize;
@@ -48,7 +48,7 @@ impl WorkingDirectoryId {
 }
 
 pub struct WorkingDirectoryPool {
-    opts: WorkingDirectoryPoolOpts,
+    opts: Arc<WorkingDirectoryPoolOpts>,
     next_id: u64,
     entries: BTreeMap<WorkingDirectoryId, WorkingDirectory>,
     /// Only one process may use this pool at the same time
@@ -63,7 +63,10 @@ pub struct ProcessingError {
 }
 
 impl WorkingDirectoryPool {
-    pub fn open(opts: WorkingDirectoryPoolOpts, create_dir_if_not_exists: bool) -> Result<Self> {
+    pub fn open(
+        opts: Arc<WorkingDirectoryPoolOpts>,
+        create_dir_if_not_exists: bool,
+    ) -> Result<Self> {
         let path = &opts.base_dir;
 
         if create_dir_if_not_exists {

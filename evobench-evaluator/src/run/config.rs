@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, fmt::Debug, path::PathBuf};
+use std::{collections::BTreeMap, fmt::Debug, path::PathBuf, sync::Arc};
 
 use anyhow::Result;
 
@@ -99,9 +99,14 @@ pub struct QueuesConfig {
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunConfig {
-    pub queues: QueuesConfig,
+    // Usage for reloads dictate the Arc (with the current approaches,
+    // which needs to leave the config intact while taking a shared
+    // reference to the QueuesConfig because both parts are moved, in
+    // evobench-run).
+    pub queues: Arc<QueuesConfig>,
 
-    pub working_directory_pool: WorkingDirectoryPoolOpts,
+    // same as above re Arc use
+    pub working_directory_pool: Arc<WorkingDirectoryPoolOpts>,
 
     /// The key names (environment variable names) that are allowed
     /// (value `false`) or required (value `true`) for benchmarking
