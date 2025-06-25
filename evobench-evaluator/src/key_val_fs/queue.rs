@@ -258,7 +258,9 @@ impl<V: DeserializeOwned + Serialize + 'static> Queue<V> {
                     got_entry = true;
                     match entry {
                         Ok(mut entry) => {
-                            let value = entry.get().unwrap();
+                            let value = entry
+                                .get()
+                                .expect("version of serialized ds has not changed");
                             let lockable = entry
                                 .take_lockable_file()
                                 .expect("we have not taken it yet");

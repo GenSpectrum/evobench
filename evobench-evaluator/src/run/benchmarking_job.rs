@@ -11,6 +11,11 @@ pub struct BenchmarkingJobOpts {
     #[clap(short, long, default_value = "5")]
     count: u8,
 
+    /// How many times a job is allowed to fail before it is removed
+    /// from the pipeline
+    #[clap(short, long, default_value = "3")]
+    error_budget: u8,
+
     #[clap(flatten)]
     pub run_parameters: RunParametersOpts,
 }
@@ -18,8 +23,9 @@ pub struct BenchmarkingJobOpts {
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BenchmarkingJob {
-    pub remaining_count: u8,
     pub run_parameters: RunParameters,
+    pub remaining_count: u8,
+    pub remaining_error_budget: u8,
 }
 
 impl BenchmarkingJobOpts {
@@ -29,12 +35,14 @@ impl BenchmarkingJobOpts {
     ) -> Result<BenchmarkingJob> {
         let Self {
             count,
+            error_budget,
             run_parameters,
         } = self;
 
         Ok(BenchmarkingJob {
-            remaining_count: count,
             run_parameters: run_parameters.checked(custom_parameters_required)?,
+            remaining_count: count,
+            remaining_error_budget: error_budget,
         })
     }
 }

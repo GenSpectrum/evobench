@@ -1,6 +1,7 @@
 use std::{
     convert::Infallible,
     ops::Deref,
+    path::PathBuf,
     sync::Arc,
     thread::sleep,
     time::{Duration, SystemTime},
@@ -54,6 +55,10 @@ pub struct RunQueues {
     #[borrows(config)]
     #[covariant]
     run_queues: Vec<RunQueue<'this>>,
+
+    #[borrows(config)]
+    #[covariant]
+    erroneous_jobs_queue: Option<RunQueue<'this>>,
 }
 
 impl RunQueues {
@@ -66,6 +71,10 @@ impl RunQueues {
             .iter()
             .map(|q| q.file_name.as_str())
             .collect()
+    }
+
+    pub fn erroneous_jobs_queue(&self) -> Option<&RunQueue> {
+        self.borrow_erroneous_jobs_queue().as_ref()
     }
 
     pub fn first(&self) -> &RunQueue {
@@ -151,7 +160,7 @@ impl RunQueues {
     /// a loop forever for daemon style processing. The reason this
     /// doesn't do the looping inside is to allow for a reload of the
     /// queue config and then queues.
-    pub fn run(
+    pub fn run<'conf>(
         &self,
         verbose: bool,
         mut execute: impl FnMut(RunParameters) -> Result<()>,
@@ -161,7 +170,14 @@ impl RunQueues {
         // Immediate queries always have priority, regardless of
         // concurrent ranged queues. Do not pass a timeout.
         for q in &immediate_queues {
-            q.run(false, verbose, None, &mut execute, q.next)?;
+            q.run(
+                false,
+                verbose,
+                None,
+                &mut execute,
+                q.next,
+                self.erroneous_jobs_queue(),
+            )?;
         }
 
         for ((from, to), q) in &ranged_queues_by_time {
@@ -185,7 +201,14 @@ impl RunQueues {
                         "it is now {now_chrono:?}, {now} -> processing queue {}",
                         q.file_name
                     );
-                    match q.run(false, verbose, Some(to.into()), &mut execute, q.next)? {
+                    match q.run(
+                        false,
+                        verbose,
+                        Some(to.into()),
+                        &mut execute,
+                        q.next,
+                        self.erroneous_jobs_queue(),
+                    )? {
                         TerminationReason::Timeout => {
                             info_if!(verbose, "ran out of time in queue {}", q.file_name);
                             if q.schedule_condition.move_on_timeout() {
@@ -260,27 +283,49 @@ impl RunQueues {
     pub fn open(config: Arc<QueuesConfig>, create_dirs_if_not_exist: bool) -> Result<Self> {
         let run_queues_basedir = config.run_queues_basedir(create_dirs_if_not_exist)?;
 
-        Self::try_new(config, |config| {
-            let queues = config
-                .pipeline
-                .iter()
-                .map(|(filename, schedule_condition)| {
-                    let run_queue_path = (&run_queues_basedir).append(filename.as_str());
-                    Ok(RunQueue {
-                        file_name: filename.clone(),
-                        schedule_condition,
-                        queue: Queue::<BenchmarkingJob>::open(
-                            &run_queue_path,
-                            KeyValConfig {
-                                sync: KeyValSync::All,
-                                create_dir_if_not_exists: create_dirs_if_not_exist,
-                            },
-                        )?,
-                    })
-                })
-                .collect::<Result<_>>()?;
-            Self::check_run_queues(&queues)?;
-            Ok(queues)
-        })
+        fn make_run_queue<'this>(
+            (filename, schedule_condition): &'this (ProperFilename, ScheduleCondition),
+            run_queues_basedir: &PathBuf,
+            create_dirs_if_not_exist: bool,
+        ) -> Result<RunQueue<'this>> {
+            let run_queue_path = (&run_queues_basedir).append(filename.as_str());
+            Ok(RunQueue {
+                file_name: filename.clone(),
+                schedule_condition,
+                queue: Queue::<BenchmarkingJob>::open(
+                    &run_queue_path,
+                    KeyValConfig {
+                        sync: KeyValSync::All,
+                        create_dir_if_not_exists: create_dirs_if_not_exist,
+                    },
+                )?,
+            })
+        }
+
+        Self::try_new(
+            config,
+            // run_queues:
+            |config| {
+                let queues = config
+                    .pipeline
+                    .iter()
+                    .map(|cfg| make_run_queue(cfg, &run_queues_basedir, create_dirs_if_not_exist))
+                    .collect::<Result<_>>()?;
+                Self::check_run_queues(&queues)?;
+                Ok(queues)
+            },
+            // erroneous_jobs_queue:
+            |config| {
+                if let Some(cfg) = config.erroneous_jobs_queue.as_ref() {
+                    Ok(Some(make_run_queue(
+                        cfg,
+                        &run_queues_basedir,
+                        create_dirs_if_not_exist,
+                    )?))
+                } else {
+                    Ok(None)
+                }
+            },
+        )
     }
 }

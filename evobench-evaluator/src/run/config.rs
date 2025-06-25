@@ -93,6 +93,12 @@ pub struct QueuesConfig {
     /// The queues to use (file names, without '/'), and their
     /// scheduled execution condition
     pub pipeline: Vec<(ProperFilename, ScheduleCondition)>,
+
+    /// The queue where to put jobs when they run out of
+    /// `error_budget` (if `None` is given, the jobs will be dropped--
+    /// silently unless verbose flag is given). Should be of
+    /// scheduling type GraveYard.
+    pub erroneous_jobs_queue: Option<(ProperFilename, ScheduleCondition)>,
 }
 
 /// Direct representation of the evobench-run config file

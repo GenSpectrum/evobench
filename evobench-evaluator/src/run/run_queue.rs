@@ -41,6 +41,8 @@ impl<'conf> RunQueue<'conf> {
         // understand why.
         mut execute: impl FnMut(RunParameters) -> Result<()>,
         next_queue: Option<&Self>,
+        // Where jobs go when they run out of error budget
+        erroneous_jobs_queue: Option<&Self>,
     ) -> Result<TerminationReason>
     where
         'conf: 's,
@@ -70,57 +72,92 @@ impl<'conf> RunQueue<'conf> {
 
             let (mut item, queue_arguments) = item_and_value?;
             let BenchmarkingJob {
-                remaining_count,
                 run_parameters,
+                remaining_count,
+                mut remaining_error_budget,
             } = queue_arguments;
-            if remaining_count > 0 {
-                // XXX when there are errors, increase an error count
-                // wl life left, then move to another GraveYard
-                execute(run_parameters.clone())?;
-                let remaining_count = remaining_count - 1;
+            if remaining_error_budget > 0 {
                 if remaining_count > 0 {
-                    let maybe_queue;
-                    match self.schedule_condition {
-                        ScheduleCondition::Immediately => {
-                            // Job is always going to the next queue
-                            maybe_queue = next_queue;
+                    if let Err(error) = execute(run_parameters.clone()) {
+                        remaining_error_budget = remaining_error_budget - 1;
+                        // XX this should use more important error
+                        // logging than info!; (XX also, repetitive
+                        // BenchmarkingJob recreation and cloning.)
+                        let job = BenchmarkingJob {
+                            run_parameters: run_parameters.clone(),
+                            remaining_count,
+                            remaining_error_budget,
+                        };
+                        info_if!(verbose, "job gave error: {job:?}: {error:#?}");
+                        if remaining_error_budget > 0 {
+                            // Re-schedule
+                            self.push_front(&job)?;
                         }
-                        ScheduleCondition::LocalNaiveTimeRange {
-                            stop_start: _,
-                            repeatedly,
-                            move_on_timeout: _,
-                            from: _,
-                            to: _,
-                        } => {
-                            if *repeatedly {
-                                // Job is going to the current queue (as
-                                // long as `to` has not been reached,
-                                // otherwise the next queue, but then will
-                                // move them all anyway once running out,
-                                // so doesn't matter, and won't parse `to`
-                                // time here, because need to do that
-                                // before we start, hence using `stop_at`
-                                // for that. Thus, simply:)
-                                maybe_queue = Some(self);
+                    } else {
+                        let remaining_count = remaining_count - 1;
+                        if remaining_count > 0 {
+                            let maybe_queue;
+                            match self.schedule_condition {
+                                ScheduleCondition::Immediately => {
+                                    // Job is always going to the next queue
+                                    maybe_queue = next_queue;
+                                }
+                                ScheduleCondition::LocalNaiveTimeRange {
+                                    stop_start: _,
+                                    repeatedly,
+                                    move_on_timeout: _,
+                                    from: _,
+                                    to: _,
+                                } => {
+                                    if *repeatedly {
+                                        // Job is going to the current queue (as
+                                        // long as `to` has not been reached,
+                                        // otherwise the next queue, but then will
+                                        // move them all anyway once running out,
+                                        // so doesn't matter, and won't parse `to`
+                                        // time here, because need to do that
+                                        // before we start, hence using `stop_at`
+                                        // for that. Thus, simply:)
+                                        maybe_queue = Some(self);
+                                    } else {
+                                        maybe_queue = next_queue;
+                                    }
+                                }
+                                ScheduleCondition::GraveYard => {
+                                    unreachable!("already returned at beginning of function")
+                                }
+                            }
+
+                            let job = BenchmarkingJob {
+                                run_parameters: run_parameters.clone(),
+                                remaining_count,
+                                remaining_error_budget,
+                            };
+
+                            if let Some(queue) = maybe_queue {
+                                queue.push_front(&job)?;
                             } else {
-                                maybe_queue = next_queue;
+                                info_if!(verbose, "job dropping off the pipeline: {job:?}");
                             }
                         }
-                        ScheduleCondition::GraveYard => {
-                            unreachable!("already returned at beginning of function")
-                        }
                     }
+                }
+            }
+            if remaining_error_budget == 0 {
+                let job = BenchmarkingJob {
+                    run_parameters,
+                    remaining_count,
+                    remaining_error_budget,
+                };
 
-                    let job = BenchmarkingJob {
-                        remaining_count,
-                        run_parameters,
-                    };
-
-                    if let Some(queue) = maybe_queue {
-                        queue.push_front(&job)?;
-                    } else {
-                        info_if!(verbose, "job is dropped: {job:?}");
-                    }
+                if let Some(queue) = &erroneous_jobs_queue {
+                    queue.push_front(&job)?;
+                } else {
+                    info_if!(
+                        verbose,
+                        "job dropped due to running out of error budget \
+                         and no configured erroneous_jobs_queue: {job:?}"
+                    );
                 }
             }
             item.delete()?;

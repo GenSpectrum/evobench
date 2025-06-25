@@ -203,6 +203,7 @@ fn main() -> Result<()> {
                                 run_job(&mut working_directories, run_parameters, dry_run)
                             },
                             next_queue,
+                            queues.erroneous_jobs_queue(),
                         )?;
                     } else {
                         bail!(
