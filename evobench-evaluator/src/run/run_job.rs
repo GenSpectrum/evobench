@@ -7,7 +7,7 @@ use strum_macros::EnumString;
 
 use crate::key::RunParameters;
 
-use super::working_directories::WorkingDirectoryPool;
+use super::working_directory_pool::WorkingDirectoryPool;
 
 #[derive(Debug, EnumString, PartialEq, Clone, Copy)]
 #[repr(u8)]
@@ -24,7 +24,7 @@ impl DryRun {
 }
 
 pub fn run_job(
-    working_directories: &mut WorkingDirectoryPool,
+    working_directory_pool: &mut WorkingDirectoryPool,
     checked_run_parameters: RunParameters,
     dry_run: DryRun,
 ) -> Result<()> {
@@ -38,9 +38,9 @@ pub fn run_job(
     } = &checked_run_parameters;
 
     let working_directory_id =
-        working_directories.get_a_working_directory_for_commit(&commit_id)?;
+        working_directory_pool.get_a_working_directory_for_commit(&commit_id)?;
 
-    working_directories.process_working_directory(
+    working_directory_pool.process_working_directory(
         working_directory_id,
         |working_directory| {
             working_directory.checkout(commit_id.clone())?;

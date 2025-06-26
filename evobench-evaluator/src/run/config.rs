@@ -10,7 +10,7 @@ use crate::{
     utillib::home::home_dir,
 };
 
-use super::working_directories::WorkingDirectoryPoolOpts;
+use super::working_directory_pool::WorkingDirectoryPoolOpts;
 
 #[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ScheduleCondition {

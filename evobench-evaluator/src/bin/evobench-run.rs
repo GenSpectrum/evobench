@@ -13,7 +13,7 @@ use evobench_evaluator::{
         run_job::{run_job, DryRun},
         run_queue::RunQueue,
         run_queues::{Never, RunQueues},
-        working_directories::WorkingDirectoryPool,
+        working_directory_pool::WorkingDirectoryPool,
     },
     serde::{date_and_time::DateTimeWithOffset, paths::ProperFilename},
 };
@@ -99,24 +99,24 @@ fn run_queues(
     config_path: Option<PathBuf>,
     mut conf: ConfigFile<RunConfig>,
     mut queues: RunQueues,
-    mut working_directories: WorkingDirectoryPool,
+    mut working_directory_pool: WorkingDirectoryPool,
     verbose: bool,
     dry_run: DryRun,
 ) -> Result<Never> {
     loop {
         // XX handle errors without exiting? Or do that above
         queues.run(verbose, |run_parameters| {
-            run_job(&mut working_directories, run_parameters, dry_run)
+            run_job(&mut working_directory_pool, run_parameters, dry_run)
         })?;
         if conf.perhaps_reload_config(config_path.as_ref()) {
             // XXX only if changed
             eprintln!("reloaded configuration, re-initializing");
             // Drop locks before getting new ones
             drop(queues);
-            drop(working_directories);
+            drop(working_directory_pool);
             // XX handle errors without exiting? Or do that above
             queues = RunQueues::open(conf.queues.clone(), true)?;
-            working_directories =
+            working_directory_pool =
                 WorkingDirectoryPool::open(conf.working_directory_pool.clone(), true)?;
         }
     }
@@ -196,7 +196,7 @@ fn main() -> Result<()> {
             dry_run,
             mode,
         } => {
-            let mut working_directories =
+            let mut working_directory_pool =
                 WorkingDirectoryPool::open(conf.working_directory_pool.clone(), true)?;
 
             match mode {
@@ -212,7 +212,7 @@ fn main() -> Result<()> {
                             verbose,
                             stop_at,
                             |run_parameters| {
-                                run_job(&mut working_directories, run_parameters, dry_run)
+                                run_job(&mut working_directory_pool, run_parameters, dry_run)
                             },
                             next_queue,
                             queues.erroneous_jobs_queue(),
@@ -228,7 +228,14 @@ fn main() -> Result<()> {
                     if let Some(action) = action {
                         todo!("daemonization {action:?}")
                     } else {
-                        run_queues(config, conf, queues, working_directories, verbose, dry_run)?;
+                        run_queues(
+                            config,
+                            conf,
+                            queues,
+                            working_directory_pool,
+                            verbose,
+                            dry_run,
+                        )?;
                     }
                 }
             }
