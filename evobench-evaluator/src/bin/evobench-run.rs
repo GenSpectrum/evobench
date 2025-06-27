@@ -177,7 +177,7 @@ fn main() -> Result<()> {
 
             // Originally COPY-PASTE from List action in jobqueue.rs, except
             // printing the job in :#? view on the next line.
-            for (i, run_queue) in queues.run_queues().iter().enumerate() {
+            for (i, run_queue) in queues.pipeline().iter().enumerate() {
                 show_queue(&i.to_string(), run_queue)?;
             }
             println!("------------------------------------------------------------------");

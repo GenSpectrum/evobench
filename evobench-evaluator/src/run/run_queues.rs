@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeSet,
     convert::Infallible,
     ops::Deref,
     path::PathBuf,
@@ -55,7 +56,7 @@ pub struct RunQueues {
     // etc. (private field to prevent by-passing the constructor)
     #[borrows(config)]
     #[covariant]
-    run_queues: Vec<RunQueue<'this>>,
+    pipeline: Vec<RunQueue<'this>>,
 
     #[borrows(config)]
     #[covariant]
@@ -63,12 +64,12 @@ pub struct RunQueues {
 }
 
 impl RunQueues {
-    pub fn run_queues(&self) -> &[RunQueue] {
-        self.borrow_run_queues()
+    pub fn pipeline(&self) -> &[RunQueue] {
+        self.borrow_pipeline()
     }
 
     pub fn queue_names(&self) -> Vec<&str> {
-        self.run_queues()
+        self.pipeline()
             .iter()
             .map(|q| q.file_name.as_str())
             .collect()
@@ -79,7 +80,7 @@ impl RunQueues {
     }
 
     pub fn first(&self) -> &RunQueue {
-        &self.run_queues()[0]
+        &self.pipeline()[0]
     }
 
     /// Also returns the queue following the requested one, if any
@@ -87,7 +88,7 @@ impl RunQueues {
         &self,
         file_name: &ProperFilename,
     ) -> Option<(&RunQueue, Option<&RunQueue>)> {
-        let mut queues = self.run_queues().iter();
+        let mut queues = self.pipeline().iter();
         while let Some(run_queue) = queues.next() {
             if &run_queue.file_name == file_name {
                 let next_queue = queues.next();
@@ -100,9 +101,9 @@ impl RunQueues {
     /// The `RunQueue`s paired with their successor (still in the
     /// original, configured, order)
     pub fn run_queue_with_nexts<'s>(&'s self) -> Vec<RunQueueWithNext<'s, 's>> {
-        self.run_queues()
+        self.pipeline()
             .iter()
-            .zip_longest(self.run_queues().iter().skip(1))
+            .zip_longest(self.pipeline().iter().skip(1))
             .map(|either_or_both| match either_or_both {
                 EitherOrBoth::Both(current, next) => RunQueueWithNext {
                     current,
@@ -188,7 +189,7 @@ impl RunQueues {
             info_if!(
                 verbose,
                 "it is now {now_chrono:?}, {now} -- \
-                     checking queue {} with time range {from}..{to}",
+                 checking queue {} with time range {from}..{to}",
                 q.file_name
             );
             if let Some((from, to)) = (|| -> Option<_> {
@@ -243,15 +244,22 @@ impl RunQueues {
         Ok(())
     }
 
-    pub fn check_run_queues(run_queues: &Vec<RunQueue>) -> Result<()> {
-        if run_queues.is_empty() {
+    fn check_run_queues(&self) -> Result<()> {
+        let (pipeline, erroneous_jobs_queue) = (self.pipeline(), self.erroneous_jobs_queue());
+        if pipeline.is_empty() {
             bail!(
                 "no queues defined -- need at least one, also \
                  suggested is to add a `GraveYard` as the last"
             )
         }
         let mut grave_yard_count = 0;
-        for run_queue in run_queues {
+        let mut seen = BTreeSet::new();
+        for run_queue in pipeline {
+            let file_name = &run_queue.file_name;
+            if seen.contains(file_name) {
+                bail!("duplicate queue name {file_name:?}")
+            }
+            seen.insert(file_name.clone());
             match run_queue.schedule_condition {
                 ScheduleCondition::Immediately => (),
                 ScheduleCondition::LocalNaiveTimeRange {
@@ -264,11 +272,20 @@ impl RunQueues {
                 ScheduleCondition::GraveYard => grave_yard_count += 1,
             }
         }
+        if let Some(run_queue) = erroneous_jobs_queue.as_ref() {
+            let file_name = &run_queue.file_name;
+            if seen.contains(file_name) {
+                bail!(
+                    "duplicate queue name {file_name:?}: `erroneous_jobs_queue` \
+                     uses a name also used in the pipeline"
+                )
+            }
+        }
         if grave_yard_count > 1 {
             bail!("can have at most one `GraveYard` queue");
         }
         if grave_yard_count > 0 {
-            if *run_queues
+            if *pipeline
                 .last()
                 .expect("checked in the if condition")
                 .schedule_condition
@@ -308,16 +325,15 @@ impl RunQueues {
             })
         }
 
-        Self::try_new(
+        let slf = Self::try_new(
             config,
-            // run_queues:
-            |config| {
+            // pipeline:
+            |config| -> Result<_> {
                 let queues = config
                     .pipeline
                     .iter()
                     .map(|cfg| make_run_queue(cfg, &run_queues_basedir, create_dirs_if_not_exist))
                     .collect::<Result<_>>()?;
-                Self::check_run_queues(&queues)?;
                 Ok(queues)
             },
             // erroneous_jobs_queue:
@@ -332,6 +348,10 @@ impl RunQueues {
                     Ok(None)
                 }
             },
-        )
+        )?;
+
+        slf.check_run_queues()?;
+
+        Ok(slf)
     }
 }
