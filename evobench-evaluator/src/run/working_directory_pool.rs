@@ -60,7 +60,9 @@ pub struct WorkingDirectoryPool {
 
 #[derive(Debug, Serialize)]
 pub struct ProcessingError {
-    run_parameters: RunParameters,
+    /// An Option since working directory pools are also used for
+    /// things that are not benchmark runs
+    run_parameters: Option<RunParameters>,
     context: String,
     error: String,
 }
@@ -140,6 +142,23 @@ impl WorkingDirectoryPool {
         self.entries.len()
     }
 
+    /// Always gets a working directory, but doesn't check for any
+    /// best fit. If none was cloned yet, that is done now.
+    pub fn get_first(&mut self) -> Result<WorkingDirectoryId> {
+        if let Some((key, _)) = self.entries.first_key_value() {
+            Ok(*key)
+        } else {
+            let id = self.next_id();
+            let dir = WorkingDirectory::clone_repo(
+                self.base_dir(),
+                &id.to_directory_file_name(),
+                self.git_url(),
+            )?;
+            self.entries.insert(id, dir);
+            Ok(id)
+        }
+    }
+
     pub fn set_processing_error(
         &mut self,
         id: WorkingDirectoryId,
@@ -169,7 +188,7 @@ impl WorkingDirectoryPool {
         &mut self,
         working_directory_id: WorkingDirectoryId,
         action: impl FnOnce(&mut WorkingDirectory) -> Result<T>,
-        run_parameters: &RunParameters,
+        run_parameters: Option<&RunParameters>,
         context: &str,
     ) -> Result<T> {
         let wd = self
@@ -183,7 +202,7 @@ impl WorkingDirectoryPool {
                 self.set_processing_error(
                     working_directory_id,
                     ProcessingError {
-                        run_parameters: run_parameters.clone(),
+                        run_parameters: run_parameters.cloned(),
                         context: context.to_string(),
                         error: err.clone(),
                     },
@@ -242,14 +261,7 @@ impl WorkingDirectoryPool {
         } else {
             if self.len() < self.capacity() {
                 // allocate a new one
-                let id = self.next_id();
-                let dir = WorkingDirectory::clone_repo(
-                    self.base_dir(),
-                    &id.to_directory_file_name(),
-                    self.git_url(),
-                )?;
-                self.entries.insert(id, dir);
-                Ok(id)
+                self.get_first()
             } else {
                 // get the least-recently used one
                 Ok(self

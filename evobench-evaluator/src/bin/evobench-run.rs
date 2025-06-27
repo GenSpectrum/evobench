@@ -12,6 +12,7 @@ use evobench_evaluator::{
         benchmarking_job::BenchmarkingJobOpts,
         config::RunConfig,
         global_app_state_dir::GlobalAppStateDir,
+        polling_pool::PollingPool,
         run_job::{run_job, DryRun},
         run_queue::RunQueue,
         run_queues::{Never, RunQueues},
@@ -207,6 +208,20 @@ fn main() -> Result<()> {
         } => {
             let benchmarking_job =
                 benchmarking_job_opts.checked(&conf.custom_parameters_required)?;
+
+            {
+                let url = &conf.working_directory_pool.url;
+                let mut polling_pool = PollingPool::open(
+                    url,
+                    &global_app_state_dir.working_directory_for_polling_pool_base()?,
+                )?;
+
+                let commit = &benchmarking_job.run_parameters.commit_id;
+                if !polling_pool.commit_is_valid(commit)? {
+                    bail!("commit {commit} does not exist in the repository {url:?}")
+                }
+            }
+
             queues.first().push_front(&benchmarking_job)?;
         }
         SubCommand::Run {

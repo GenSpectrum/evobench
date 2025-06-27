@@ -59,7 +59,7 @@ pub fn run_job(
 
             Ok(())
         },
-        &checked_run_parameters,
+        Some(&checked_run_parameters),
         "checkout",
     )
 }

@@ -37,7 +37,15 @@ impl GlobalAppStateDir {
         self.subdir("queues")
     }
 
+    /// The pool of project clones which are used for building and benchmarking
     pub fn working_directory_pool_base(&self) -> Result<PathBuf> {
         self.subdir("working_directory_pool")
+    }
+
+    /// The pool of project clones (only 1, but the pool
+    /// infrastructure is used to handle errors) for polling and for
+    /// verifying commit ids on insertion
+    pub fn working_directory_for_polling_pool_base(&self) -> Result<PathBuf> {
+        self.subdir("polling_pool")
     }
 }
