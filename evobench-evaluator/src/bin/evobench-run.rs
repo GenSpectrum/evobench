@@ -1,10 +1,11 @@
 use anyhow::{anyhow, bail, Result};
 use clap::Parser;
+use itertools::Itertools;
 
 use std::path::PathBuf;
 
 use evobench_evaluator::{
-    config_file::{save_config_file, ConfigFile},
+    config_file::{self, save_config_file, ConfigFile},
     get_terminal_width::get_terminal_width,
     key_val_fs::key_val::Entry,
     run::{
@@ -25,8 +26,10 @@ use evobench_evaluator::{
 /// Schedule (and query?) benchmarking jobs.
 struct Opts {
     /// Override the path to the config file (default: the paths
-    /// `~/.evobench-run.json5` and `~/.evobench-run.json`, and if
-    /// those are missing, use compiled-in default config values)
+    /// `~/.evobench-run.*` where a single one exists where the `*` is
+    /// the suffix for one of the supported config file formats (run
+    /// `config-formats` to get the list), and if those are missing,
+    /// use compiled-in default config values)
     #[clap(long)]
     config: Option<PathBuf>,
 
@@ -38,6 +41,9 @@ struct Opts {
 
 #[derive(clap::Subcommand, Debug)]
 enum SubCommand {
+    /// Show the supported config format types.
+    ConfigFormats,
+
     /// Re-encode the config file (serialization type determined by
     /// file extension) and save at the given path.
     SaveConfig { output_path: PathBuf },
@@ -148,6 +154,12 @@ fn main() -> Result<()> {
     let queues = RunQueues::open(conf.queues.clone(), true, &global_app_state_dir)?;
 
     match subcommand {
+        SubCommand::ConfigFormats => {
+            println!(
+                "These file extensions are supported: {}",
+                config_file::supported_formats().join(", ")
+            );
+        }
         SubCommand::SaveConfig { output_path } => {
             save_config_file(&output_path, &*conf)?;
         }

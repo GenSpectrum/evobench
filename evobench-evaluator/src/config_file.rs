@@ -3,6 +3,7 @@
 //! TODO: integrate `serde_path_to_error` crate
 
 use std::{
+    fmt::Display,
     ops::Deref,
     path::{Path, PathBuf},
     time::SystemTime,
@@ -25,7 +26,22 @@ pub enum ConfigBackend {
     Hcl,
 }
 
+impl Display for ConfigBackend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.format_name())
+    }
+}
+
 impl ConfigBackend {
+    pub fn format_name(self) -> &'static str {
+        match self {
+            ConfigBackend::Ron => "RON",
+            ConfigBackend::Json5 => "JSON5",
+            ConfigBackend::Yaml => "YAML",
+            ConfigBackend::Hcl => "HCL",
+        }
+    }
+
     pub fn load_config_file<T: DeserializeOwned>(self, path: &Path) -> Result<T> {
         let s =
             std::fs::read_to_string(&path).map_err(ctx!("loading config file from {path:?}"))?;
@@ -92,6 +108,12 @@ pub const FILE_EXTENSIONS: &[(&str, ConfigBackend)] = &[
     ("yaml", ConfigBackend::Yaml),
     ("hcl", ConfigBackend::Hcl),
 ];
+
+pub fn supported_formats() -> impl Iterator<Item = String> {
+    FILE_EXTENSIONS
+        .iter()
+        .map(|(ext, backend)| format!(".{ext} ({backend})"))
+}
 
 pub fn backend_from_path(path: &Path) -> Result<ConfigBackend> {
     if let Some(ext) = path.extension() {
