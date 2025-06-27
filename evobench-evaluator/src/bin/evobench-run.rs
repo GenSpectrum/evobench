@@ -2,12 +2,13 @@ use anyhow::{anyhow, bail, Result};
 use clap::Parser;
 use itertools::Itertools;
 
-use std::path::PathBuf;
+use std::{path::PathBuf, time::SystemTime};
 
 use evobench_evaluator::{
     config_file::{self, save_config_file, ConfigFile},
     get_terminal_width::get_terminal_width,
-    key_val_fs::key_val::Entry,
+    key::{RunParameters, RunParametersHash},
+    key_val_fs::key_val::{Entry, KeyVal, KeyValConfig, KeyValSync},
     run::{
         benchmarking_job::BenchmarkingJobOpts,
         config::RunConfig,
@@ -18,7 +19,10 @@ use evobench_evaluator::{
         run_queues::{Never, RunQueues},
         working_directory_pool::WorkingDirectoryPool,
     },
-    serde::{date_and_time::DateTimeWithOffset, paths::ProperFilename},
+    serde::{
+        date_and_time::{system_time_to_rfc3339, DateTimeWithOffset},
+        paths::ProperFilename,
+    },
 };
 
 #[derive(clap::Parser, Debug)]
@@ -208,6 +212,23 @@ fn main() -> Result<()> {
         } => {
             let benchmarking_job =
                 benchmarking_job_opts.checked(&conf.custom_parameters_required)?;
+            let run_parameters_hash = RunParametersHash::from(&benchmarking_job.run_parameters);
+
+            let already_inserted: KeyVal<RunParametersHash, (RunParameters, SystemTime)> =
+                KeyVal::open(
+                    global_app_state_dir.already_inserted_base()?,
+                    KeyValConfig {
+                        sync: KeyValSync::All,
+                        // already created anyway
+                        create_dir_if_not_exists: false,
+                    },
+                )?;
+            if let Some((params, insertion_time)) = already_inserted.get(&run_parameters_hash)? {
+                bail!(
+                    "these parameters were already inserted at {}: {params:?}",
+                    system_time_to_rfc3339(insertion_time)
+                )
+            }
 
             {
                 let url = &conf.working_directory_pool.url;
@@ -223,6 +244,12 @@ fn main() -> Result<()> {
             }
 
             queues.first().push_front(&benchmarking_job)?;
+
+            already_inserted.insert(
+                &run_parameters_hash,
+                &(benchmarking_job.run_parameters.clone(), SystemTime::now()),
+                true,
+            )?
         }
         SubCommand::Run {
             verbose,

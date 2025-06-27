@@ -48,4 +48,10 @@ impl GlobalAppStateDir {
     pub fn working_directory_for_polling_pool_base(&self) -> Result<PathBuf> {
         self.subdir("polling_pool")
     }
+
+    /// A KeyVal database of (run_parameters -> insertion time), for
+    /// jobs already requested.
+    pub fn already_inserted_base(&self) -> Result<PathBuf> {
+        self.subdir("already_inserted")
+    }
 }

@@ -25,7 +25,9 @@ use std::{collections::BTreeMap, num::NonZeroU32};
 use anyhow::{bail, Result};
 
 use crate::{
+    crypto_hash::crypto_hash,
     git::GitHash,
+    key_val_fs::as_key::AsKey,
     serde::{date_and_time::DateTimeWithOffset, key_val::KeyVal},
 };
 
@@ -115,6 +117,25 @@ pub fn check_custom_parameters(
 pub struct RunParameters {
     pub commit_id: GitHash,
     pub checked_custom_parameters: BTreeMap<String, String>,
+}
+
+#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RunParametersHash(String);
+
+impl From<&RunParameters> for RunParametersHash {
+    fn from(value: &RunParameters) -> Self {
+        Self(crypto_hash(value))
+    }
+}
+
+impl AsKey for RunParametersHash {
+    fn as_filename_str(&self) -> std::borrow::Cow<str> {
+        (&self.0).into()
+    }
+
+    fn try_from_filename_str(file_name: &str) -> Option<Self> {
+        Some(Self(file_name.into()))
+    }
 }
 
 impl RunParametersOpts {

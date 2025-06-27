@@ -15,11 +15,14 @@ use serde::de::Visitor;
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DateTimeWithOffset(String);
 
+pub fn system_time_to_rfc3339(t: SystemTime) -> String {
+    let t: DateTime<Local> = DateTime::from(t);
+    t.to_rfc3339()
+}
+
 impl DateTimeWithOffset {
     pub fn now() -> Self {
-        let now = SystemTime::now();
-        let now: DateTime<Local> = DateTime::from(now);
-        Self(now.to_rfc3339())
+        Self(system_time_to_rfc3339(SystemTime::now()))
     }
 
     pub fn to_datetime(&self) -> DateTime<FixedOffset> {

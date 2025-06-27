@@ -213,7 +213,7 @@ impl<V: DeserializeOwned + Serialize + 'static> Queue<V> {
             match self.0.sorted_keys(wait_for_entries, stop_at) {
                 Ok(keys) => {
                     for key in keys {
-                        if let Some(res) = self.0.entry(&key).transpose() {
+                        if let Some(res) = self.0.entry_opt(&key).transpose() {
                             co.yield_(res).await;
                         }
                     }

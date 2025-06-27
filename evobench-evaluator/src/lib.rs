@@ -1,6 +1,7 @@
 pub mod average;
 pub mod change;
 pub mod config_file;
+pub mod crypto_hash;
 pub mod ctx;
 pub mod digit_num;
 pub mod dynamic_typing;

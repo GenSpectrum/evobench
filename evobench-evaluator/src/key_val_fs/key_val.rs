@@ -417,10 +417,10 @@ impl<K: AsKey, V: DeserializeOwned + Serialize> KeyVal<K, V> {
         Ok(())
     }
 
-    /// Get access to an entry. Note: does not lock, and on Windows
-    /// might possibly deadlock with the rename calls of `insert`?
-    /// Only tested on Linux (and macOS?)
-    pub fn entry(&self, key: &K) -> Result<Option<Entry<K, V>>, KeyValError> {
+    /// Get access to an entry, if it exists. Note: does not lock,
+    /// and on Windows might possibly deadlock with the rename calls
+    /// of `insert`?  Only tested on Linux (and macOS?)
+    pub fn entry_opt(&self, key: &K) -> Result<Option<Entry<K, V>>, KeyValError> {
         let key_filename = key.verified_as_filename_str();
         let target_path = (&self.base_dir).append(key_filename.as_ref());
         match File::open(&target_path) {
@@ -447,7 +447,7 @@ impl<K: AsKey, V: DeserializeOwned + Serialize> KeyVal<K, V> {
     /// with the rename calls of `insert`! Only tested on Linux (and
     /// macOS?)
     pub fn get(&self, key: &K) -> Result<Option<V>, KeyValError> {
-        if let Some(mut entry) = self.entry(key)? {
+        if let Some(mut entry) = self.entry_opt(key)? {
             Some(entry.get()).transpose()
         } else {
             Ok(None)
