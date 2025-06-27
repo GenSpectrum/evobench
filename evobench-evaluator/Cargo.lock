@@ -438,6 +438,7 @@ dependencies = [
  "serde_json5",
  "serde_path_to_error",
  "serde_yml",
+ "sha2",
  "strum",
  "strum_macros",
  "terminal_size",
