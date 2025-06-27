@@ -53,8 +53,13 @@ enum SubCommand {
     /// file extension) and save at the given path.
     SaveConfig { output_path: PathBuf },
 
-    /// List the current jobs
+    /// Show the list of all inserted jobs, including already
+    /// processed ones
+    ListAll,
+
+    /// List the currently scheduled and running jobs
     List,
+
     /// Insert a job
     Insert {
         #[clap(flatten)]
@@ -137,6 +142,19 @@ fn run_queues(
     }
 }
 
+fn open_already_inserted(
+    global_app_state_dir: &GlobalAppStateDir,
+) -> Result<KeyVal<RunParametersHash, (RunParameters, SystemTime)>> {
+    Ok(KeyVal::open(
+        global_app_state_dir.already_inserted_base()?,
+        KeyValConfig {
+            sync: KeyValSync::All,
+            // already created anyway
+            create_dir_if_not_exists: false,
+        },
+    )?)
+}
+
 fn main() -> Result<()> {
     let Opts { config, subcommand } = Opts::parse();
 
@@ -164,9 +182,29 @@ fn main() -> Result<()> {
                 config_file::supported_formats().join(", ")
             );
         }
+
         SubCommand::SaveConfig { output_path } => {
             save_config_file(&output_path, &*conf)?;
         }
+
+        SubCommand::ListAll => {
+            let already_inserted = open_already_inserted(&global_app_state_dir)?;
+
+            let mut jobs: Vec<_> = already_inserted
+                .keys(false, None)?
+                .map(|hash| -> Result<_> {
+                    let hash = hash?;
+                    Ok(already_inserted.get(&hash)?)
+                })
+                .filter_map(|r| r.transpose())
+                .collect::<Result<_>>()?;
+            jobs.sort_by_key(|v| v.1);
+            for (params, insertion_time) in jobs {
+                let t = system_time_to_rfc3339(insertion_time);
+                println!("{t}\t{params:?}");
+            }
+        }
+
         SubCommand::List => {
             let show_queue = |i: &str, run_queue: &RunQueue| -> Result<()> {
                 let RunQueue {
@@ -207,6 +245,7 @@ fn main() -> Result<()> {
             }
             println!("------------------------------------------------------------------");
         }
+
         SubCommand::Insert {
             benchmarking_job_opts,
         } => {
@@ -214,15 +253,8 @@ fn main() -> Result<()> {
                 benchmarking_job_opts.checked(&conf.custom_parameters_required)?;
             let run_parameters_hash = RunParametersHash::from(&benchmarking_job.run_parameters);
 
-            let already_inserted: KeyVal<RunParametersHash, (RunParameters, SystemTime)> =
-                KeyVal::open(
-                    global_app_state_dir.already_inserted_base()?,
-                    KeyValConfig {
-                        sync: KeyValSync::All,
-                        // already created anyway
-                        create_dir_if_not_exists: false,
-                    },
-                )?;
+            let already_inserted = open_already_inserted(&global_app_state_dir)?;
+
             if let Some((params, insertion_time)) = already_inserted.get(&run_parameters_hash)? {
                 bail!(
                     "these parameters were already inserted at {}: {params:?}",
@@ -251,6 +283,7 @@ fn main() -> Result<()> {
                 true,
             )?
         }
+
         SubCommand::Run {
             verbose,
             dry_run,
