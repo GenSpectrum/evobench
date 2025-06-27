@@ -19,14 +19,15 @@ use crate::{
     serde::{date_and_time::DateTimeWithOffset, git_url::GitUrl},
 };
 
-use super::working_directory::WorkingDirectory;
+use super::{global_app_state_dir::GlobalAppStateDir, working_directory::WorkingDirectory};
 
 // clap::Args?
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct WorkingDirectoryPoolOpts {
     /// Path to a directory where clones of the project to be
-    /// benchmarked should be kept
-    pub base_dir: PathBuf,
+    /// benchmarked should be kept. By default at
+    /// `.evobench-run/working_directory_pool/`.
+    pub base_dir: Option<PathBuf>,
 
     /// How many clones of the target project should be maintained;
     /// more is better when multiple commits are benchmarked
@@ -49,6 +50,8 @@ impl WorkingDirectoryId {
 
 pub struct WorkingDirectoryPool {
     opts: Arc<WorkingDirectoryPoolOpts>,
+    // Actual basedir used (opts only has an Option!)
+    base_dir: PathBuf,
     next_id: u64,
     entries: BTreeMap<WorkingDirectoryId, WorkingDirectory>,
     /// Only one process may use this pool at the same time
@@ -66,15 +69,20 @@ impl WorkingDirectoryPool {
     pub fn open(
         opts: Arc<WorkingDirectoryPoolOpts>,
         create_dir_if_not_exists: bool,
+        global_app_state_dir: &GlobalAppStateDir,
     ) -> Result<Self> {
-        let path = &opts.base_dir;
+        let base_dir = if let Some(path) = opts.base_dir.as_ref() {
+            path.to_owned()
+        } else {
+            global_app_state_dir.working_directory_pool_base()?
+        };
 
         if create_dir_if_not_exists {
-            io_util::create_dir_if_not_exists(path, "working pool directory")?;
+            io_util::create_dir_if_not_exists(&base_dir, "working pool directory")?;
         }
 
-        let entries: BTreeMap<WorkingDirectoryId, WorkingDirectory> = std::fs::read_dir(path)
-            .map_err(ctx!("opening working pool directory {path:?}"))?
+        let entries: BTreeMap<WorkingDirectoryId, WorkingDirectory> = std::fs::read_dir(&base_dir)
+            .map_err(ctx!("opening working pool directory {base_dir:?}"))?
             .map(
                 |entry| -> Result<Option<(WorkingDirectoryId, WorkingDirectory)>> {
                     let entry = entry?;
@@ -98,14 +106,17 @@ impl WorkingDirectoryPool {
             )
             .filter_map(|r| r.transpose())
             .collect::<Result<_>>()
-            .map_err(ctx!("reading contents of working pool directory {path:?}"))?;
+            .map_err(ctx!(
+                "reading contents of working pool directory {base_dir:?}"
+            ))?;
 
-        let lock = StandaloneExclusiveFileLock::try_lock_path(path, || {
-            format!("working directory pool {path:?} is already locked")
+        let lock = StandaloneExclusiveFileLock::try_lock_path(&base_dir, || {
+            format!("working directory pool {base_dir:?} is already locked")
         })?;
 
         Ok(Self {
             opts,
+            base_dir,
             _lock: lock,
             next_id: entries.keys().max().map(|x| x.0 + 1).unwrap_or(0),
             entries,
@@ -113,7 +124,7 @@ impl WorkingDirectoryPool {
     }
 
     pub fn base_dir(&self) -> &PathBuf {
-        &self.opts.base_dir
+        &self.base_dir
     }
 
     /// Guaranteed to be at least 1

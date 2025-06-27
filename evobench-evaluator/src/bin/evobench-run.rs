@@ -10,6 +10,7 @@ use evobench_evaluator::{
     run::{
         benchmarking_job::BenchmarkingJobOpts,
         config::RunConfig,
+        global_app_state_dir::GlobalAppStateDir,
         run_job::{run_job, DryRun},
         run_queue::RunQueue,
         run_queues::{Never, RunQueues},
@@ -102,6 +103,7 @@ fn run_queues(
     mut working_directory_pool: WorkingDirectoryPool,
     verbose: bool,
     dry_run: DryRun,
+    global_app_state_dir: &GlobalAppStateDir,
 ) -> Result<Never> {
     loop {
         // XX handle errors without exiting? Or do that above
@@ -115,9 +117,12 @@ fn run_queues(
             drop(queues);
             drop(working_directory_pool);
             // XX handle errors without exiting? Or do that above
-            queues = RunQueues::open(conf.queues.clone(), true)?;
-            working_directory_pool =
-                WorkingDirectoryPool::open(conf.working_directory_pool.clone(), true)?;
+            queues = RunQueues::open(conf.queues.clone(), true, &global_app_state_dir)?;
+            working_directory_pool = WorkingDirectoryPool::open(
+                conf.working_directory_pool.clone(),
+                true,
+                global_app_state_dir,
+            )?;
         }
     }
 }
@@ -138,7 +143,9 @@ fn main() -> Result<()> {
         bail!("need a config file, {msg}")
     })?;
 
-    let queues = RunQueues::open(conf.queues.clone(), true)?;
+    let global_app_state_dir = GlobalAppStateDir::new()?;
+
+    let queues = RunQueues::open(conf.queues.clone(), true, &global_app_state_dir)?;
 
     match subcommand {
         SubCommand::SaveConfig { output_path } => {
@@ -196,8 +203,11 @@ fn main() -> Result<()> {
             dry_run,
             mode,
         } => {
-            let mut working_directory_pool =
-                WorkingDirectoryPool::open(conf.working_directory_pool.clone(), true)?;
+            let mut working_directory_pool = WorkingDirectoryPool::open(
+                conf.working_directory_pool.clone(),
+                true,
+                &global_app_state_dir,
+            )?;
 
             match mode {
                 RunMode::Once {
@@ -235,6 +245,7 @@ fn main() -> Result<()> {
                             working_directory_pool,
                             verbose,
                             dry_run,
+                            &global_app_state_dir,
                         )?;
                     }
                 }

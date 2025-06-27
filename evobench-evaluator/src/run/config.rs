@@ -10,7 +10,9 @@ use crate::{
     utillib::home::home_dir,
 };
 
-use super::working_directory_pool::WorkingDirectoryPoolOpts;
+use super::{
+    global_app_state_dir::GlobalAppStateDir, working_directory_pool::WorkingDirectoryPoolOpts,
+};
 
 #[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ScheduleCondition {
@@ -83,7 +85,7 @@ impl ScheduleCondition {
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct QueuesConfig {
-    /// If not given, `~/.evobench-run-queues/` is used. Also used for
+    /// If not given, `~/.evobench-run/queues/` is used. Also used for
     /// locking the `run` action of evobench-run, to ensure only one
     /// benchmarking job is executed at the same time--if you
     /// configure multiple such directories then you don't have this
@@ -99,6 +101,23 @@ pub struct QueuesConfig {
     /// silently unless verbose flag is given). Should be of
     /// scheduling type GraveYard.
     pub erroneous_jobs_queue: Option<(ProperFilename, ScheduleCondition)>,
+}
+
+impl QueuesConfig {
+    pub fn run_queues_basedir(
+        &self,
+        create_if_not_exists: bool,
+        global_app_state_dir: &GlobalAppStateDir,
+    ) -> Result<PathBuf> {
+        if let Some(base_dir) = &self.run_queues_basedir {
+            if create_if_not_exists {
+                create_dir_if_not_exists(base_dir, "queues base directory")?;
+            }
+            Ok(base_dir.into())
+        } else {
+            global_app_state_dir.run_queues_basedir()
+        }
+    }
 }
 
 /// Direct representation of the evobench-run config file
@@ -118,24 +137,6 @@ pub struct RunConfig {
     /// (value `false`) or required (value `true`) for benchmarking
     /// the given project
     pub custom_parameters_required: BTreeMap<String, bool>,
-}
-
-impl QueuesConfig {
-    pub fn _run_queues_basedir(&self) -> Result<PathBuf> {
-        if let Some(path) = &self.run_queues_basedir {
-            Ok(path.into())
-        } else {
-            let home = home_dir()?;
-            Ok(home.append(".evobench-run-queues"))
-        }
-    }
-    pub fn run_queues_basedir(&self, create_if_not_exists: bool) -> Result<PathBuf> {
-        let base_dir = self._run_queues_basedir()?;
-        if create_if_not_exists {
-            create_dir_if_not_exists(&base_dir, "queues base directory")?;
-        }
-        Ok(base_dir)
-    }
 }
 
 impl DefaultConfigPath for RunConfig {

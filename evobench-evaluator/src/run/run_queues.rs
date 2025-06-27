@@ -26,6 +26,7 @@ use crate::{
 use super::{
     benchmarking_job::BenchmarkingJob,
     config::{QueuesConfig, ScheduleCondition},
+    global_app_state_dir::GlobalAppStateDir,
     run_queue::RunQueue,
 };
 
@@ -280,8 +281,13 @@ impl RunQueues {
         Ok(())
     }
 
-    pub fn open(config: Arc<QueuesConfig>, create_dirs_if_not_exist: bool) -> Result<Self> {
-        let run_queues_basedir = config.run_queues_basedir(create_dirs_if_not_exist)?;
+    pub fn open(
+        config: Arc<QueuesConfig>,
+        create_dirs_if_not_exist: bool,
+        global_app_state_dir: &GlobalAppStateDir,
+    ) -> Result<Self> {
+        let run_queues_basedir =
+            config.run_queues_basedir(create_dirs_if_not_exist, global_app_state_dir)?;
 
         fn make_run_queue<'this>(
             (filename, schedule_condition): &'this (ProperFilename, ScheduleCondition),
