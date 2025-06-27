@@ -124,11 +124,10 @@ fn run_queues(
             drop(working_directory_pool);
             // XX handle errors without exiting? Or do that above
             queues = RunQueues::open(conf.queues.clone(), true, &global_app_state_dir)?;
-            working_directory_pool = WorkingDirectoryPool::open(
-                conf.working_directory_pool.clone(),
-                true,
-                global_app_state_dir,
-            )?;
+            working_directory_pool =
+                WorkingDirectoryPool::open(conf.working_directory_pool.clone(), true, &|| {
+                    global_app_state_dir.working_directory_pool_base()
+                })?;
         }
     }
 }
@@ -215,11 +214,10 @@ fn main() -> Result<()> {
             dry_run,
             mode,
         } => {
-            let mut working_directory_pool = WorkingDirectoryPool::open(
-                conf.working_directory_pool.clone(),
-                true,
-                &global_app_state_dir,
-            )?;
+            let mut working_directory_pool =
+                WorkingDirectoryPool::open(conf.working_directory_pool.clone(), true, &|| {
+                    global_app_state_dir.working_directory_pool_base()
+                })?;
 
             match mode {
                 RunMode::Once {

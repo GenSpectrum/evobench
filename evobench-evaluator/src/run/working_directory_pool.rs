@@ -19,7 +19,7 @@ use crate::{
     serde::{date_and_time::DateTimeWithOffset, git_url::GitUrl},
 };
 
-use super::{global_app_state_dir::GlobalAppStateDir, working_directory::WorkingDirectory};
+use super::working_directory::WorkingDirectory;
 
 // clap::Args?
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
@@ -69,12 +69,12 @@ impl WorkingDirectoryPool {
     pub fn open(
         opts: Arc<WorkingDirectoryPoolOpts>,
         create_dir_if_not_exists: bool,
-        global_app_state_dir: &GlobalAppStateDir,
+        get_working_directory_pool_base: &dyn Fn() -> Result<PathBuf>,
     ) -> Result<Self> {
         let base_dir = if let Some(path) = opts.base_dir.as_ref() {
             path.to_owned()
         } else {
-            global_app_state_dir.working_directory_pool_base()?
+            get_working_directory_pool_base()?
         };
 
         if create_dir_if_not_exists {
