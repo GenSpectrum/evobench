@@ -78,6 +78,7 @@ pub struct EarlyContext {
 /// Custom key/value pairings, passed on as environment variables when
 /// executing the benchmarking runner of the target project. (These
 /// are not checked against `custom_parameters_required` yet!)
+#[serde(rename = "CustomParameters")]
 pub struct CustomParametersOpts(BTreeMap<String, String>);
 
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
@@ -131,6 +132,7 @@ impl CustomParametersOpts {
 /// Give at least one entry or no benchmarking will be done at all!
 /// (Note: these CustomParameters are not yet checked against
 /// allowed/required keys!)
+#[serde(rename = "CustomParametersSet")]
 pub struct CustomParametersSetOpts(pub Vec<CustomParametersOpts>);
 
 /// Checked parameters
