@@ -27,7 +27,9 @@ pub struct SharedFileLock<'s, F: FileExt> {
 
 impl<'s, F: FileExt> Drop for SharedFileLock<'s, F> {
     fn drop(&mut self) {
-        let _ = self.file.unlock();
+        self.file
+            .unlock()
+            .expect("no way another path to unlock exists");
         if let Some(path) = self.path {
             eprintln!("dropped SharedFileLock on {path:?}")
         }
@@ -51,7 +53,9 @@ pub struct ExclusiveFileLock<'s, F: FileExt> {
 
 impl<'s, F: FileExt> Drop for ExclusiveFileLock<'s, F> {
     fn drop(&mut self) {
-        let _ = self.file.unlock();
+        self.file
+            .unlock()
+            .expect("no way another path to unlock exists");
         if let Some(path) = self.path {
             eprintln!("dropped ExclusiveFileLock on {path:?}")
         }
