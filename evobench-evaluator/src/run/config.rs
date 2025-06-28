@@ -15,7 +15,7 @@ use crate::{
 };
 
 use super::{
-    benchmarking_job::BenchmarkingJobKnobs, global_app_state_dir::GlobalAppStateDir,
+    benchmarking_job::BenchmarkingJobKnobsOpts, global_app_state_dir::GlobalAppStateDir,
     working_directory_pool::WorkingDirectoryPoolOpts,
 };
 
@@ -159,7 +159,7 @@ pub struct RunConfig {
     /// `custom_parameters_required`) that should be tested.
     pub custom_parameters_set: CustomParametersSetOpts,
 
-    pub benchmarking_job_knobs: BenchmarkingJobKnobs,
+    pub benchmarking_job_knobs: BenchmarkingJobKnobsOpts,
 }
 
 impl DefaultConfigPath for RunConfig {

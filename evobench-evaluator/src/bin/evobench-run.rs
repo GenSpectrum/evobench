@@ -261,7 +261,8 @@ fn main() -> Result<()> {
             force_and_quiet,
         } => {
             insert_jobs(
-                benchmarking_job_opts.complete_jobs(&custom_parameters_set),
+                benchmarking_job_opts
+                    .complete_jobs(Some(&conf.benchmarking_job_knobs), &custom_parameters_set),
                 &global_app_state_dir,
                 &conf.remote_repository.url,
                 force_and_quiet,
@@ -284,7 +285,11 @@ fn main() -> Result<()> {
                     benchmarking_job_knobs: conf.benchmarking_job_knobs.clone(),
                     run_parameters: RunParametersOpts { commit_id },
                 };
-                benchmarking_jobs.append(&mut opts.complete_jobs(&custom_parameters_set));
+                benchmarking_jobs.append(&mut opts.complete_jobs(
+                    // already using conf.benchmarking_job_knobs from above
+                    None,
+                    &custom_parameters_set,
+                ));
             }
 
             insert_jobs(
