@@ -351,12 +351,12 @@ impl<K: AsKey, V: DeserializeOwned + Serialize> KeyVal<K, V> {
         })
     }
 
-    pub fn lock_exclusive(&mut self) -> Result<ExclusiveFileLock<File>, KeyValError> {
-        lock_exclusive(&mut self.lock_file, &self.base_dir)
+    pub fn lock_exclusive(&self) -> Result<ExclusiveFileLock<File>, KeyValError> {
+        lock_exclusive(&self.lock_file, &self.base_dir)
     }
 
-    pub fn lock_shared(&mut self) -> Result<SharedFileLock<File>, KeyValError> {
-        lock_shared(&mut self.lock_file, &self.base_dir)
+    pub fn lock_shared(&self) -> Result<SharedFileLock<File>, KeyValError> {
+        lock_shared(&self.lock_file, &self.base_dir)
     }
 
     /// Insert a mapping; if `exclusive` is true, give an error if

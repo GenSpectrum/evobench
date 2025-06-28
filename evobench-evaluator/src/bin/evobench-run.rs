@@ -274,6 +274,7 @@ fn main() -> Result<()> {
             let run_parameters_hash = RunParametersHash::from(&benchmarking_job.run_parameters);
 
             let already_inserted = open_already_inserted(&global_app_state_dir)?;
+            let _lock = already_inserted.lock_exclusive()?;
 
             let mut opt_entry = already_inserted.entry_opt(&run_parameters_hash)?;
 
