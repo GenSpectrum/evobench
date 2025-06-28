@@ -27,14 +27,29 @@ pub fn open_already_inserted(
     )?)
 }
 
+#[derive(Debug, clap::Args)]
+pub struct ForceAndQuiet {
+    /// Normally, the same job parameters can only be inserted
+    /// once, subsequent attempts yield an error. This overrides
+    /// the check and allows insertion anyway.
+    #[clap(long)]
+    pub force: bool,
+
+    /// Exit quietly if the given job parameters were already
+    /// inserted before (by default, give an error)
+    #[clap(long)]
+    pub quiet: bool,
+}
+
 pub fn insert_jobs(
     benchmarking_jobs: Vec<BenchmarkingJob>,
     global_app_state_dir: &GlobalAppStateDir,
     remote_repository_url: &GitUrl,
-    force: bool,
-    quiet: bool,
+    force_and_quiet: ForceAndQuiet,
     queues: &RunQueues,
 ) -> Result<()> {
+    let ForceAndQuiet { force, quiet } = force_and_quiet;
+
     let already_inserted = open_already_inserted(&global_app_state_dir)?;
     let _lock = already_inserted.lock_exclusive()?;
 

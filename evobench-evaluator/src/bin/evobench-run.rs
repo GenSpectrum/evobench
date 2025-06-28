@@ -7,12 +7,14 @@ use std::path::PathBuf;
 use evobench_evaluator::{
     config_file::{self, save_config_file, ConfigFile},
     get_terminal_width::get_terminal_width,
+    key::RunParametersOpts,
     key_val_fs::key_val::Entry,
     run::{
         benchmarking_job::BenchmarkingJobOpts,
         config::RunConfig,
         global_app_state_dir::GlobalAppStateDir,
-        insert_jobs::{insert_jobs, open_already_inserted},
+        insert_jobs::{insert_jobs, open_already_inserted, ForceAndQuiet},
+        polling_pool::PollingPool,
         run_job::{run_job, DryRun},
         run_queue::RunQueue,
         run_queues::{Never, RunQueues},
@@ -64,16 +66,14 @@ enum SubCommand {
         #[clap(flatten)]
         benchmarking_job_opts: BenchmarkingJobOpts,
 
-        /// Normally, the same job parameters can only be inserted
-        /// once, subsequent attempts yield an error. This overrides
-        /// the check and allows insertion anyway.
-        #[clap(long)]
-        force: bool,
+        #[clap(flatten)]
+        force_and_quiet: ForceAndQuiet,
+    },
 
-        /// Exit quietly if the given job parameters were already
-        /// inserted before (by default, give an error)
-        #[clap(long)]
-        quiet: bool,
+    /// Insert jobs for new commits on configured branch names
+    Poll {
+        #[clap(flatten)]
+        force_and_quiet: ForceAndQuiet,
     },
 
     /// Run the existing jobs
@@ -258,15 +258,40 @@ fn main() -> Result<()> {
 
         SubCommand::Insert {
             benchmarking_job_opts,
-            force,
-            quiet,
+            force_and_quiet,
         } => {
             insert_jobs(
                 benchmarking_job_opts.complete_jobs(&custom_parameters_set),
                 &global_app_state_dir,
                 &conf.remote_repository.url,
-                force,
-                quiet,
+                force_and_quiet,
+                &queues,
+            )?;
+        }
+
+        SubCommand::Poll { force_and_quiet } => {
+            let mut polling_pool = PollingPool::open(
+                &conf.remote_repository.url,
+                &global_app_state_dir.working_directory_for_polling_pool_base()?,
+            )?;
+
+            let commits =
+                polling_pool.poll_branch_names(&conf.remote_repository.remote_branch_names)?;
+
+            let mut benchmarking_jobs = Vec::new();
+            for commit_id in commits {
+                let opts = BenchmarkingJobOpts {
+                    benchmarking_job_knobs: conf.benchmarking_job_knobs.clone(),
+                    run_parameters: RunParametersOpts { commit_id },
+                };
+                benchmarking_jobs.append(&mut opts.complete_jobs(&custom_parameters_set));
+            }
+
+            insert_jobs(
+                benchmarking_jobs,
+                &global_app_state_dir,
+                &conf.remote_repository.url,
+                force_and_quiet,
                 &queues,
             )?;
         }

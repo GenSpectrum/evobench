@@ -1,7 +1,8 @@
 use crate::key::{CustomParametersSet, RunParameters, RunParametersOpts};
 
-#[derive(Debug, PartialEq, Clone, clap::Args)]
-pub struct BenchmarkingJobOpts {
+#[derive(Debug, PartialEq, Clone, clap::Args, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BenchmarkingJobKnobs {
     /// The number of times the job should be run in total (across all
     /// queues)
     #[clap(short, long, default_value = "5")]
@@ -11,6 +12,12 @@ pub struct BenchmarkingJobOpts {
     /// from the pipeline
     #[clap(short, long, default_value = "3")]
     error_budget: u8,
+}
+
+#[derive(Debug, PartialEq, Clone, clap::Args)]
+pub struct BenchmarkingJobOpts {
+    #[clap(flatten)]
+    pub benchmarking_job_knobs: BenchmarkingJobKnobs,
 
     #[clap(flatten)]
     pub run_parameters: RunParametersOpts,
@@ -30,8 +37,11 @@ impl BenchmarkingJobOpts {
         custom_parameters_set: &CustomParametersSet,
     ) -> Vec<BenchmarkingJob> {
         let Self {
-            count,
-            error_budget,
+            benchmarking_job_knobs:
+                BenchmarkingJobKnobs {
+                    count,
+                    error_budget,
+                },
             run_parameters,
         } = self;
 

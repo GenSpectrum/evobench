@@ -15,7 +15,8 @@ use crate::{
 };
 
 use super::{
-    global_app_state_dir::GlobalAppStateDir, working_directory_pool::WorkingDirectoryPoolOpts,
+    benchmarking_job::BenchmarkingJobKnobs, global_app_state_dir::GlobalAppStateDir,
+    working_directory_pool::WorkingDirectoryPoolOpts,
 };
 
 #[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -157,6 +158,8 @@ pub struct RunConfig {
     /// The set of key/value pairs (which must conform to
     /// `custom_parameters_required`) that should be tested.
     pub custom_parameters_set: CustomParametersSetOpts,
+
+    pub benchmarking_job_knobs: BenchmarkingJobKnobs,
 }
 
 impl DefaultConfigPath for RunConfig {
