@@ -69,7 +69,7 @@ pub fn insert_jobs(
             (params, insertion_times) = entry.get()?;
             if !force {
                 if quiet {
-                    return Ok(());
+                    continue;
                 } else {
                     let insertion_times = insertion_times
                         .iter()
