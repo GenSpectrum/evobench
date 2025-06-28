@@ -271,13 +271,14 @@ fn main() -> Result<()> {
         }
 
         SubCommand::Poll { force_and_quiet } => {
-            let mut polling_pool = PollingPool::open(
-                &conf.remote_repository.url,
-                &global_app_state_dir.working_directory_for_polling_pool_base()?,
-            )?;
+            let commits = {
+                let mut polling_pool = PollingPool::open(
+                    &conf.remote_repository.url,
+                    &global_app_state_dir.working_directory_for_polling_pool_base()?,
+                )?;
 
-            let commits =
-                polling_pool.poll_branch_names(&conf.remote_repository.remote_branch_names)?;
+                polling_pool.poll_branch_names(&conf.remote_repository.remote_branch_names)?
+            };
 
             let mut benchmarking_jobs = Vec::new();
             for commit_id in commits {
