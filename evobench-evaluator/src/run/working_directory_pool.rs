@@ -16,19 +16,10 @@ use crate::{
     key::RunParameters,
     lockable_file::StandaloneExclusiveFileLock,
     path_util::{add_extension, AppendToPath},
-    serde::{date_and_time::DateTimeWithOffset, git_branch_name::GitBranchName, git_url::GitUrl},
+    serde::{date_and_time::DateTimeWithOffset, git_url::GitUrl},
 };
 
 use super::working_directory::WorkingDirectory;
-
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-pub struct RemoteRepository {
-    /// The Git URL from where to clone
-    pub url: GitUrl,
-
-    /// The remote branches to track
-    pub remote_branch_names: Vec<GitBranchName>,
-}
 
 // clap::Args?
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
@@ -43,10 +34,6 @@ pub struct WorkingDirectoryPoolOpts {
     /// alternatively, to avoid needing a rebuild (and input
     /// re-preparation), but costing disk space.
     pub capacity: NonZeroU8,
-
-    /// The Git repository to clone the target project from, and
-    /// branches to poll for changes
-    pub remote_repository: RemoteRepository,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -60,6 +47,7 @@ impl WorkingDirectoryId {
 
 pub struct WorkingDirectoryPool {
     opts: Arc<WorkingDirectoryPoolOpts>,
+    remote_repository_url: GitUrl,
     // Actual basedir used (opts only has an Option!)
     base_dir: PathBuf,
     next_id: u64,
@@ -80,6 +68,7 @@ pub struct ProcessingError {
 impl WorkingDirectoryPool {
     pub fn open(
         opts: Arc<WorkingDirectoryPoolOpts>,
+        remote_repository_url: GitUrl,
         create_dir_if_not_exists: bool,
         get_working_directory_pool_base: &dyn Fn() -> Result<PathBuf>,
     ) -> Result<Self> {
@@ -128,6 +117,7 @@ impl WorkingDirectoryPool {
 
         Ok(Self {
             opts,
+            remote_repository_url,
             base_dir,
             _lock: lock,
             next_id: entries.keys().max().map(|x| x.0 + 1).unwrap_or(0),
@@ -145,7 +135,7 @@ impl WorkingDirectoryPool {
     }
 
     pub fn git_url(&self) -> &GitUrl {
-        &self.opts.remote_repository.url
+        &self.remote_repository_url
     }
 
     pub fn len(&self) -> usize {

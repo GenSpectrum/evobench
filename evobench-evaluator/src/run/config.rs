@@ -7,7 +7,10 @@ use crate::{
     io_util::create_dir_if_not_exists,
     key::CustomParametersSetOpts,
     path_util::AppendToPath,
-    serde::{date_and_time::LocalNaiveTime, paths::ProperFilename},
+    serde::{
+        date_and_time::LocalNaiveTime, git_branch_name::GitBranchName, git_url::GitUrl,
+        paths::ProperFilename,
+    },
     utillib::home::home_dir,
 };
 
@@ -121,6 +124,15 @@ impl QueuesConfig {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct RemoteRepository {
+    /// The Git repository to clone the target project from
+    pub url: GitUrl,
+
+    /// The remote branches to track
+    pub remote_branch_names: Vec<GitBranchName>,
+}
+
 /// Direct representation of the evobench-run config file
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -133,6 +145,9 @@ pub struct RunConfig {
 
     // same as above re Arc use
     pub working_directory_pool: Arc<WorkingDirectoryPoolOpts>,
+
+    /// Information on the remote repository of the target project
+    pub remote_repository: RemoteRepository,
 
     /// The key names (environment variable names) that are allowed
     /// (value `false`) or required (value `true`) for benchmarking

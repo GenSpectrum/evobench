@@ -6,11 +6,12 @@ use std::{path::Path, str::FromStr, sync::Arc};
 use anyhow::Result;
 use run_git::git::{GitCatFileMode, GitWorkingDir};
 
-use crate::{git::GitHash, serde::git_branch_name::GitBranchName};
-
-use super::working_directory_pool::{
-    RemoteRepository, WorkingDirectoryPool, WorkingDirectoryPoolOpts,
+use crate::{
+    git::GitHash,
+    serde::{git_branch_name::GitBranchName, git_url::GitUrl},
 };
+
+use super::working_directory_pool::{WorkingDirectoryPool, WorkingDirectoryPoolOpts};
 
 fn check_exists(git_working_dir: &GitWorkingDir, commit: &GitHash) -> Result<bool> {
     let commit_str = commit.to_string();
@@ -22,15 +23,17 @@ pub struct PollingPool {
 }
 
 impl PollingPool {
-    pub fn open(remote_repository: &RemoteRepository, polling_pool_base: &Path) -> Result<Self> {
+    pub fn open(remote_repository_url: &GitUrl, polling_pool_base: &Path) -> Result<Self> {
         let opts = WorkingDirectoryPoolOpts {
             base_dir: Some(polling_pool_base.to_owned()),
             capacity: 1.try_into().unwrap(),
-            remote_repository: remote_repository.clone(),
         };
-        let pool = WorkingDirectoryPool::open(Arc::new(opts), true, &|| {
-            unreachable!("already given in opts")
-        })?;
+        let pool = WorkingDirectoryPool::open(
+            Arc::new(opts),
+            remote_repository_url.clone(),
+            true,
+            &|| unreachable!("already given in opts"),
+        )?;
         Ok(Self { pool })
     }
 
