@@ -12,11 +12,13 @@ use std::{
 };
 
 use fs2::{lock_contended_error, FileExt};
+use lazy_static::lazy_static;
 use ouroboros::self_referencing;
 
 // -----------------------------------------------------------------------------
 
 pub struct SharedFileLock<'s, F: FileExt> {
+    path: &'s Option<Box<Path>>,
     // XX joke: need DerefMut anyway, even reading requires mut
     // access. So the two locks are identical now. TODO: eliminate or
     // ? Parameterize instead?
@@ -26,6 +28,9 @@ pub struct SharedFileLock<'s, F: FileExt> {
 impl<'s, F: FileExt> Drop for SharedFileLock<'s, F> {
     fn drop(&mut self) {
         let _ = self.file.unlock();
+        if let Some(path) = self.path {
+            eprintln!("dropped SharedFileLock on {path:?}")
+        }
     }
 }
 
@@ -40,12 +45,16 @@ impl<'s, F: FileExt> Deref for SharedFileLock<'s, F> {
 // -----------------------------------------------------------------------------
 
 pub struct ExclusiveFileLock<'s, F: FileExt> {
+    path: &'s Option<Box<Path>>,
     file: &'s F,
 }
 
 impl<'s, F: FileExt> Drop for ExclusiveFileLock<'s, F> {
     fn drop(&mut self) {
         let _ = self.file.unlock();
+        if let Some(path) = self.path {
+            eprintln!("dropped ExclusiveFileLock on {path:?}")
+        }
     }
 }
 
@@ -61,12 +70,18 @@ impl<'s, F: FileExt> Deref for ExclusiveFileLock<'s, F> {
 
 #[derive(Debug)]
 pub struct LockableFile<F: FileExt> {
+    /// Path for, and only if, debugging
+    path: Option<Box<Path>>,
     file: F,
 }
 
 impl<F: FileExt> From<F> for LockableFile<F> {
     fn from(file: F) -> Self {
-        Self { file }
+        Self {
+            // XX can't have path here, what to do?
+            path: None,
+            file,
+        }
     }
 }
 
@@ -111,17 +126,37 @@ impl<F: FileExt> LockableFile<F> {
 
     pub fn lock_shared<'s>(&'s self) -> std::io::Result<SharedFileLock<'s, F>> {
         FileExt::lock_shared(&self.file)?;
-        Ok(SharedFileLock { file: &self.file })
+        if let Some(path) = self.path.as_ref() {
+            eprintln!("got SharedFileLock on {path:?}");
+        }
+        Ok(SharedFileLock {
+            path: &self.path,
+            file: &self.file,
+        })
     }
 
     pub fn lock_exclusive<'s>(&'s self) -> std::io::Result<ExclusiveFileLock<'s, F>> {
         FileExt::lock_exclusive(&self.file)?;
-        Ok(ExclusiveFileLock { file: &self.file })
+        if let Some(path) = self.path.as_ref() {
+            eprintln!("got ExclusiveFileLock on {path:?}");
+        }
+        Ok(ExclusiveFileLock {
+            path: &self.path,
+            file: &self.file,
+        })
     }
 
     pub fn try_lock_shared<'s>(&'s self) -> std::io::Result<Option<SharedFileLock<'s, F>>> {
         match FileExt::try_lock_shared(&self.file) {
-            Ok(()) => Ok(Some(SharedFileLock { file: &self.file })),
+            Ok(()) => {
+                if let Some(path) = self.path.as_ref() {
+                    eprintln!("got SharedFileLock on {path:?}");
+                }
+                Ok(Some(SharedFileLock {
+                    path: &self.path,
+                    file: &self.file,
+                }))
+            }
             Err(e) => {
                 if e.kind() == lock_contended_error().kind() {
                     Ok(None)
@@ -134,7 +169,15 @@ impl<F: FileExt> LockableFile<F> {
 
     pub fn try_lock_exclusive<'s>(&'s self) -> std::io::Result<Option<ExclusiveFileLock<'s, F>>> {
         match FileExt::try_lock_exclusive(&self.file) {
-            Ok(()) => Ok(Some(ExclusiveFileLock { file: &self.file })),
+            Ok(()) => {
+                if let Some(path) = self.path.as_ref() {
+                    eprintln!("got ExclusiveFileLock on {path:?}");
+                }
+                Ok(Some(ExclusiveFileLock {
+                    path: &self.path,
+                    file: &self.file,
+                }))
+            }
             Err(e) => {
                 if e.kind() == lock_contended_error().kind() {
                     Ok(None)
@@ -146,9 +189,33 @@ impl<F: FileExt> LockableFile<F> {
     }
 }
 
+lazy_static! {
+    static ref DEBUGGING: bool = if let Some(val) = std::env::var_os("DEBUG_LOCKABLE_FILE") {
+        match val
+            .into_string()
+            .expect("utf-8 for env var DEBUG_LOCKABLE_FILE")
+            .as_str()
+        {
+            "0" => false,
+            "1" | "" => true,
+            _ => panic!("need 1|0 or empty string for DEBUG_LOCKABLE_FILE"),
+        }
+    } else {
+        false
+    };
+}
+
 impl LockableFile<File> {
     pub fn open<P: AsRef<Path>>(path: P) -> std::io::Result<Self> {
-        File::open(path).and_then(|file| Ok(LockableFile { file }))
+        File::open(path.as_ref()).and_then(|file| {
+            let path = if *DEBUGGING {
+                Some(path.as_ref().to_owned().into_boxed_path())
+            } else {
+                None
+            };
+
+            Ok(LockableFile { path, file })
+        })
     }
 }
 
