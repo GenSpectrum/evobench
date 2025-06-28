@@ -302,7 +302,7 @@ fn main() -> Result<()> {
             }
 
             {
-                let url = &conf.working_directory_pool.url;
+                let url = &conf.working_directory_pool.remote_repository;
                 let mut polling_pool = PollingPool::open(
                     url,
                     &global_app_state_dir.working_directory_for_polling_pool_base()?,
