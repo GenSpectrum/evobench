@@ -34,7 +34,7 @@ pub fn run_job(
     }
     let RunParameters {
         commit_id,
-        checked_custom_parameters,
+        custom_parameters,
     } = &checked_run_parameters;
 
     let working_directory_id =
@@ -52,7 +52,7 @@ pub fn run_job(
 
             // XXX  build etc run now
             let mut cmd = Command::new("printenv")
-                .envs(checked_custom_parameters)
+                .envs(custom_parameters.btree_map())
                 .spawn()?;
             let status = cmd.wait()?;
             dbg!(status);

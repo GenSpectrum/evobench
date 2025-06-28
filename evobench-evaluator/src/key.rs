@@ -20,15 +20,13 @@
 //! Custom parameters can be given and be relevant, e.g. whether
 //! providing input data to an application sorted or not.
 
-use std::{collections::BTreeMap, num::NonZeroU32};
+use std::{collections::BTreeMap, num::NonZeroU32, ops::Deref};
 
 use anyhow::{bail, Result};
 
 use crate::{
-    crypto_hash::crypto_hash,
-    git::GitHash,
-    key_val_fs::as_key::AsKey,
-    serde::{date_and_time::DateTimeWithOffset, key_val::KeyVal},
+    crypto_hash::crypto_hash, git::GitHash, key_val_fs::as_key::AsKey,
+    serde::date_and_time::DateTimeWithOffset,
 };
 
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
@@ -74,49 +72,96 @@ pub struct EarlyContext {
     pub start_datetime: DateTimeWithOffset,
 }
 
+#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+/// Custom key/value pairings, passed on as environment variables when
+/// executing the benchmarking runner of the target project. (These
+/// are not checked against `custom_parameters_required` yet!)
+pub struct CustomParametersOpts(BTreeMap<String, String>);
+
+#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CustomParameters(BTreeMap<String, String>);
+
+impl CustomParameters {
+    pub fn btree_map(&self) -> &BTreeMap<String, String> {
+        &self.0
+    }
+}
+
+impl CustomParametersOpts {
+    pub fn checked(
+        &self,
+        custom_parameters_required: &BTreeMap<String, bool>,
+    ) -> Result<CustomParameters> {
+        let mut res = BTreeMap::new();
+        for kv in &self.0 {
+            let (key, val) = kv;
+            if !custom_parameters_required.contains_key(key) {
+                bail!("invalid custom parameter name {key:?}")
+            }
+            if res.contains_key(key) {
+                bail!("duplicated custom parameter with name {key:?}")
+            }
+            res.insert(key.to_owned(), val.to_owned());
+        }
+        for (key, required) in custom_parameters_required.iter() {
+            if *required {
+                if !res.contains_key(key) {
+                    bail!("missing custom parameter with name {key:?}")
+                }
+            }
+        }
+
+        Ok(CustomParameters(res))
+    }
+}
+
+// Via config file only possible, due to multiple lists, except if
+// doing a custom cmdline parser.
+#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+/// Give at least one entry or no benchmarking will be done at all!
+/// (Note: these CustomParameters are not yet checked against
+/// allowed/required keys!)
+pub struct CustomParametersSetOpts(pub Vec<CustomParametersOpts>);
+
+/// Checked parameters
+pub struct CustomParametersSet(Vec<CustomParameters>);
+
+impl Deref for CustomParametersSet {
+    type Target = [CustomParameters];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl CustomParametersSetOpts {
+    pub fn checked(
+        &self,
+        custom_parameters_required: &BTreeMap<String, bool>,
+    ) -> Result<CustomParametersSet> {
+        let checked_custom_parameters_set = self
+            .0
+            .iter()
+            .map(|custom_parameters| custom_parameters.checked(custom_parameters_required))
+            .collect::<Result<Vec<_>>>()?;
+        Ok(CustomParametersSet(checked_custom_parameters_set))
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, clap::Parser)]
 pub struct RunParametersOpts {
     /// The commit of the source code of the target (benchmarked)
     /// project
     pub commit_id: GitHash,
-
-    /// Custom "KEY=value" pair strings. They are passed on as
-    /// environment variables when executing the benchmarking runner
-    /// of the target project
-    pub custom_parameters: Vec<KeyVal>,
-}
-
-pub fn check_custom_parameters(
-    custom_parameters: &[KeyVal],
-    custom_parameters_required: &BTreeMap<String, bool>,
-) -> Result<BTreeMap<String, String>> {
-    let mut res = BTreeMap::new();
-    for kv in custom_parameters {
-        let KeyVal { key, val } = kv;
-        if !custom_parameters_required.contains_key(key) {
-            bail!("invalid custom parameter name {key:?}")
-        }
-        if res.contains_key(key) {
-            bail!("duplicated custom parameter with name {key:?}")
-        }
-        res.insert(key.to_owned(), val.to_owned());
-    }
-    for (key, required) in custom_parameters_required.iter() {
-        if *required {
-            if !res.contains_key(key) {
-                bail!("missing custom parameter with name {key:?}")
-            }
-        }
-    }
-
-    Ok(res)
 }
 
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunParameters {
     pub commit_id: GitHash,
-    pub checked_custom_parameters: BTreeMap<String, String>,
+    pub custom_parameters: CustomParameters,
 }
 
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
@@ -139,20 +184,12 @@ impl AsKey for RunParametersHash {
 }
 
 impl RunParametersOpts {
-    pub fn checked(
-        self,
-        custom_parameters_required: &BTreeMap<String, bool>,
-    ) -> Result<RunParameters> {
-        let Self {
-            commit_id,
-            custom_parameters,
-        } = self;
-        let checked_custom_parameters =
-            check_custom_parameters(&custom_parameters, custom_parameters_required)?;
-        Ok(RunParameters {
-            commit_id,
-            checked_custom_parameters,
-        })
+    pub fn complete(&self, custom_parameters: &CustomParameters) -> RunParameters {
+        let Self { commit_id } = self;
+        RunParameters {
+            commit_id: commit_id.clone(),
+            custom_parameters: custom_parameters.clone(),
+        }
     }
 }
 

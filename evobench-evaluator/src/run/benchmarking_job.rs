@@ -1,8 +1,4 @@
-use std::collections::BTreeMap;
-
-use anyhow::Result;
-
-use crate::key::{RunParameters, RunParametersOpts};
+use crate::key::{CustomParametersSet, RunParameters, RunParametersOpts};
 
 #[derive(Debug, PartialEq, Clone, clap::Args)]
 pub struct BenchmarkingJobOpts {
@@ -29,20 +25,23 @@ pub struct BenchmarkingJob {
 }
 
 impl BenchmarkingJobOpts {
-    pub fn checked(
-        self,
-        custom_parameters_required: &BTreeMap<String, bool>,
-    ) -> Result<BenchmarkingJob> {
+    pub fn complete_jobs(
+        &self,
+        custom_parameters_set: &CustomParametersSet,
+    ) -> Vec<BenchmarkingJob> {
         let Self {
             count,
             error_budget,
             run_parameters,
         } = self;
 
-        Ok(BenchmarkingJob {
-            run_parameters: run_parameters.checked(custom_parameters_required)?,
-            remaining_count: count,
-            remaining_error_budget: error_budget,
-        })
+        custom_parameters_set
+            .iter()
+            .map(|custom_parameters| BenchmarkingJob {
+                run_parameters: run_parameters.complete(custom_parameters),
+                remaining_count: *count,
+                remaining_error_budget: *error_budget,
+            })
+            .collect()
     }
 }

@@ -5,6 +5,7 @@ use anyhow::Result;
 use crate::{
     config_file::DefaultConfigPath,
     io_util::create_dir_if_not_exists,
+    key::CustomParametersSetOpts,
     path_util::AppendToPath,
     serde::{date_and_time::LocalNaiveTime, paths::ProperFilename},
     utillib::home::home_dir,
@@ -137,6 +138,10 @@ pub struct RunConfig {
     /// (value `false`) or required (value `true`) for benchmarking
     /// the given project
     pub custom_parameters_required: BTreeMap<String, bool>,
+
+    /// The set of key/value pairs (which must conform to
+    /// `custom_parameters_required`) that should be tested.
+    pub custom_parameters_set: CustomParametersSetOpts,
 }
 
 impl DefaultConfigPath for RunConfig {
