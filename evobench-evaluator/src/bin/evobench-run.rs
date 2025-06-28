@@ -64,7 +64,19 @@ enum SubCommand {
     Insert {
         #[clap(flatten)]
         benchmarking_job_opts: BenchmarkingJobOpts,
+
+        /// Normally, the same job parameters can only be inserted
+        /// once, subsequent attempts yield an error. This overrides
+        /// the check and allows insertion anyway.
+        #[clap(long)]
+        force: bool,
+
+        /// Exit quietly if the given job parameters were already
+        /// inserted before (by default, give an error)
+        #[clap(long)]
+        quiet: bool,
     },
+
     /// Run the existing jobs
     Run {
         /// Show what is done
@@ -144,7 +156,7 @@ fn run_queues(
 
 fn open_already_inserted(
     global_app_state_dir: &GlobalAppStateDir,
-) -> Result<KeyVal<RunParametersHash, (RunParameters, SystemTime)>> {
+) -> Result<KeyVal<RunParametersHash, (RunParameters, Vec<SystemTime>)>> {
     Ok(KeyVal::open(
         global_app_state_dir.already_inserted_base()?,
         KeyValConfig {
@@ -190,16 +202,22 @@ fn main() -> Result<()> {
         SubCommand::ListAll => {
             let already_inserted = open_already_inserted(&global_app_state_dir)?;
 
-            let mut jobs: Vec<_> = already_inserted
+            let mut flat_jobs = Vec::new();
+            for job in already_inserted
                 .keys(false, None)?
                 .map(|hash| -> Result<_> {
                     let hash = hash?;
                     Ok(already_inserted.get(&hash)?)
                 })
                 .filter_map(|r| r.transpose())
-                .collect::<Result<_>>()?;
-            jobs.sort_by_key(|v| v.1);
-            for (params, insertion_time) in jobs {
+            {
+                let (params, insertion_times) = job?;
+                for t in insertion_times {
+                    flat_jobs.push((params.clone(), t));
+                }
+            }
+            flat_jobs.sort_by_key(|v| v.1);
+            for (params, insertion_time) in flat_jobs {
                 let t = system_time_to_rfc3339(insertion_time);
                 println!("{t}\t{params:?}");
             }
@@ -248,6 +266,8 @@ fn main() -> Result<()> {
 
         SubCommand::Insert {
             benchmarking_job_opts,
+            force,
+            quiet,
         } => {
             let benchmarking_job =
                 benchmarking_job_opts.checked(&conf.custom_parameters_required)?;
@@ -255,11 +275,29 @@ fn main() -> Result<()> {
 
             let already_inserted = open_already_inserted(&global_app_state_dir)?;
 
-            if let Some((params, insertion_time)) = already_inserted.get(&run_parameters_hash)? {
-                bail!(
-                    "these parameters were already inserted at {}: {params:?}",
-                    system_time_to_rfc3339(insertion_time)
-                )
+            let mut opt_entry = already_inserted.entry_opt(&run_parameters_hash)?;
+
+            let insertion_times;
+            if let Some(entry) = &mut opt_entry {
+                let params;
+                (params, insertion_times) = entry.get()?;
+                if !force {
+                    if quiet {
+                        return Ok(());
+                    } else {
+                        let insertion_times = insertion_times
+                            .iter()
+                            .cloned()
+                            .map(system_time_to_rfc3339)
+                            .join(", ");
+                        bail!(
+                            "the parameters {params:?} were already inserted at: \
+                             {insertion_times}"
+                        )
+                    }
+                }
+            } else {
+                insertion_times = Vec::new()
             }
 
             {
@@ -277,9 +315,14 @@ fn main() -> Result<()> {
 
             queues.first().push_front(&benchmarking_job)?;
 
+            if let Some(mut entry) = opt_entry {
+                entry.delete()?;
+            }
+            let mut insertion_times = insertion_times;
+            insertion_times.push(SystemTime::now());
             already_inserted.insert(
                 &run_parameters_hash,
-                &(benchmarking_job.run_parameters.clone(), SystemTime::now()),
+                &(benchmarking_job.run_parameters.clone(), insertion_times),
                 true,
             )?
         }
