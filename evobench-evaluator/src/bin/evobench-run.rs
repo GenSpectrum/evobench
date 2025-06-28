@@ -2,18 +2,17 @@ use anyhow::{anyhow, bail, Result};
 use clap::Parser;
 use itertools::Itertools;
 
-use std::{path::PathBuf, time::SystemTime};
+use std::path::PathBuf;
 
 use evobench_evaluator::{
     config_file::{self, save_config_file, ConfigFile},
     get_terminal_width::get_terminal_width,
-    key::{RunParameters, RunParametersHash},
-    key_val_fs::key_val::{Entry, KeyVal, KeyValConfig, KeyValSync},
+    key_val_fs::key_val::Entry,
     run::{
         benchmarking_job::BenchmarkingJobOpts,
         config::RunConfig,
         global_app_state_dir::GlobalAppStateDir,
-        polling_pool::PollingPool,
+        insert_jobs::{insert_jobs, open_already_inserted},
         run_job::{run_job, DryRun},
         run_queue::RunQueue,
         run_queues::{Never, RunQueues},
@@ -156,19 +155,6 @@ fn run_queues(
     }
 }
 
-fn open_already_inserted(
-    global_app_state_dir: &GlobalAppStateDir,
-) -> Result<KeyVal<RunParametersHash, (RunParameters, Vec<SystemTime>)>> {
-    Ok(KeyVal::open(
-        global_app_state_dir.already_inserted_base()?,
-        KeyValConfig {
-            sync: KeyValSync::All,
-            // already created anyway
-            create_dir_if_not_exists: false,
-        },
-    )?)
-}
-
 fn main() -> Result<()> {
     let Opts { config, subcommand } = Opts::parse();
 
@@ -275,63 +261,14 @@ fn main() -> Result<()> {
             force,
             quiet,
         } => {
-            for benchmarking_job in benchmarking_job_opts.complete_jobs(&custom_parameters_set) {
-                let run_parameters_hash = RunParametersHash::from(&benchmarking_job.run_parameters);
-
-                let already_inserted = open_already_inserted(&global_app_state_dir)?;
-                let _lock = already_inserted.lock_exclusive()?;
-
-                let mut opt_entry = already_inserted.entry_opt(&run_parameters_hash)?;
-
-                let insertion_times;
-                if let Some(entry) = &mut opt_entry {
-                    let params;
-                    (params, insertion_times) = entry.get()?;
-                    if !force {
-                        if quiet {
-                            return Ok(());
-                        } else {
-                            let insertion_times = insertion_times
-                                .iter()
-                                .cloned()
-                                .map(system_time_to_rfc3339)
-                                .join(", ");
-                            bail!(
-                                "the parameters {params:?} were already inserted at: \
-                             {insertion_times}"
-                            )
-                        }
-                    }
-                } else {
-                    insertion_times = Vec::new()
-                }
-
-                {
-                    let url = &conf.remote_repository.url;
-                    let mut polling_pool = PollingPool::open(
-                        url,
-                        &global_app_state_dir.working_directory_for_polling_pool_base()?,
-                    )?;
-
-                    let commit = &benchmarking_job.run_parameters.commit_id;
-                    if !polling_pool.commit_is_valid(commit)? {
-                        bail!("commit {commit} does not exist in the repository {url:?}")
-                    }
-                }
-
-                queues.first().push_front(&benchmarking_job)?;
-
-                if let Some(mut entry) = opt_entry {
-                    entry.delete()?;
-                }
-                let mut insertion_times = insertion_times;
-                insertion_times.push(SystemTime::now());
-                already_inserted.insert(
-                    &run_parameters_hash,
-                    &(benchmarking_job.run_parameters.clone(), insertion_times),
-                    true,
-                )?
-            }
+            insert_jobs(
+                benchmarking_job_opts.complete_jobs(&custom_parameters_set),
+                &global_app_state_dir,
+                &conf.remote_repository.url,
+                force,
+                quiet,
+                &queues,
+            )?;
         }
 
         SubCommand::Run {

@@ -1,6 +1,7 @@
 pub mod benchmarking_job;
 pub mod config;
 pub mod global_app_state_dir;
+pub mod insert_jobs;
 pub mod polling_pool;
 pub mod run_job;
 pub mod run_queue;
