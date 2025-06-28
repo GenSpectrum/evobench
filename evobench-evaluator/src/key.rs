@@ -23,6 +23,7 @@
 use std::{collections::BTreeMap, num::NonZeroU32, ops::Deref};
 
 use anyhow::{bail, Result};
+use itertools::Itertools;
 
 use crate::{
     crypto_hash::crypto_hash, git::GitHash, key_val_fs::as_key::AsKey,
@@ -97,7 +98,14 @@ impl CustomParametersOpts {
         for kv in &self.0 {
             let (key, val) = kv;
             if !custom_parameters_required.contains_key(key) {
-                bail!("invalid custom parameter name {key:?}")
+                let valid_params = custom_parameters_required
+                    .keys()
+                    .map(|key| format!("{key:?}"))
+                    .join(", ");
+                bail!(
+                    "invalid custom parameter name {key:?} \
+                     (valid are: {valid_params})"
+                )
             }
             if res.contains_key(key) {
                 bail!("duplicated custom parameter with name {key:?}")
