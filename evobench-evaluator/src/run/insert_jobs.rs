@@ -38,6 +38,11 @@ pub fn insert_jobs(
     let already_inserted = open_already_inserted(&global_app_state_dir)?;
     let _lock = already_inserted.lock_exclusive()?;
 
+    let mut polling_pool = PollingPool::open(
+        remote_repository_url,
+        &global_app_state_dir.working_directory_for_polling_pool_base()?,
+    )?;
+
     for benchmarking_job in benchmarking_jobs {
         let run_parameters_hash = RunParametersHash::from(&benchmarking_job.run_parameters);
 
@@ -67,11 +72,6 @@ pub fn insert_jobs(
         }
 
         {
-            let mut polling_pool = PollingPool::open(
-                remote_repository_url,
-                &global_app_state_dir.working_directory_for_polling_pool_base()?,
-            )?;
-
             let commit = &benchmarking_job.run_parameters.commit_id;
             if !polling_pool.commit_is_valid(commit)? {
                 bail!("commit {commit} does not exist in the repository {remote_repository_url:?}")
