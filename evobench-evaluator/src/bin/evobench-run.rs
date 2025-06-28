@@ -13,7 +13,7 @@ use evobench_evaluator::{
         benchmarking_job::BenchmarkingJobOpts,
         config::RunConfig,
         global_app_state_dir::GlobalAppStateDir,
-        insert_jobs::{insert_jobs, open_already_inserted, ForceAndQuiet},
+        insert_jobs::{insert_jobs, open_already_inserted, ForceOpt, QuietOpt},
         polling_pool::PollingPool,
         run_job::{run_job, DryRun},
         run_queue::RunQueue,
@@ -67,13 +67,16 @@ enum SubCommand {
         benchmarking_job_opts: BenchmarkingJobOpts,
 
         #[clap(flatten)]
-        force_and_quiet: ForceAndQuiet,
+        force_opt: ForceOpt,
+        #[clap(flatten)]
+        quiet_opt: QuietOpt,
     },
 
     /// Insert jobs for new commits on configured branch names
     Poll {
+        // No QuietOpt since that must be the default
         #[clap(flatten)]
-        force_and_quiet: ForceAndQuiet,
+        force_opt: ForceOpt,
     },
 
     /// Run the existing jobs
@@ -258,19 +261,21 @@ fn main() -> Result<()> {
 
         SubCommand::Insert {
             benchmarking_job_opts,
-            force_and_quiet,
+            force_opt,
+            quiet_opt,
         } => {
             insert_jobs(
                 benchmarking_job_opts
                     .complete_jobs(Some(&conf.benchmarking_job_knobs), &custom_parameters_set),
                 &global_app_state_dir,
                 &conf.remote_repository.url,
-                force_and_quiet,
+                force_opt,
+                quiet_opt,
                 &queues,
             )?;
         }
 
-        SubCommand::Poll { force_and_quiet } => {
+        SubCommand::Poll { force_opt } => {
             let commits = {
                 let mut polling_pool = PollingPool::open(
                     &conf.remote_repository.url,
@@ -297,7 +302,11 @@ fn main() -> Result<()> {
                 benchmarking_jobs,
                 &global_app_state_dir,
                 &conf.remote_repository.url,
-                force_and_quiet,
+                force_opt,
+                // Must use quiet so that it can try to insert *all*
+                // given jobs (XX: should it continue even with
+                // errors, for the other code places?)
+                QuietOpt { quiet: true },
                 &queues,
             )?;
         }
