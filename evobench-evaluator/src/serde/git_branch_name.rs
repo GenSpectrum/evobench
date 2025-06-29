@@ -9,6 +9,10 @@ impl GitBranchName {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    pub fn to_ref_string_in_remote(&self, remote_name: &str) -> String {
+        format!("remotes/{remote_name}/{}", self.as_str())
+    }
 }
 
 impl AsRef<str> for GitBranchName {

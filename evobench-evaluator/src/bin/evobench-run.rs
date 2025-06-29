@@ -276,7 +276,7 @@ fn main() -> Result<()> {
         }
 
         SubCommand::Poll { force_opt } => {
-            let commits = {
+            let (commits, maybe_errors) = {
                 let mut polling_pool = PollingPool::open(
                     &conf.remote_repository.url,
                     &global_app_state_dir.working_directory_for_polling_pool_base()?,
@@ -298,6 +298,7 @@ fn main() -> Result<()> {
                 ));
             }
 
+            let n = benchmarking_jobs.len();
             insert_jobs(
                 benchmarking_jobs,
                 &global_app_state_dir,
@@ -309,6 +310,10 @@ fn main() -> Result<()> {
                 QuietOpt { quiet: true },
                 &queues,
             )?;
+
+            if let Some(errors) = maybe_errors {
+                bail!("inserted {n} references, but also got resolution errors: {errors}")
+            }
         }
 
         SubCommand::Run {
