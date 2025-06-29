@@ -94,7 +94,10 @@ pub fn insert_jobs(
         {
             let commit = &benchmarking_job.run_parameters.commit_id;
             if !polling_pool.commit_is_valid(commit)? {
-                bail!("commit {commit} does not exist in the repository {remote_repository_url:?}")
+                bail!(
+                    "commit {commit} does not exist in the repository at {:?}",
+                    remote_repository_url.as_str()
+                )
             }
         }
 
