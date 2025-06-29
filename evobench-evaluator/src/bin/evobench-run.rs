@@ -282,7 +282,11 @@ fn main() -> Result<()> {
                     &global_app_state_dir.working_directory_for_polling_pool_base()?,
                 )?;
 
-                polling_pool.poll_branch_names(&conf.remote_repository.remote_branch_names)?
+                let working_directory_id = polling_pool.updated_working_dir()?;
+                polling_pool.resolve_branch_names(
+                    working_directory_id,
+                    &conf.remote_repository.remote_branch_names,
+                )?
             };
 
             let mut benchmarking_jobs = Vec::new();

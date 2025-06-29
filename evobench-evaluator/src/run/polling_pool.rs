@@ -11,7 +11,9 @@ use crate::{
     serde::{git_branch_name::GitBranchName, git_url::GitUrl},
 };
 
-use super::working_directory_pool::{WorkingDirectoryPool, WorkingDirectoryPoolOpts};
+use super::working_directory_pool::{
+    WorkingDirectoryId, WorkingDirectoryPool, WorkingDirectoryPoolOpts,
+};
 
 fn check_exists(git_working_dir: &GitWorkingDir, commit: &GitHash) -> Result<bool> {
     let commit_str = commit.to_string();
@@ -37,6 +39,8 @@ impl PollingPool {
         Ok(Self { pool })
     }
 
+    /// Updates the remotes, but only if the commit isn't already in
+    /// the local clone.
     pub fn commit_is_valid(&mut self, commit: &GitHash) -> Result<bool> {
         let working_directory_id = self.pool.get_first()?;
         self.pool.process_working_directory(
@@ -56,25 +60,36 @@ impl PollingPool {
         )
     }
 
+    /// Get working dir, git remote update it, and return its id for
+    /// subsequent work on it
+    pub fn updated_working_dir(&mut self) -> Result<WorkingDirectoryId> {
+        let working_directory_id = self.pool.get_first()?;
+        self.pool.process_working_directory(
+            working_directory_id,
+            |working_directory| {
+                let git_working_dir = &working_directory.git_working_dir;
+                git_working_dir.git(&["remote", "update"], true)?;
+                Ok(working_directory_id)
+            },
+            None,
+            "updated_working_dir()",
+        )
+    }
+
     /// Returns the resolved commit ids for the requested names, and
     /// additionally returns a single string with error messages about
     /// those names that failed to resolve, if any.
-    pub fn poll_branch_names(
+    pub fn resolve_branch_names(
         &mut self,
+        working_directory_id: WorkingDirectoryId,
         branch_names: &[GitBranchName],
     ) -> Result<(Vec<GitHash>, Option<String>)> {
-        if branch_names.is_empty() {
-            // XX give an error?
-            return Ok((Vec::new(), None));
-        }
-        let working_directory_id = self.pool.get_first()?;
         let git_url = self.pool.git_url().clone();
         self.pool.process_working_directory(
             working_directory_id,
             |working_directory| {
                 let mut errors = Vec::new();
                 let git_working_dir = &working_directory.git_working_dir;
-                git_working_dir.git(&["remote", "update"], true)?;
                 let mut ids = Vec::new();
                 for name in branch_names {
                     let ref_string = name.to_ref_string_in_remote("origin");
@@ -98,7 +113,7 @@ impl PollingPool {
                 ))
             },
             None,
-            &format!("polling branch names {branch_names:?}"),
+            &format!("resolving branch names {branch_names:?}"),
         )
     }
 }
