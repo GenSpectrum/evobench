@@ -197,6 +197,19 @@ fn main() -> Result<()> {
             .to_string())
     };
 
+    // Have to handle ConfigFormats before attempting to read the
+    // config
+    match &subcommand {
+        SubCommand::ConfigFormats => {
+            println!(
+                "These configuration file extensions / formats are supported:\n\n  {}\n",
+                config_file::supported_formats().join("\n  ")
+            );
+            return Ok(());
+        }
+        _ => (),
+    }
+
     let conf = ConfigFile::<RunConfig>::load_config(config.as_ref(), |msg| {
         bail!("need a config file, {msg}")
     })?;
@@ -210,12 +223,7 @@ fn main() -> Result<()> {
     let queues = RunQueues::open(conf.queues.clone(), true, &global_app_state_dir)?;
 
     match subcommand {
-        SubCommand::ConfigFormats => {
-            println!(
-                "These file extensions are supported: {}",
-                config_file::supported_formats().join(", ")
-            );
-        }
+        SubCommand::ConfigFormats => unreachable!("already dispatched above"),
 
         SubCommand::ConfigSave { output_path } => {
             save_config_file(&output_path, &*conf)?;
