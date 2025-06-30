@@ -1,12 +1,12 @@
 //! Running a benchmarking job
 
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use anyhow::{bail, Result};
 use run_git::path_util::AppendToPath;
 use strum_macros::EnumString;
 
-use crate::{ctx, key::RunParameters};
+use crate::{ctx, key::RunParameters, utillib::exit_status_ext::ExitStatusExt};
 
 use super::{config::BenchmarkingCommand, working_directory_pool::WorkingDirectoryPool};
 
@@ -61,17 +61,23 @@ pub fn run_job(
                 .git_working_dir
                 .working_dir_path_ref()
                 .append(subdir);
-            let mut cmd = Command::new(command)
+            let output = Command::new(command)
                 .envs(custom_parameters.btree_map())
                 .args(arguments)
                 .current_dir(&dir)
-                .spawn()
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .output()
                 .map_err(ctx!("starting command {command:?} in dir {dir:?}"))?;
-            let status = cmd.wait()?;
+            let (status, outputs) = output.status_and_outputs();
             if status.success() {
                 Ok(())
             } else {
-                bail!("benchmarking command {cmd:?} gave error status: {status}")
+                let mut cmd = vec![command.to_string_lossy().into_owned()];
+                cmd.append(&mut arguments.clone());
+                bail!(
+                    "benchmarking command {cmd:?} gave error status {status}, outputs {outputs:?}"
+                )
             }
         },
         Some(&checked_run_parameters),
