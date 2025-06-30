@@ -4,7 +4,7 @@
 //! renamed but stays in the pool directory. (Only directories with
 //! names that are parseable as u64 are treated as usable entries.)
 
-use std::{collections::BTreeMap, num::NonZeroU8, path::PathBuf, sync::Arc, u64};
+use std::{collections::BTreeMap, num::NonZeroU8, path::PathBuf, str::FromStr, sync::Arc, u64};
 
 use anyhow::Result;
 use serde::Serialize;
@@ -82,6 +82,8 @@ impl WorkingDirectoryPool {
             io_util::create_dir_if_not_exists(&base_dir, "working pool directory")?;
         }
 
+        let mut next_id: u64 = 0;
+
         let entries: BTreeMap<WorkingDirectoryId, WorkingDirectory> = std::fs::read_dir(&base_dir)
             .map_err(ctx!("opening working pool directory {base_dir:?}"))?
             .map(
@@ -92,10 +94,19 @@ impl WorkingDirectoryPool {
                         return Ok(None);
                     }
                     let id = if let Some(fname) = entry.file_name().to_str() {
-                        if let Ok(id) = fname.parse() {
-                            WorkingDirectoryId(id)
-                        } else {
+                        if let Some((id_str, _rest)) = fname.split_once('.') {
+                            if let Ok(id) = u64::from_str(id_str) {
+                                if id >= next_id {
+                                    next_id = id + 1;
+                                }
+                            }
                             return Ok(None);
+                        } else {
+                            if let Ok(id) = fname.parse() {
+                                WorkingDirectoryId(id)
+                            } else {
+                                return Ok(None);
+                            }
                         }
                     } else {
                         return Ok(None);
@@ -120,7 +131,7 @@ impl WorkingDirectoryPool {
             remote_repository_url,
             base_dir,
             _lock: lock,
-            next_id: entries.keys().max().map(|x| x.0 + 1).unwrap_or(0),
+            next_id,
             entries,
         })
     }
