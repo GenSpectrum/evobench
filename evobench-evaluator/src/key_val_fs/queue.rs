@@ -12,30 +12,15 @@ use genawaiter::rc::Gen;
 use ouroboros::self_referencing;
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::lockable_file::{ExclusiveFileLock, LockableFile, SharedFileLock};
+use crate::{
+    info_if,
+    lockable_file::{ExclusiveFileLock, LockableFile, SharedFileLock},
+};
 
 use super::{
     as_key::AsKey,
     key_val::{Entry, KeyVal, KeyValConfig, KeyValError},
 };
-
-#[macro_export]
-macro_rules! info_if {
-    { $verbose:expr, $($arg:tt)* } => {
-        if $verbose {
-            eprintln!($($arg)*);
-        }
-    }
-}
-
-#[macro_export]
-macro_rules! info_noln_if {
-    { $verbose:expr, $($arg:tt)* } => {
-        if $verbose {
-            eprint!($($arg)*);
-        }
-    }
-}
 
 fn next_id() -> u64 {
     static IDS: AtomicU64 = AtomicU64::new(0);
