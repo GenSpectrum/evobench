@@ -265,8 +265,10 @@ fn main() -> Result<()> {
             quiet_opt,
         } => {
             insert_jobs(
-                benchmarking_job_opts
-                    .complete_jobs(Some(&conf.benchmarking_job_knobs), &custom_parameters_set),
+                benchmarking_job_opts.complete_jobs(
+                    Some(&conf.benchmarking_job_settings),
+                    &custom_parameters_set,
+                ),
                 &global_app_state_dir,
                 &conf.remote_repository.url,
                 force_opt,
@@ -292,11 +294,11 @@ fn main() -> Result<()> {
             let mut benchmarking_jobs = Vec::new();
             for commit_id in commits {
                 let opts = BenchmarkingJobOpts {
-                    benchmarking_job_knobs: conf.benchmarking_job_knobs.clone(),
+                    benchmarking_job_settings: conf.benchmarking_job_settings.clone(),
                     run_parameters: RunParametersOpts { commit_id },
                 };
                 benchmarking_jobs.append(&mut opts.complete_jobs(
-                    // already using conf.benchmarking_job_knobs from above
+                    // already using conf.benchmarking_job_settings from above
                     None,
                     &custom_parameters_set,
                 ));

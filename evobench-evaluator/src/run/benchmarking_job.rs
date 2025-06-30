@@ -2,8 +2,8 @@ use crate::key::{CustomParametersSet, RunParameters, RunParametersOpts};
 
 #[derive(Debug, PartialEq, Clone, clap::Args, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-#[serde(rename = "BenchmarkingJobKnobs")]
-pub struct BenchmarkingJobKnobsOpts {
+#[serde(rename = "BenchmarkingJobSettings")]
+pub struct BenchmarkingJobSettingsOpts {
     /// The number of times the job should be run in total (across all
     /// queues). Default: 5
     #[clap(short, long)]
@@ -15,13 +15,16 @@ pub struct BenchmarkingJobKnobsOpts {
     error_budget: Option<u8>,
 }
 
-pub struct BenchmarkingJobKnobs {
+pub struct BenchmarkingJobSettings {
     count: u8,
     error_budget: u8,
 }
 
-impl BenchmarkingJobKnobsOpts {
-    pub fn complete(&self, fallback: Option<&BenchmarkingJobKnobsOpts>) -> BenchmarkingJobKnobs {
+impl BenchmarkingJobSettingsOpts {
+    pub fn complete(
+        &self,
+        fallback: Option<&BenchmarkingJobSettingsOpts>,
+    ) -> BenchmarkingJobSettings {
         let Self {
             count,
             error_budget,
@@ -38,7 +41,7 @@ impl BenchmarkingJobKnobsOpts {
                 fallback.error_budget
             })
             .unwrap_or(3);
-        BenchmarkingJobKnobs {
+        BenchmarkingJobSettings {
             count,
             error_budget,
         }
@@ -48,7 +51,7 @@ impl BenchmarkingJobKnobsOpts {
 #[derive(Debug, PartialEq, Clone, clap::Args)]
 pub struct BenchmarkingJobOpts {
     #[clap(flatten)]
-    pub benchmarking_job_knobs: BenchmarkingJobKnobsOpts,
+    pub benchmarking_job_settings: BenchmarkingJobSettingsOpts,
 
     #[clap(flatten)]
     pub run_parameters: RunParametersOpts,
@@ -65,17 +68,17 @@ pub struct BenchmarkingJob {
 impl BenchmarkingJobOpts {
     pub fn complete_jobs(
         &self,
-        benchmarking_job_knobs_fallback: Option<&BenchmarkingJobKnobsOpts>,
+        benchmarking_job_settings_fallback: Option<&BenchmarkingJobSettingsOpts>,
         custom_parameters_set: &CustomParametersSet,
     ) -> Vec<BenchmarkingJob> {
         let Self {
-            benchmarking_job_knobs,
+            benchmarking_job_settings,
             run_parameters,
         } = self;
-        let BenchmarkingJobKnobs {
+        let BenchmarkingJobSettings {
             count,
             error_budget,
-        } = benchmarking_job_knobs.complete(benchmarking_job_knobs_fallback);
+        } = benchmarking_job_settings.complete(benchmarking_job_settings_fallback);
 
         custom_parameters_set
             .iter()
