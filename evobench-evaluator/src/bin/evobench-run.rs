@@ -27,6 +27,7 @@ use evobench_evaluator::{
         git_branch_name::GitBranchName,
         paths::ProperFilename,
     },
+    utillib::info::set_verbose,
 };
 
 #[derive(clap::Parser, Debug)]
@@ -398,6 +399,8 @@ fn main() -> Result<()> {
             dry_run,
             mode,
         } => {
+            set_verbose(verbose);
+
             let mut working_directory_pool = WorkingDirectoryPool::open(
                 conf.working_directory_pool.clone(),
                 conf.remote_repository.url.clone(),
