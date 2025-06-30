@@ -1,16 +1,18 @@
 use anyhow::{anyhow, bail, Result};
 use clap::Parser;
 use itertools::Itertools;
+use run_git::git::GitWorkingDir;
 
-use std::path::PathBuf;
+use std::{path::PathBuf, str::FromStr};
 
 use evobench_evaluator::{
     config_file::{self, save_config_file, ConfigFile},
     get_terminal_width::get_terminal_width,
+    git::GitHash,
     key::RunParametersOpts,
     key_val_fs::key_val::Entry,
     run::{
-        benchmarking_job::BenchmarkingJobOpts,
+        benchmarking_job::{BenchmarkingJobOpts, BenchmarkingJobSettingsOpts},
         config::RunConfig,
         global_app_state_dir::GlobalAppStateDir,
         insert_jobs::{insert_jobs, open_already_inserted, ForceOpt, QuietOpt},
@@ -22,6 +24,7 @@ use evobench_evaluator::{
     },
     serde::{
         date_and_time::{system_time_to_rfc3339, DateTimeWithOffset},
+        git_branch_name::GitBranchName,
         paths::ProperFilename,
     },
 };
@@ -61,7 +64,31 @@ enum SubCommand {
     /// List the currently scheduled and running jobs
     List,
 
-    /// Insert a job
+    /// Insert a job into the benchmarking queue. The given reference
+    /// is resolved in a given working directory; if you have a commit
+    /// id, then you can use the `insert` subcommand instead.
+    InsertLocal {
+        /// A Git reference to the commit that should be benchmarked
+        /// (like `HEAD`, `master`, some commit id, etc.)
+        reference: GitBranchName,
+
+        /// The path to the Git working directory where `reference`
+        /// should be resolved in
+        #[clap(long, short, default_value = ".")]
+        dir: PathBuf,
+
+        #[clap(flatten)]
+        benchmarking_job_settings: BenchmarkingJobSettingsOpts,
+
+        #[clap(flatten)]
+        force_opt: ForceOpt,
+        #[clap(flatten)]
+        quiet_opt: QuietOpt,
+    },
+
+    /// Insert a job into the benchmarking queue, giving the commit id
+    /// (hence, unlike the `insert-local` command, not requiring a
+    /// working directory)
     Insert {
         #[clap(flatten)]
         benchmarking_job_opts: BenchmarkingJobOpts,
@@ -257,6 +284,37 @@ fn main() -> Result<()> {
                 )
             }
             println!("------------------------------------------------------------------");
+        }
+
+        SubCommand::InsertLocal {
+            reference,
+            dir,
+            benchmarking_job_settings,
+            force_opt,
+            quiet_opt,
+        } => {
+            let git_working_dir = GitWorkingDir::from(dir);
+            let commit_id_str = git_working_dir
+                .git_rev_parse(reference.as_str(), true)?
+                .ok_or_else(|| anyhow!("reference '{reference}' does not resolve to a commit"))?;
+            let commit_id = GitHash::from_str(&commit_id_str)?;
+
+            let benchmarking_job_opts = BenchmarkingJobOpts {
+                benchmarking_job_settings,
+                run_parameters: RunParametersOpts { commit_id },
+            };
+
+            insert_jobs(
+                benchmarking_job_opts.complete_jobs(
+                    Some(&conf.benchmarking_job_settings),
+                    &custom_parameters_set,
+                ),
+                &global_app_state_dir,
+                &conf.remote_repository.url,
+                force_opt,
+                quiet_opt,
+                &queues,
+            )?;
         }
 
         SubCommand::Insert {
