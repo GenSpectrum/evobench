@@ -186,7 +186,9 @@ impl WorkingDirectoryPool {
         std::fs::rename(&old_dir_path, &new_dir_path)
             .map_err(ctx!("renaming {old_dir_path:?} to {new_dir_path:?}"))?;
         std::fs::write(&error_file_path, &processing_error_string)
-            .map_err(ctx!("writing to {error_file_path:?}"))
+            .map_err(ctx!("writing to {error_file_path:?}"))?;
+        self.entries.remove(&id);
+        Ok(())
     }
 
     ///  Runs the given action on the requested working directory, and
