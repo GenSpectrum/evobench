@@ -41,7 +41,7 @@ pub enum ScheduleCondition {
         /// If true, when time runs out, move all remaining jobs to
         /// the next queue; if false, the jobs remain and are
         /// scheduled again in the same time window on the next day.
-        move_on_timeout: bool,
+        move_when_time_window_ends: bool,
         /// Times in the local time zone, scheduled to run every
         /// day--except if one of the two times is not unambiguous on
         /// a given day (e.g. due to DST changes), the whole queue is
@@ -63,7 +63,7 @@ impl ScheduleCondition {
             ScheduleCondition::LocalNaiveTimeRange {
                 stop_start: _,
                 repeatedly: _,
-                move_on_timeout: _,
+                move_when_time_window_ends: _,
                 from,
                 to,
             } => Some((from.clone(), to.clone())),
@@ -72,16 +72,16 @@ impl ScheduleCondition {
     }
 
     /// Returns true if the condition offers that flag *and* it is true
-    pub fn move_on_timeout(&self) -> bool {
+    pub fn move_when_time_window_ends(&self) -> bool {
         match self {
             ScheduleCondition::Immediately => false,
             ScheduleCondition::LocalNaiveTimeRange {
                 stop_start: _,
                 repeatedly: _,
-                move_on_timeout,
+                move_when_time_window_ends,
                 from: _,
                 to: _,
-            } => *move_on_timeout,
+            } => *move_when_time_window_ends,
             ScheduleCondition::GraveYard => false,
         }
     }

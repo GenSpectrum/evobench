@@ -213,7 +213,7 @@ impl RunQueues {
                     )? {
                         TerminationReason::Timeout => {
                             info_if!(verbose, "ran out of time in queue {}", q.file_name);
-                            if q.schedule_condition.move_on_timeout() {
+                            if q.schedule_condition.move_when_time_window_ends() {
                                 let mut count = 0;
                                 for entry in q.current.queue.sorted_entries(false, None) {
                                     // XX continue in the face of
@@ -265,7 +265,7 @@ impl RunQueues {
                 ScheduleCondition::LocalNaiveTimeRange {
                     stop_start: _,
                     repeatedly: _,
-                    move_on_timeout: _,
+                    move_when_time_window_ends: _,
                     from: _,
                     to: _,
                 } => (),

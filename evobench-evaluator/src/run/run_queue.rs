@@ -105,7 +105,7 @@ impl<'conf> RunQueue<'conf> {
                                 ScheduleCondition::LocalNaiveTimeRange {
                                     stop_start: _,
                                     repeatedly,
-                                    move_on_timeout: _,
+                                    move_when_time_window_ends: _,
                                     from: _,
                                     to: _,
                                 } => {
