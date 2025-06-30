@@ -103,6 +103,9 @@ impl WorkingDirectoryPool {
                             return Ok(None);
                         } else {
                             if let Ok(id) = fname.parse() {
+                                if id >= next_id {
+                                    next_id = id + 1;
+                                }
                                 WorkingDirectoryId(id)
                             } else {
                                 return Ok(None);
