@@ -9,6 +9,9 @@ use std::{
 use anyhow::{anyhow, bail, Context, Result};
 use ruzstd::StreamingDecoder;
 
+use crate::ctx;
+
+// For decompression; compression is always done via tool.
 const USING_EXTERNAL_TOOL: bool = false;
 
 #[derive(Debug, PartialEq)]
@@ -100,18 +103,33 @@ pub fn decompressed_file(path: &Path, expected_suffix: &str) -> Result<Box<dyn R
                 let args: Vec<OsString> = vec!["-dcf".into(), "--".into(), path.into()];
                 c.args(args);
                 c.stdout(Stdio::piped());
-                let child = c
-                    .spawn()
-                    .with_context(|| anyhow!("opening file {path:?}"))?;
+                let child = c.spawn().map_err(ctx!("spawning command {c:?}"))?;
                 Ok(Box::new(child.stdout.expect("present since configured")))
             } else {
                 let input = file_open()?;
                 Ok(Box::new(
-                    StreamingDecoder::new(input)
-                        .with_context(|| anyhow!("zstd-decoding {path:?}"))?,
+                    StreamingDecoder::new(input).map_err(ctx!("zstd-decoding {path:?}"))?,
                 ))
             }
         }
         Extension::Other(_) => Ok(Box::new(file_open()?)),
+    }
+}
+
+pub fn compress_file(source_path: &Path, target_path: &Path) -> Result<()> {
+    let mut c = Command::new("zstd");
+    let args: Vec<OsString> = vec![
+        "-o".into(),
+        target_path.into(),
+        "--".into(),
+        source_path.into(),
+    ];
+    c.args(&args);
+    let mut child = c.spawn().map_err(ctx!("spawning command {c:?}"))?;
+    let status = child.wait()?;
+    if status.success() {
+        Ok(())
+    } else {
+        bail!("running zstd {args:?}: {status}")
     }
 }
