@@ -82,8 +82,8 @@ pub fn insert_jobs(
                         .map(system_time_to_rfc3339)
                         .join(", ");
                     bail!(
-                        "the parameters {params:?} were already inserted at: \
-                             {insertion_times}"
+                        "the parameters {params:?} have already been inserted at \
+                         {insertion_times}"
                     )
                 }
             }
