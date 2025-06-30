@@ -170,15 +170,21 @@ impl WorkingDirectoryPool {
         if let Some((key, _)) = self.entries.first_key_value() {
             Ok(*key)
         } else {
-            let id = self.next_id();
-            let dir = WorkingDirectory::clone_repo(
-                self.base_dir(),
-                &id.to_directory_file_name(),
-                self.git_url(),
-            )?;
-            self.entries.insert(id, dir);
-            Ok(id)
+            self.get_new()
         }
+    }
+
+    /// This is *not* public as it is not checking whether there is
+    /// capacity left for a new one!
+    fn get_new(&mut self) -> Result<WorkingDirectoryId> {
+        let id = self.next_id();
+        let dir = WorkingDirectory::clone_repo(
+            self.base_dir(),
+            &id.to_directory_file_name(),
+            self.git_url(),
+        )?;
+        self.entries.insert(id, dir);
+        Ok(id)
     }
 
     pub fn set_processing_error(
@@ -316,7 +322,7 @@ impl WorkingDirectoryPool {
         } else {
             if self.len() < self.capacity() {
                 // allocate a new one
-                let id = self.get_first()?;
+                let id = self.get_new()?;
                 info!("get_a_working_directory_for_commit({commit}) -> new {id:?}");
                 Ok(id)
             } else {
