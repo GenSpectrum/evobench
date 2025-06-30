@@ -2,12 +2,13 @@
 
 use std::process::Command;
 
-use anyhow::Result;
+use anyhow::{bail, Result};
+use run_git::path_util::AppendToPath;
 use strum_macros::EnumString;
 
-use crate::key::RunParameters;
+use crate::{ctx, key::RunParameters};
 
-use super::working_directory_pool::WorkingDirectoryPool;
+use super::{config::BenchmarkingCommand, working_directory_pool::WorkingDirectoryPool};
 
 #[derive(Debug, EnumString, PartialEq, Clone, Copy)]
 #[repr(u8)]
@@ -27,6 +28,7 @@ pub fn run_job(
     working_directory_pool: &mut WorkingDirectoryPool,
     checked_run_parameters: RunParameters,
     dry_run: DryRun,
+    benchmarking_command: &BenchmarkingCommand,
 ) -> Result<()> {
     if dry_run.means(DryRun::DoNothing) {
         println!("dry-run: would run {checked_run_parameters:?}");
@@ -50,14 +52,27 @@ pub fn run_job(
                 return Ok(());
             }
 
-            // XXX  build etc run now
-            let mut cmd = Command::new("printenv")
+            let BenchmarkingCommand {
+                subdir,
+                command,
+                arguments,
+            } = benchmarking_command;
+            let dir = working_directory
+                .git_working_dir
+                .working_dir_path_ref()
+                .append(subdir);
+            let mut cmd = Command::new(command)
                 .envs(custom_parameters.btree_map())
-                .spawn()?;
+                .args(arguments)
+                .current_dir(&dir)
+                .spawn()
+                .map_err(ctx!("starting command {command:?} in dir {dir:?}"))?;
             let status = cmd.wait()?;
-            dbg!(status);
-
-            Ok(())
+            if status.success() {
+                Ok(())
+            } else {
+                bail!("benchmarking command {cmd:?} gave error status: {status}")
+            }
         },
         Some(&checked_run_parameters),
         "checkout",

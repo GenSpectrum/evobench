@@ -134,6 +134,23 @@ pub struct RemoteRepository {
     pub remote_branch_names: Vec<GitBranchName>,
 }
 
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+/// What command to run on the target project to execute a
+/// benchmarking run; the env variables configured in CustomParameters
+/// are set when running this command.
+pub struct BenchmarkingCommand {
+    /// Relative path to the subdirectory (provide "." for the top
+    /// level of the working directory) where to run the command
+    pub subdir: PathBuf,
+
+    /// Name or path to the command to run, e.g. "make"
+    pub command: PathBuf,
+
+    /// Arguments to the command, e.g. "bench"
+    pub arguments: Vec<String>,
+}
+
 /// Direct representation of the evobench-run config file
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -160,6 +177,8 @@ pub struct RunConfig {
     pub custom_parameters_set: CustomParametersSetOpts,
 
     pub benchmarking_job_settings: BenchmarkingJobSettingsOpts,
+
+    pub benchmarking_command: BenchmarkingCommand,
 }
 
 impl DefaultConfigPath for RunConfig {

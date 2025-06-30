@@ -165,7 +165,12 @@ fn run_queues(
     loop {
         // XX handle errors without exiting? Or do that above
         queues.run(verbose, |run_parameters| {
-            run_job(&mut working_directory_pool, run_parameters, dry_run)
+            run_job(
+                &mut working_directory_pool,
+                run_parameters,
+                dry_run,
+                &conf.benchmarking_command,
+            )
         })?;
         if conf.perhaps_reload_config(config_path.as_ref()) {
             // XXX only if changed
@@ -413,7 +418,12 @@ fn main() -> Result<()> {
                             verbose,
                             stop_at,
                             |run_parameters| {
-                                run_job(&mut working_directory_pool, run_parameters, dry_run)
+                                run_job(
+                                    &mut working_directory_pool,
+                                    run_parameters,
+                                    dry_run,
+                                    &conf.benchmarking_command,
+                                )
                             },
                             next_queue,
                             queues.erroneous_jobs_queue(),
