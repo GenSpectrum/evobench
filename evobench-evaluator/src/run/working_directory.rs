@@ -96,10 +96,15 @@ impl WorkingDirectory {
             }
             Ok(())
         } else {
+            let git_working_dir = &self.git_working_dir;
+            if !git_working_dir.contains_reference(&commit.to_string())? {
+                git_working_dir.git(&["remote", "update"], true)?;
+            }
+
             // First stash, merge --abort, cherry-pick --abort, and all
             // that jazz? No, have such a dir just go set aside with error
             // for manual fixing/removal.
-            self.git_working_dir.git_reset(
+            git_working_dir.git_reset(
                 GitResetMode::Hard,
                 NO_OPTIONS,
                 &commit.to_string(),
