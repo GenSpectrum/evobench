@@ -102,7 +102,7 @@ impl<'conf> RunQueue<'conf> {
                                     // Job is always going to the next queue
                                     maybe_queue = next_queue;
                                 }
-                                ScheduleCondition::LocalNaiveTimeRange {
+                                ScheduleCondition::LocalNaiveTimeWindow {
                                     stop_start: _,
                                     repeatedly,
                                     move_when_time_window_ends: _,

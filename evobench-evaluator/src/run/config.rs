@@ -28,7 +28,7 @@ pub enum ScheduleCondition {
     /// day. After the time window runs out, remaining jobs in the
     /// queue are moved to the next queue (or are dropped if there is
     /// none).
-    LocalNaiveTimeRange {
+    LocalNaiveTimeWindow {
         /// A command and arguments, run with "stop" at the `from`
         /// time and with "start" when done / at the `to` time.
         stop_start: Option<Vec<String>>,
@@ -60,7 +60,7 @@ impl ScheduleCondition {
     pub fn time_range(&self) -> Option<(LocalNaiveTime, LocalNaiveTime)> {
         match self {
             ScheduleCondition::Immediately => None,
-            ScheduleCondition::LocalNaiveTimeRange {
+            ScheduleCondition::LocalNaiveTimeWindow {
                 stop_start: _,
                 repeatedly: _,
                 move_when_time_window_ends: _,
@@ -75,7 +75,7 @@ impl ScheduleCondition {
     pub fn move_when_time_window_ends(&self) -> bool {
         match self {
             ScheduleCondition::Immediately => false,
-            ScheduleCondition::LocalNaiveTimeRange {
+            ScheduleCondition::LocalNaiveTimeWindow {
                 stop_start: _,
                 repeatedly: _,
                 move_when_time_window_ends,
