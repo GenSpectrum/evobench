@@ -52,7 +52,7 @@ enum SubCommand {
 
     /// Re-encode the config file (serialization type determined by
     /// file extension) and save at the given path.
-    SaveConfig { output_path: PathBuf },
+    ConfigSave { output_path: PathBuf },
 
     /// Show the list of all inserted jobs, including already
     /// processed ones
@@ -190,7 +190,7 @@ fn main() -> Result<()> {
             );
         }
 
-        SubCommand::SaveConfig { output_path } => {
+        SubCommand::ConfigSave { output_path } => {
             save_config_file(&output_path, &*conf)?;
         }
 
