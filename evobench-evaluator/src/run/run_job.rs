@@ -1,6 +1,9 @@
 //! Running a benchmarking job
 
-use std::process::{Command, Stdio};
+use std::{
+    io::{stderr, StderrLock, Write},
+    process::{Command, Stdio},
+};
 
 use anyhow::{bail, Result};
 use run_git::path_util::AppendToPath;
@@ -73,6 +76,24 @@ pub fn run_job(
             if status.success() {
                 Ok(())
             } else {
+                {
+                    let mut err = stderr().lock();
+                    let doit = |err: &mut StderrLock, output: &[u8], ctx: &str| -> Result<()> {
+                        writeln!(err, "---- run_job: error in dir {dir:?}: {ctx} -------")?;
+                        if output.len() > 3000 {
+                            err.write_all("...\n".as_bytes())?;
+                            // XX Ignoring UTF-8 boundaries here, evil.
+                            err.write_all(&output[output.len() - 3000..])?;
+                        } else {
+                            err.write_all(output)?;
+                        }
+                        Ok(())
+                    };
+                    doit(&mut err, &output.stderr, "stderr")?;
+                    doit(&mut err, &output.stdout, "stdout")?;
+                    writeln!(&mut err, "---- /run_job: error in dir {dir:?} -------")?;
+                }
+
                 let mut cmd = vec![command.to_string_lossy().into_owned()];
                 cmd.append(&mut arguments.clone());
                 bail!(
