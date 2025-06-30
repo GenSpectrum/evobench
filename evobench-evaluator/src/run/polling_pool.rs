@@ -4,7 +4,7 @@
 use std::{path::Path, str::FromStr, sync::Arc};
 
 use anyhow::Result;
-use run_git::git::{GitCatFileMode, GitWorkingDir};
+use run_git::git::GitWorkingDir;
 
 use crate::{
     git::GitHash,
@@ -17,7 +17,7 @@ use super::working_directory_pool::{
 
 fn check_exists(git_working_dir: &GitWorkingDir, commit: &GitHash) -> Result<bool> {
     let commit_str = commit.to_string();
-    git_working_dir.git_cat_file(GitCatFileMode::ShowExists, &commit_str)
+    git_working_dir.contains_reference(&commit_str)
 }
 
 pub struct PollingPool {
