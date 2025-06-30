@@ -5,12 +5,12 @@ use crate::key::{CustomParametersSet, RunParameters, RunParametersOpts};
 #[serde(rename = "BenchmarkingJobSettings")]
 pub struct BenchmarkingJobSettingsOpts {
     /// The number of times the job should be run in total (across all
-    /// queues). Default: 5
+    /// queues). Default taken from config file or: 5
     #[clap(short, long)]
     count: Option<u8>,
 
     /// How many times a job is allowed to fail before it is removed
-    /// from the pipeline. Default: 3
+    /// from the pipeline. Default taken from config file or: 3
     #[clap(short, long)]
     error_budget: Option<u8>,
 }
