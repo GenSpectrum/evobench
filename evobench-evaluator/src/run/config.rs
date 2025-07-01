@@ -20,6 +20,7 @@ use super::{
 };
 
 #[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub enum ScheduleCondition {
     /// Run jobs in this queue once right away
     Immediately,
@@ -126,6 +127,7 @@ impl QueuesConfig {
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct RemoteRepository {
     /// The Git repository to clone the target project from
     pub url: GitUrl,

@@ -23,6 +23,7 @@ use super::working_directory::WorkingDirectory;
 
 // clap::Args?
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct WorkingDirectoryPoolOpts {
     /// Path to a directory where clones of the project to be
     /// benchmarked should be kept. By default at
@@ -57,6 +58,7 @@ pub struct WorkingDirectoryPool {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ProcessingError {
     /// An Option since working directory pools are also used for
     /// things that are not benchmark runs
