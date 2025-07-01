@@ -9,7 +9,11 @@ use anyhow::{bail, Result};
 use run_git::path_util::AppendToPath;
 use strum_macros::EnumString;
 
-use crate::{ctx, key::RunParameters, utillib::exit_status_ext::ExitStatusExt};
+use crate::{
+    ctx, info,
+    key::RunParameters,
+    utillib::{exit_status_ext::ExitStatusExt, info::verbose},
+};
 
 use super::{config::BenchmarkingCommand, working_directory_pool::WorkingDirectoryPool};
 
@@ -60,23 +64,46 @@ pub fn run_job(
                 command,
                 arguments,
             } = benchmarking_command;
+
             let dir = working_directory
                 .git_working_dir
                 .working_dir_path_ref()
                 .append(subdir);
-            let output = Command::new(command)
+
+            // for debugging info only:
+            let cmd_in_dir = {
+                let mut cmd = vec![command.to_string_lossy().into_owned()];
+                cmd.append(&mut arguments.clone());
+                format!("command {cmd:?} in directory {dir:?}")
+            };
+
+            info!("running {cmd_in_dir}...");
+
+            let mut command = Command::new(command);
+            command
                 .envs(custom_parameters.btree_map())
                 .args(arguments)
-                .current_dir(&dir)
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
+                .current_dir(&dir);
+
+            // XX HACK: should always capture it, but want to also see
+            // it immediately as generated.
+            if verbose() {
+                command.stdout(Stdio::inherit()).stderr(Stdio::inherit());
+            } else {
+                command.stdout(Stdio::piped()).stderr(Stdio::piped());
+            }
+
+            let output = command
                 .output()
                 .map_err(ctx!("starting command {command:?} in dir {dir:?}"))?;
             let (status, outputs) = output.status_and_outputs();
             if status.success() {
+                info!("running {cmd_in_dir} succeeded.");
                 Ok(())
             } else {
-                {
+                info!("running {cmd_in_dir} failed.");
+                // XX more HACK, if we didn't capture, no need to print this
+                if !verbose() {
                     let mut err = stderr().lock();
                     let doit = |err: &mut StderrLock, output: &[u8], ctx: &str| -> Result<()> {
                         writeln!(err, "---- run_job: error in dir {dir:?}: {ctx} -------")?;
@@ -94,10 +121,9 @@ pub fn run_job(
                     writeln!(&mut err, "---- /run_job: error in dir {dir:?} -------")?;
                 }
 
-                let mut cmd = vec![command.to_string_lossy().into_owned()];
-                cmd.append(&mut arguments.clone());
                 bail!(
-                    "benchmarking command {cmd:?} gave error status {status}, outputs {outputs:?}"
+                    "benchmarking command {cmd_in_dir} gave \
+                     error status {status}, outputs {outputs:?}"
                 )
             }
         },

@@ -9,7 +9,7 @@ use std::{
 use anyhow::{bail, Result};
 use run_git::git::{git_clone, GitResetMode, GitWorkingDir};
 
-use crate::{ctx, git::GitHash, serde::git_url::GitUrl};
+use crate::{ctx, git::GitHash, info, serde::git_url::GitUrl};
 
 const NO_OPTIONS: &[&str] = &[];
 
@@ -78,6 +78,7 @@ impl WorkingDirectory {
         let commit: GitHash = git_working_dir.get_head_commit_id()?.parse()?;
         let status = Status::CheckedOut;
         let mtime = std::fs::metadata(git_working_dir.working_dir_path_ref())?.modified()?;
+        info!("clone_repo({base_dir:?}, {dir_file_name:?}, {url}) succeeded");
         Ok(Self {
             git_working_dir,
             commit,
@@ -99,6 +100,10 @@ impl WorkingDirectory {
             let git_working_dir = &self.git_working_dir;
             if !git_working_dir.contains_reference(&commit.to_string())? {
                 git_working_dir.git(&["remote", "update"], true)?;
+                info!(
+                    "checkout({:?}, {commit}): ran git remote update",
+                    self.git_working_dir.working_dir_path_ref()
+                );
             }
 
             // First stash, merge --abort, cherry-pick --abort, and all
@@ -110,6 +115,10 @@ impl WorkingDirectory {
                 &commit.to_string(),
                 quiet,
             )?;
+            info!(
+                "checkout({:?}, {commit}): ran git reset --hard",
+                self.git_working_dir.working_dir_path_ref()
+            );
             self.commit = commit;
             self.status = Status::CheckedOut;
             Ok(())

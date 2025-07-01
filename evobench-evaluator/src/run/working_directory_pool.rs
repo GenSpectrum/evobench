@@ -12,7 +12,7 @@ use serde::Serialize;
 use crate::{
     ctx,
     git::GitHash,
-    io_util,
+    info, io_util,
     key::RunParameters,
     lockable_file::StandaloneExclusiveFileLock,
     path_util::{add_extension, AppendToPath},
@@ -129,14 +129,22 @@ impl WorkingDirectoryPool {
             format!("working directory pool {base_dir:?} is already locked")
         })?;
 
-        Ok(Self {
+        let slf = Self {
             opts,
             remote_repository_url,
             base_dir,
             _lock: lock,
             next_id,
             entries,
-        })
+        };
+
+        info!(
+            "opened directory pool {:?} with next_id {next_id}/{}",
+            slf.base_dir,
+            slf.capacity()
+        );
+
+        Ok(slf)
     }
 
     pub fn base_dir(&self) -> &PathBuf {
@@ -191,6 +199,9 @@ impl WorkingDirectoryPool {
         std::fs::write(&error_file_path, &processing_error_string)
             .map_err(ctx!("writing to {error_file_path:?}"))?;
         self.entries.remove(&id);
+
+        info!("set processing error on {id:?}");
+
         Ok(())
     }
 
@@ -211,9 +222,29 @@ impl WorkingDirectoryPool {
             .entries
             .get_mut(&working_directory_id)
             .expect("working directory id must still exist");
+
+        info!(
+            "process_working_directory {working_directory_id:?} \
+             ({context}, {run_parameters:?})..."
+        );
+
         match action(wd) {
-            Ok(v) => Ok(v),
+            Ok(v) => {
+                info!(
+                    "process_working_directory {working_directory_id:?} \
+                     ({context}, {run_parameters:?}) succeeded."
+                );
+
+                Ok(v)
+            }
             Err(error) => {
+                info!(
+                    // Do not show error as it might be large; XX
+                    // which is a mis-feature!
+                    "process_working_directory {working_directory_id:?} \
+                     ({context}, {run_parameters:?}) failed."
+                );
+
                 let err = format!("{error:#?}");
                 self.set_processing_error(
                     working_directory_id,
@@ -259,7 +290,14 @@ impl WorkingDirectoryPool {
             .filter(|(_, entry)| entry.commit == *commit)
             .collect();
         dirs.sort_by_key(|(_, entry)| entry.status);
-        dirs.last().map(|(id, _)| **id)
+        let res = dirs.last().map(|(id, _)| **id);
+
+        info!(
+            "try_get_best_working_directory_for_commit({:?}, {commit}) returning {res:?}",
+            self.base_dir
+        );
+
+        res
     }
 
     /// Return a working directory with the requested commit checked
@@ -273,20 +311,25 @@ impl WorkingDirectoryPool {
         commit: &'s GitHash,
     ) -> Result<WorkingDirectoryId> {
         if let Some(id) = self.try_get_best_working_directory_for_commit(commit) {
+            info!("get_a_working_directory_for_commit({commit}) -> old {id:?}");
             Ok(id)
         } else {
             if self.len() < self.capacity() {
                 // allocate a new one
-                self.get_first()
+                let id = self.get_first()?;
+                info!("get_a_working_directory_for_commit({commit}) -> new {id:?}");
+                Ok(id)
             } else {
                 // get the least-recently used one
-                Ok(self
+                let id = self
                     .entries
                     .iter()
                     .min_by_key(|(_, entry)| entry.mtime)
                     .expect("capacity is guaranteed >= 1")
                     .0
-                    .clone())
+                    .clone();
+                info!("get_a_working_directory_for_commit({commit}) -> lru {id:?}");
+                Ok(id)
             }
         }
     }
