@@ -142,6 +142,8 @@ pub fn run_job(
             // File for other output, for optional use by target application
             let bench_output_log = (&bench_tmp_dir).append(format!("bench-output-{pid}.log"));
 
+            let _ = std::fs::remove_file(&evobench_log);
+
             // for debugging info only:
             let cmd_in_dir = {
                 let mut cmd = vec![command.to_string_lossy().into_owned()];
