@@ -179,6 +179,10 @@ pub struct RunConfig {
     pub benchmarking_job_settings: BenchmarkingJobSettingsOpts,
 
     pub benchmarking_command: BenchmarkingCommand,
+
+    /// The base of the directory hierarchy where the output files
+    /// should be placed
+    pub output_base_dir: PathBuf,
 }
 
 impl DefaultConfigPath for RunConfig {

@@ -20,7 +20,7 @@
 //! Custom parameters can be given and be relevant, e.g. whether
 //! providing input data to an application sorted or not.
 
-use std::{collections::BTreeMap, num::NonZeroU32, ops::Deref};
+use std::{collections::BTreeMap, num::NonZeroU32, ops::Deref, path::PathBuf};
 
 use anyhow::{bail, Result};
 use itertools::Itertools;
@@ -172,6 +172,18 @@ pub struct RunParametersOpts {
 pub struct RunParameters {
     pub commit_id: GitHash,
     pub custom_parameters: CustomParameters,
+}
+
+impl RunParameters {
+    /// Extend `path` with segments leading to the folder to use for
+    /// files for this run. TEMPORARY solution.
+    pub fn extend_path(&self, mut path: PathBuf) -> PathBuf {
+        for (key, val) in self.custom_parameters.0.iter() {
+            path.push(format!("{key}={val}"));
+        }
+        path.push(self.commit_id.to_string());
+        path
+    }
 }
 
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
