@@ -1,5 +1,5 @@
 use std::{
-    ffi::OsString,
+    ffi::{OsStr, OsString},
     fs::File,
     io::Read,
     path::Path,
@@ -118,13 +118,13 @@ pub fn decompressed_file(path: &Path, expected_suffix: &str) -> Result<Box<dyn R
 
 pub fn compress_file(source_path: &Path, target_path: &Path) -> Result<()> {
     let mut c = Command::new("zstd");
-    let args: Vec<OsString> = vec![
-        "-o".into(),
-        target_path.into(),
-        "--".into(),
-        source_path.into(),
+    let args: &[&OsStr] = &[
+        "-o".as_ref(),
+        target_path.as_ref(),
+        "--".as_ref(),
+        source_path.as_ref(),
     ];
-    c.args(&args);
+    c.args(args);
     let mut child = c.spawn().map_err(ctx!("spawning command {c:?}"))?;
     let status = child.wait()?;
     if status.success() {
