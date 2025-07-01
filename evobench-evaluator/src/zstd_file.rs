@@ -120,6 +120,7 @@ pub fn compress_file(source_path: &Path, target_path: &Path) -> Result<()> {
     let mut c = Command::new("zstd");
     let args: &[&OsStr] = &[
         "-o".as_ref(),
+        // XX: is this argument position safe against option injection?
         target_path.as_ref(),
         "--".as_ref(),
         source_path.as_ref(),
