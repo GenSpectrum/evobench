@@ -139,8 +139,9 @@ impl WorkingDirectoryPool {
         };
 
         info!(
-            "opened directory pool {:?} with next_id {next_id}/{}",
+            "opened directory pool {:?} with next_id {next_id}, len {}/{}",
             slf.base_dir,
+            slf.len(),
             slf.capacity()
         );
 
