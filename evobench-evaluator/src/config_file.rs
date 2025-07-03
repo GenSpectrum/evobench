@@ -16,7 +16,7 @@ use run_git::path_util::AppendToPath;
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::{
-    ctx,
+    ctx, info,
     json5_from_str::{json5_from_str, Json5FromStrError},
     path_util::add_extension,
     serde::paths::ProperFilename,
@@ -295,6 +295,7 @@ impl<T: DeserializeOwned + DefaultConfigPath> ConfigFile<T> {
                         0 => (),
                         1 => {
                             let (path, backend) = &path_and_backends[0];
+                            info!("found config at {path:?}");
                             return load_config(&path, **backend);
                         }
                         _ => {
