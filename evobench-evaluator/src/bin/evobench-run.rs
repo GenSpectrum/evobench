@@ -27,7 +27,7 @@ use evobench_evaluator::{
         git_branch_name::GitBranchName,
         paths::ProperFilename,
     },
-    utillib::info::set_verbose,
+    utillib::{info::set_verbose, path_resolve_home::path_resolve_home},
 };
 
 #[derive(clap::Parser, Debug)]
@@ -171,7 +171,7 @@ fn run_queues(
                 run_parameters,
                 dry_run,
                 &conf.benchmarking_command,
-                &conf.output_base_dir,
+                &path_resolve_home(&conf.output_base_dir)?,
             )
         })?;
         if conf.perhaps_reload_config(config_path.as_ref()) {
@@ -427,7 +427,7 @@ fn main() -> Result<()> {
                                     run_parameters,
                                     dry_run,
                                     &conf.benchmarking_command,
-                                    &conf.output_base_dir,
+                                    &path_resolve_home(&conf.output_base_dir)?,
                                 )
                             },
                             next_queue,

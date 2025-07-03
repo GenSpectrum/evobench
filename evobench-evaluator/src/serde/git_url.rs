@@ -1,6 +1,9 @@
 use std::{fmt::Display, str::FromStr};
 
+use anyhow::{anyhow, bail};
 use serde::de::Visitor;
+
+use crate::utillib::path_resolve_home::path_resolve_home;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, serde::Serialize)]
 pub struct GitUrl(String);
@@ -32,7 +35,7 @@ impl Display for GitUrl {
 const ERR_MSG: &str = "a URL compatible with Git";
 
 impl FromStr for GitUrl {
-    type Err = &'static str;
+    type Err = anyhow::Error;
 
     fn from_str(v: &str) -> Result<Self, Self::Err> {
         let ok = Ok(GitUrl(v.to_owned()));
@@ -40,13 +43,13 @@ impl FromStr for GitUrl {
         if let Some(rest) = v.strip_prefix("https://") {
             if let Some((domain, other)) = rest.split_once('/') {
                 if domain.is_empty() {
-                    Err("domain is empty")?
+                    bail!("domain is empty")
                 }
                 if other.is_empty() {
-                    Err("part after domain is empty")?
+                    bail!("part after domain is empty")
                 }
             } else {
-                Err("expect a '/' between domain and location part")?
+                bail!("expect a '/' between domain and location part")
             }
             return ok;
         }
@@ -55,20 +58,20 @@ impl FromStr for GitUrl {
         if let Some(rest) = v.strip_prefix("git://") {
             if let Some((domain, other)) = rest.split_once('/') {
                 if domain.is_empty() {
-                    Err("domain is empty")?
+                    bail!("domain is empty")
                 }
                 if other.is_empty() {
-                    Err("part after domain is empty")?
+                    bail!("part after domain is empty")
                 }
             } else {
-                Err("expect a '/' between domain and location part")?
+                bail!("expect a '/' between domain and location part")
             }
             return ok;
         }
 
         if let Some(rest) = v.strip_prefix("file://") {
             if rest.is_empty() {
-                Err("empty file path given")?
+                bail!("empty file path given")
             }
             return ok;
         }
@@ -78,22 +81,30 @@ impl FromStr for GitUrl {
             return ok;
         }
 
+        if v.starts_with("~/") {
+            let path = path_resolve_home(v.as_ref())?;
+            let path_str = path
+                .to_str()
+                .ok_or_else(|| anyhow!("path {path:?} can't be represented as unicode string"))?;
+            return Ok(GitUrl(path_str.to_owned()));
+        }
+
         if let Some((user, rest)) = v.split_once('@') {
             if user.is_empty() {
-                Err("user is empty")?
+                bail!("user is empty")
             }
             if let Some((domain, _path)) = rest.split_once(':') {
                 if domain.is_empty() {
-                    Err("domain is empty")?
+                    bail!("domain is empty")
                 }
                 // I guess path *can* be empty, if the home dir is the repo.
             } else {
-                Err("missing ':' in ssh based Git URL")?
+                bail!("missing ':' in ssh based Git URL")
             }
             return ok;
         }
 
-        Err("no match for any kind of Git url known to this code")
+        bail!("no match for any kind of Git url known to this code")
     }
 }
 
