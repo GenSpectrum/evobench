@@ -3,6 +3,8 @@
 //! TODO: integrate `serde_path_to_error` crate
 
 use std::{
+    borrow::Borrow,
+    borrow::Cow,
     fmt::Display,
     ops::Deref,
     path::{Path, PathBuf},
@@ -10,12 +12,18 @@ use std::{
 };
 
 use anyhow::{anyhow, bail, Result};
+use run_git::path_util::AppendToPath;
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::{
     ctx,
     json5_from_str::{json5_from_str, Json5FromStrError},
     path_util::add_extension,
+    serde::paths::ProperFilename,
+    utillib::{
+        home::{home_dir, HomeError},
+        slice_or_box::SliceOrBox,
+    },
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -139,11 +147,49 @@ pub fn save_config_file<T: Serialize>(path: &Path, value: &T) -> Result<()> {
     backend.save_config_file(path, value)
 }
 
+pub enum ConfigDir {
+    Etc,
+    Home,
+    Path(Cow<'static, Path>),
+}
+
+impl ConfigDir {
+    pub fn to_path(&self) -> Result<Cow<Path>, &'static HomeError> {
+        match self {
+            ConfigDir::Etc => Ok(AsRef::<Path>::as_ref("/etc").into()),
+            ConfigDir::Home => home_dir().map(Into::into),
+            ConfigDir::Path(cow) => Ok(Cow::Borrowed(cow.borrow())),
+        }
+    }
+
+    pub fn append_file_name(
+        &self,
+        file_name: &ProperFilename,
+    ) -> Result<PathBuf, &'static HomeError> {
+        match self {
+            ConfigDir::Etc => Ok(self.to_path()?.append(file_name.as_ref())),
+            ConfigDir::Home => {
+                let dotted_file_name = format!(".{}", file_name.as_str());
+                Ok(self.to_path()?.append(dotted_file_name))
+            }
+            ConfigDir::Path(cow) => Ok(cow.as_ref().append(file_name.as_ref())),
+        }
+    }
+}
+
 pub trait DefaultConfigPath: DeserializeOwned {
-    /// `load_config` tries a list of file name extensions, appended
-    /// to this path, and one path is then expected to exist (or the
-    /// `or_else` fallback is called)
-    fn default_config_path_without_suffix() -> Result<Option<PathBuf>>;
+    /// `ConfigFile::load_config` tries this file name, together with
+    /// a list of file name extensions, appended to the paths from
+    /// `default_config_dirs()`, and one path is then expected to
+    /// exist in a dir, if none the next is tried, or its `or_else`
+    /// fallback is called. In the case of `ConfigDir::Home`, a dot is
+    /// prepended to the file name.
+    fn default_config_file_name_without_suffix() -> Result<Option<ProperFilename>>;
+
+    fn default_config_dirs() -> SliceOrBox<'static, ConfigDir> {
+        const V: &[ConfigDir] = &[ConfigDir::Home, ConfigDir::Etc];
+        V.into()
+    }
 }
 
 struct PathAndTrack {
@@ -227,35 +273,42 @@ impl<T: DeserializeOwned + DefaultConfigPath> ConfigFile<T> {
             let backend = backend_from_path(path)?;
             load_config(path, backend)
         } else {
-            if let Some(path) = T::default_config_path_without_suffix()? {
-                let path_and_backends: Vec<_> = FILE_EXTENSIONS
-                    .into_iter()
-                    .map(|(extension, backend)| {
-                        let path = add_extension(&path, extension)
-                            .ok_or_else(|| anyhow!("path is missing a file name: {path:?}"))?;
-                        if path.exists() {
-                            Ok(Some((path, backend)))
-                        } else {
-                            Ok(None)
+            if let Some(file_name) = T::default_config_file_name_without_suffix()? {
+                let mut default_paths_tried = Vec::new();
+                for config_dir in T::default_config_dirs().iter() {
+                    let path = config_dir.append_file_name(&file_name)?;
+                    let path_and_backends: Vec<_> = FILE_EXTENSIONS
+                        .into_iter()
+                        .map(|(extension, backend)| {
+                            let path = add_extension(&path, extension)
+                                .ok_or_else(|| anyhow!("path is missing a file name: {path:?}"))?;
+                            if path.exists() {
+                                Ok(Some((path, backend)))
+                            } else {
+                                default_paths_tried.push(path);
+                                Ok(None)
+                            }
+                        })
+                        .filter_map(|x| x.transpose())
+                        .collect::<Result<_>>()?;
+                    match path_and_backends.len() {
+                        0 => (),
+                        1 => {
+                            let (path, backend) = &path_and_backends[0];
+                            return load_config(&path, **backend);
                         }
-                    })
-                    .filter_map(|x| x.transpose())
-                    .collect::<Result<_>>()?;
-                let paths = path_and_backends
-                    .iter()
-                    .map(|(path, _)| path)
-                    .collect::<Vec<_>>();
-                match path_and_backends.len() {
-                    0 => (),
-                    1 => {
-                        let (path, backend) = &path_and_backends[0];
-                        return load_config(&path, **backend);
-                    }
-                    _ => {
-                        bail!("multiple config file paths found, leading to ambiguity: {paths:?}")
+                        _ => {
+                            let paths = path_and_backends
+                                .iter()
+                                .map(|(path, _)| path)
+                                .collect::<Vec<_>>();
+                            bail!(
+                                "multiple config file paths found, leading to ambiguity: {paths:?}"
+                            )
+                        }
                     }
                 }
-                let config = or_else(format!("tried the default paths: {paths:?}"))?;
+                let config = or_else(format!("tried the default paths: {default_paths_tried:?}"))?;
                 Ok(Self {
                     config,
                     path_and_track: None,

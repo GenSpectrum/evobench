@@ -1,17 +1,15 @@
 use std::{collections::BTreeMap, fmt::Debug, path::PathBuf, sync::Arc};
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 
 use crate::{
     config_file::DefaultConfigPath,
     io_util::create_dir_if_not_exists,
     key::CustomParametersSetOpts,
-    path_util::AppendToPath,
     serde::{
         date_and_time::LocalNaiveTime, git_branch_name::GitBranchName, git_url::GitUrl,
         paths::ProperFilename,
     },
-    utillib::home::home_dir,
 };
 
 use super::{
@@ -188,8 +186,7 @@ pub struct RunConfig {
 }
 
 impl DefaultConfigPath for RunConfig {
-    fn default_config_path_without_suffix() -> Result<Option<PathBuf>> {
-        let home = home_dir()?;
-        Ok(Some(home.append(".evobench-run")))
+    fn default_config_file_name_without_suffix() -> Result<Option<ProperFilename>> {
+        Ok(Some("evobench-run".parse().map_err(|e| anyhow!("{e}"))?))
     }
 }
