@@ -11,11 +11,11 @@ usage() {
     echo
     echo "  Copies these directories:"
     echo
-    echo "     include/evobench/ -> into include/"
-    echo "     src/evobench/ -> into src/"
+    echo "     include/evobench/ -> into src/evobench/"
+    echo "     src/evobench/ -> into src/evobench/"
     echo
-    echo "  i.e. run this from your project that uses include/ and src/"
-    echo "  subdirectories, to get a copy of the probes infrastructure."
+    echo "  i.e. run this from your project that uses just a src/ subdirectory for both"
+    echo "  header and implementation files, to get a copy of the probes infrastructure."
     echo "  This is a hack to avoid making a proper package out of"
     echo "  'evobench-probes'."
     false
@@ -26,6 +26,8 @@ if [ $# -ne 0 ]; then
 fi
 
 
-cp -a "$basedir"/include/evobench/ include/
-cp -a "$basedir"/src/evobench/ src/
+mkdir -p src/evobench
+
+cp -a "$basedir"/include/evobench/. src/evobench/.
+cp -a "$basedir"/src/evobench/. src/evobench/.
 
