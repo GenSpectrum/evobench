@@ -35,6 +35,10 @@ use evobench_evaluator::{
 #[clap(set_term_width = get_terminal_width())]
 /// Schedule (and query?) benchmarking jobs.
 struct Opts {
+    /// Show what is done
+    #[clap(short, long)]
+    verbose: bool,
+
     /// Override the path to the config file (default: the paths
     /// `~/.evobench-run.*` where a single one exists where the `*` is
     /// the suffix for one of the supported config file formats (run
@@ -109,10 +113,6 @@ enum SubCommand {
 
     /// Run the existing jobs
     Run {
-        /// Show what is done
-        #[clap(short, long)]
-        verbose: bool,
-
         /// Do not run the jobs, but still consume the queue entries
         #[clap(short, long, default_value = "DoAll")]
         dry_run: DryRun,
@@ -193,7 +193,13 @@ fn run_queues(
 }
 
 fn main() -> Result<()> {
-    let Opts { config, subcommand } = Opts::parse();
+    let Opts {
+        verbose,
+        config,
+        subcommand,
+    } = Opts::parse();
+
+    set_verbose(verbose);
 
     // COPY-PASTE from List action in jobqueue.rs
     let get_filename = |entry: &Entry<_, _>| -> Result<String> {
@@ -395,13 +401,7 @@ fn main() -> Result<()> {
             }
         }
 
-        SubCommand::Run {
-            verbose,
-            dry_run,
-            mode,
-        } => {
-            set_verbose(verbose);
-
+        SubCommand::Run { dry_run, mode } => {
             let mut working_directory_pool = WorkingDirectoryPool::open(
                 conf.working_directory_pool.clone(),
                 conf.remote_repository.url.clone(),
