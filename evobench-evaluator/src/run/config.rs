@@ -4,7 +4,7 @@ use anyhow::{anyhow, Result};
 
 use crate::{
     config_file::DefaultConfigPath,
-    io_util::create_dir_if_not_exists,
+    io_utils::div::create_dir_if_not_exists,
     key::CustomParametersSetOpts,
     serde::{
         date_and_time::LocalNaiveTime, git_branch_name::GitBranchName, git_url::GitUrl,

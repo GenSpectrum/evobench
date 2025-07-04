@@ -4,7 +4,7 @@ use anyhow::{anyhow, Context, Result};
 use rust_xlsxwriter::{workbook::Workbook, Color, Format, FormatAlign};
 
 use crate::{
-    io_util::xrename,
+    io_utils::div::xrename,
     path_util::add_extension,
     table_view::{ColumnFormatting, Highlight, TableView, Unit},
 };

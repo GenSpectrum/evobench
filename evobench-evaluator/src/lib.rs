@@ -10,7 +10,7 @@ pub mod excel_table_view;
 pub mod get_terminal_width;
 pub mod git;
 pub mod index_by_call_path;
-pub mod io_util;
+pub mod io_utils;
 pub mod join;
 pub mod json5_from_str;
 pub mod key;

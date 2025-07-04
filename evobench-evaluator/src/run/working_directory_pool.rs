@@ -12,7 +12,7 @@ use serde::Serialize;
 use crate::{
     ctx,
     git::GitHash,
-    info, io_util,
+    info, io_utils,
     key::RunParameters,
     lockable_file::StandaloneExclusiveFileLock,
     path_util::{add_extension, AppendToPath},
@@ -81,7 +81,7 @@ impl WorkingDirectoryPool {
         };
 
         if create_dir_if_not_exists {
-            io_util::create_dir_if_not_exists(&base_dir, "working pool directory")?;
+            io_utils::div::create_dir_if_not_exists(&base_dir, "working pool directory")?;
         }
 
         let mut next_id: u64 = 0;
