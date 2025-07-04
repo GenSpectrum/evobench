@@ -2,8 +2,7 @@
 #define _GNU_SOURCE
 #endif
 
-// XX add -I
-#include "../../include/evobench/evobench.hpp"
+#include "evobench/evobench.hpp"
 
 #include <cstdint>
 #include <cstring>

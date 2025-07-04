@@ -2,7 +2,7 @@
 #include <unistd.h>
 #include <iostream>
 
-#include "../include/evobench/evobench.hpp"
+#include "evobench/evobench.hpp"
 
 long long fib(long long n) {
    // EVOBENCH_SCOPE("fib", "fib");
