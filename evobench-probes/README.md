@@ -1,20 +1,20 @@
 # Evobench: the evobench-probes part
 
-This is the library to record benchmarking data from with in target
+This is the library to record benchmarking data from within target
 applications written in C++.
 
 ## How to add the probes infrastructure
 
 For simplicity (couldn't get the library to work as a Conan package),
 how the library is added to the target application is by copying the
-library files into the target application's repository. There is a
-script for doing this; example for
+library files into the target application's repository. There are two
+scripts for doing this; example for
 [LAPIS-SILO](https://github.com/GenSpectrum/LAPIS-SILO/):
 
     git clone https://github.com/GenSpectrum/evobench/
     git clone https://github.com/GenSpectrum/LAPIS-SILO/
     cd LAPIS-SILO
-    ../evobench/evobench-probes/bin/add-include-and-src
+    ../evobench/evobench-probes/bin/add-include-and-src-to-src
 
 ## How to add probes
 
