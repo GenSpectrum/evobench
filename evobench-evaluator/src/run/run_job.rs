@@ -2,10 +2,11 @@
 
 use std::{
     ffi::OsString,
-    io::{stderr, StderrLock, Write},
+    io::{stderr, Write},
     os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::Command,
+    sync::{Arc, Mutex},
 };
 
 use anyhow::{bail, Result};
@@ -15,9 +16,10 @@ use strum_macros::EnumString;
 
 use crate::{
     ctx, info,
+    io_utils::capture::{CaptureOpts, OutFile},
     key::RunParameters,
     serde::date_and_time::DateTimeWithOffset,
-    utillib::{exit_status_ext::ExitStatusExt, info::verbose},
+    utillib::info::verbose,
     zstd_file::compress_file,
 };
 
@@ -116,6 +118,8 @@ pub fn run_job(
     working_directory_pool.process_working_directory(
         working_directory_id,
         |working_directory| {
+            let timestamp = DateTimeWithOffset::now();
+
             working_directory.checkout(commit_id.clone())?;
 
             if dry_run.means(DryRun::DoWorkingDir) {
@@ -161,23 +165,33 @@ pub fn run_job(
                 .args(arguments)
                 .current_dir(&dir);
 
-            // XX HACK: should always capture it, but want to also see
-            // it immediately as generated.
-            if verbose() {
-                command.stdout(Stdio::inherit()).stderr(Stdio::inherit());
-            } else {
-                command.stdout(Stdio::piped()).stderr(Stdio::piped());
-            }
+            let command_output_file_path = add_extension(
+                working_directory.git_working_dir.working_dir_path_ref(),
+                format!("output_of_benchmarking_command_at_{timestamp}"),
+            )
+            .expect("has filename");
+            let command_output_file = OutFile::create(&command_output_file_path)?;
 
-            let output = command
-                .output()
-                .map_err(ctx!("starting command {command:?} in dir {dir:?}"))?;
-            let (status, outputs) = output.status_and_outputs();
+            let mut other_files: Vec<Box<dyn Write + Send + 'static>> = vec![];
+            // Evil to use verbose() for this and not a function argument?
+            if verbose() {
+                other_files.push(Box::new(stderr()));
+            }
+            let other_files = Arc::new(Mutex::new(other_files));
+
+            let status = command_output_file.run_with_capture(
+                command,
+                other_files,
+                CaptureOpts {
+                    add_source_indicator: true,
+                    add_timestamp: true,
+                },
+            )?;
+
             if status.success() {
-                let timestamp = DateTimeWithOffset::now();
                 let result_dir = checked_run_parameters
                     .extend_path(output_base_dir.to_owned())
-                    .append(timestamp.to_string());
+                    .append(timestamp.as_str());
                 std::fs::create_dir_all(&result_dir)
                     .map_err(ctx!("create_dir_all {result_dir:?}"))?;
 
@@ -218,28 +232,17 @@ pub fn run_job(
                 Ok(())
             } else {
                 info!("running {cmd_in_dir} failed.");
-                // XX more HACK, if we didn't capture, no need to print this
+                let last_part = command_output_file.last_part(3000)?;
                 if !verbose() {
                     let mut err = stderr().lock();
-                    let doit = |err: &mut StderrLock, output: &[u8], ctx: &str| -> Result<()> {
-                        writeln!(err, "---- run_job: error in dir {dir:?}: {ctx} -------")?;
-                        if output.len() > 3000 {
-                            err.write_all("...\n".as_bytes())?;
-                            // XX Ignoring UTF-8 boundaries here, evil.
-                            err.write_all(&output[output.len() - 3000..])?;
-                        } else {
-                            err.write_all(output)?;
-                        }
-                        Ok(())
-                    };
-                    doit(&mut err, &output.stderr, "stderr")?;
-                    doit(&mut err, &output.stdout, "stdout")?;
-                    writeln!(&mut err, "---- /run_job: error in dir {dir:?} -------")?;
+                    writeln!(err, "---- run_job: error in dir {dir:?}: -------")?;
+                    err.write_all(last_part.as_bytes())?;
+                    writeln!(err, "---- /run_job: error in dir {dir:?} -------")?;
                 }
 
                 bail!(
                     "benchmarking command {cmd_in_dir} gave \
-                     error status {status}, outputs {outputs:?}"
+                     error status {status}, last_part {last_part:?}"
                 )
             }
         },

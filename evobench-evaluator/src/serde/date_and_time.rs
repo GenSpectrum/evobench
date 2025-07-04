@@ -25,6 +25,14 @@ impl DateTimeWithOffset {
         Self(system_time_to_rfc3339(SystemTime::now()))
     }
 
+    pub fn into_string(self) -> String {
+        self.0
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
     pub fn to_datetime(&self) -> DateTime<FixedOffset> {
         DateTime::parse_from_rfc3339(&self.0)
             .expect("field is result of to_rfc3339 hence always parseable")
@@ -39,6 +47,12 @@ impl DateTimeWithOffset {
 impl Display for DateTimeWithOffset {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.0)
+    }
+}
+
+impl AsRef<str> for DateTimeWithOffset {
+    fn as_ref(&self) -> &str {
+        self.as_str()
     }
 }
 
