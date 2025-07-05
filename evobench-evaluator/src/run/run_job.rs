@@ -244,6 +244,6 @@ pub fn run_job(
             }
         },
         Some(&checked_run_parameters),
-        "checkout",
+        "run_job",
     )
 }
