@@ -15,7 +15,7 @@ use crate::{
     info, io_utils,
     key::RunParameters,
     lockable_file::StandaloneExclusiveFileLock,
-    path_util::{add_extension, AppendToPath},
+    path_util::AppendToPath,
     serde::{date_and_time::DateTimeWithOffset, git_url::GitUrl},
 };
 
@@ -199,9 +199,10 @@ impl WorkingDirectoryPool {
         let old_dir_path = self.base_dir().append(id.to_directory_file_name());
         let new_dir_path = self
             .base_dir()
+            .append(format!("{}.dir_at_{now}", id.to_directory_file_name()));
+        let error_file_path = self
+            .base_dir()
             .append(format!("{}.error_at_{now}", id.to_directory_file_name()));
-        let error_file_path =
-            add_extension(&new_dir_path, "processing_error").expect("added file name above");
         let processing_error_string = serde_yml::to_string(&processing_error)?;
         std::fs::rename(&old_dir_path, &new_dir_path)
             .map_err(ctx!("renaming {old_dir_path:?} to {new_dir_path:?}"))?;
