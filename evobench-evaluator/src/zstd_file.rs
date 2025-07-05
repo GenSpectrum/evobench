@@ -116,8 +116,16 @@ pub fn decompressed_file(path: &Path, expected_suffix: &str) -> Result<Box<dyn R
     }
 }
 
-pub fn compress_file(source_path: &Path, target_path: &Path) -> Result<()> {
+/// If quiet is false, lets messaging by the `zstd` tool show up on
+/// stdout/err. If true, silences reporting output but captures error
+/// messages and reports those in the resulting error.
+pub fn compress_file(source_path: &Path, target_path: &Path, quiet: bool) -> Result<()> {
     let mut c = Command::new("zstd");
+    if quiet {
+        c.arg("--quiet");
+        c.stdout(Stdio::piped());
+        c.stderr(Stdio::piped());
+    }
     let args: &[&OsStr] = &[
         "-o".as_ref(),
         // XX: is this argument position safe against option injection?
@@ -126,11 +134,18 @@ pub fn compress_file(source_path: &Path, target_path: &Path) -> Result<()> {
         source_path.as_ref(),
     ];
     c.args(args);
-    let mut child = c.spawn().map_err(ctx!("spawning command {c:?}"))?;
-    let status = child.wait()?;
+    let output = c.output().map_err(ctx!("running command {c:?}"))?;
+    let status = output.status;
     if status.success() {
         Ok(())
     } else {
-        bail!("running zstd {args:?}: {status}")
+        let outputs = if quiet {
+            let mut outputs = String::from_utf8_lossy(&output.stdout).into_owned();
+            outputs.push_str(&String::from_utf8_lossy(&output.stderr));
+            format!("{outputs:?}")
+        } else {
+            "not captured".into()
+        };
+        bail!("running zstd {args:?}: {status} with outputs {outputs}")
     }
 }

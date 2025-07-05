@@ -237,7 +237,7 @@ pub fn run_job(
                         let target_filename =
                             add_extension(target_filename, "zstd").expect("got filename");
                         let target = (&result_dir).append(target_filename);
-                        compress_file(source_file.path(), &target)?;
+                        compress_file(source_file.path(), &target, !verbose())?;
                         // Do *not* remove the source file here as
                         // TemporaryFile::drop will do it.
                         Ok(())
