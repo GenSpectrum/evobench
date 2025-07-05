@@ -167,6 +167,17 @@ impl OutFile {
         }
     }
 
+    /// Write a string to the file, without timestamps or prefixes or
+    /// even checks for line endings. Used to store a header before
+    /// calling `run_with_capture`.
+    pub fn write_str(&self, s: &str) -> Result<()> {
+        self.file
+            .lock()
+            .expect("no panics")
+            .write_all(s.as_bytes())
+            .map_err(ctx!("writing to {:?}", self.path))
+    }
+
     /// Can give multiple output files, e.g. for on-disk and terminal.
     // Couldn't make it work with borrowing here, thus Arc. STUPID.
     pub fn run_with_capture<'a: 'file, 'file>(

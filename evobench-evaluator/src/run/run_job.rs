@@ -169,6 +169,10 @@ pub fn run_job(
             )
             .expect("has filename");
             let command_output_file = OutFile::create(&command_output_file_path)?;
+            {
+                // Add info header
+                command_output_file.write_str(&serde_yml::to_string(&checked_run_parameters)?)?;
+            }
 
             let mut other_files: Vec<Box<dyn Write + Send + 'static>> = vec![];
             // Evil to use verbose() for this and not a function argument?
