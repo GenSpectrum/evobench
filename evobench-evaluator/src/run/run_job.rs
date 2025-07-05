@@ -159,6 +159,7 @@ pub fn run_job(
                 .envs(custom_parameters.btree_map())
                 .env("EVOBENCH_LOG", &evobench_log)
                 .env("BENCH_OUTPUT_LOG", &bench_output_log)
+                .env("COMMIT_ID", commit_id.to_string())
                 .args(arguments)
                 .current_dir(&dir);
 
