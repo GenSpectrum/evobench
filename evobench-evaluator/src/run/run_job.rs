@@ -16,7 +16,10 @@ use strum_macros::EnumString;
 
 use crate::{
     ctx, info,
-    io_utils::capture::{CaptureOpts, OutFile},
+    io_utils::{
+        capture::{CaptureOpts, OutFile},
+        temporary_file::TemporaryFile,
+    },
     key::RunParameters,
     utillib::info::verbose,
     zstd_file::compress_file,
@@ -139,11 +142,13 @@ pub fn run_job(
 
             let pid = unsafe { getpid() };
             // File for evobench library output
-            let evobench_log = (&bench_tmp_dir).append(format!("evobench-{pid}.log"));
+            let evobench_log =
+                TemporaryFile::from((&bench_tmp_dir).append(format!("evobench-{pid}.log")));
             // File for other output, for optional use by target application
-            let bench_output_log = (&bench_tmp_dir).append(format!("bench-output-{pid}.log"));
+            let bench_output_log =
+                TemporaryFile::from((&bench_tmp_dir).append(format!("bench-output-{pid}.log")));
 
-            let _ = std::fs::remove_file(&evobench_log);
+            let _ = std::fs::remove_file(evobench_log.path());
 
             // for debugging info only:
             let cmd_in_dir = {
@@ -152,13 +157,16 @@ pub fn run_job(
                 format!("command {cmd:?} in directory {dir:?}")
             };
 
-            info!("running {cmd_in_dir}, EVOBENCH_LOG={evobench_log:?}...");
+            info!(
+                "running {cmd_in_dir}, EVOBENCH_LOG={:?}...",
+                evobench_log.path()
+            );
 
             let mut command = Command::new(command);
             command
                 .envs(custom_parameters.btree_map())
-                .env("EVOBENCH_LOG", &evobench_log)
-                .env("BENCH_OUTPUT_LOG", &bench_output_log)
+                .env("EVOBENCH_LOG", evobench_log.path())
+                .env("BENCH_OUTPUT_LOG", bench_output_log.path())
                 .env("COMMIT_ID", commit_id.to_string())
                 .args(arguments)
                 .current_dir(&dir);
@@ -201,7 +209,7 @@ pub fn run_job(
 
                 evobench_evaluator(&vec![
                     "single".into(),
-                    (&evobench_log).into(),
+                    evobench_log.path().into(),
                     "--show-thread-number".into(),
                     "--excel".into(),
                     (&result_dir).append("single.xlsx").into(),
@@ -213,23 +221,23 @@ pub fn run_job(
                 // the cost is just a second or so.
                 evobench_evaluator(&vec![
                     "single".into(),
-                    (&evobench_log).into(),
+                    evobench_log.path().into(),
                     "--flame".into(),
                     (&result_dir).append("single").into(),
                 ])?;
 
-                let movecompress_file_as = |source_path: &Path,
-                                            target_filename: &str|
-                 -> Result<()> {
-                    let target_filename =
-                        add_extension(target_filename, "zstd").expect("got filename");
-                    let target = (&result_dir).append(target_filename);
-                    compress_file(source_path, &target)?;
-                    std::fs::remove_file(source_path).map_err(ctx!("unlink {source_path:?}"))?;
-                    Ok(())
-                };
-                movecompress_file_as(&evobench_log, "evobench.log")?;
-                movecompress_file_as(&bench_output_log, "bench_output.log")?;
+                let compress_file_as =
+                    |source_file: &TemporaryFile, target_filename: &str| -> Result<()> {
+                        let target_filename =
+                            add_extension(target_filename, "zstd").expect("got filename");
+                        let target = (&result_dir).append(target_filename);
+                        compress_file(source_file.path(), &target)?;
+                        // Do *not* remove the source file here as
+                        // TemporaryFile::drop will do it.
+                        Ok(())
+                    };
+                compress_file_as(&evobench_log, "evobench.log")?;
+                compress_file_as(&bench_output_log, "bench_output.log")?;
 
                 Ok(())
             } else {
