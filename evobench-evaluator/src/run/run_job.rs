@@ -205,7 +205,11 @@ pub fn run_job(
                 std::fs::create_dir_all(&result_dir)
                     .map_err(ctx!("create_dir_all {result_dir:?}"))?;
 
-                info!("running {cmd_in_dir} succeeded; moving files to {result_dir:?}.");
+                info!("running {cmd_in_dir} succeeded; evaluating benchmark file.");
+
+                // Doing this *before* moving the files, as a way to
+                // ensure that no invalid files end up in the results
+                // pool!
 
                 evobench_evaluator(&vec![
                     "single".into(),
@@ -226,8 +230,10 @@ pub fn run_job(
                     (&result_dir).append("single").into(),
                 ])?;
 
+                info!("evaluating the benchmark file succeeded; moving files to {result_dir:?}.");
+
                 let compress_file_as =
-                    |source_file: &TemporaryFile, target_filename: &str| -> Result<()> {
+                    |source_file: TemporaryFile, target_filename: &str| -> Result<()> {
                         let target_filename =
                             add_extension(target_filename, "zstd").expect("got filename");
                         let target = (&result_dir).append(target_filename);
@@ -236,8 +242,8 @@ pub fn run_job(
                         // TemporaryFile::drop will do it.
                         Ok(())
                     };
-                compress_file_as(&evobench_log, "evobench.log")?;
-                compress_file_as(&bench_output_log, "bench_output.log")?;
+                compress_file_as(evobench_log, "evobench.log")?;
+                compress_file_as(bench_output_log, "bench_output.log")?;
 
                 Ok(())
             } else {
