@@ -45,7 +45,7 @@ impl PollingPool {
         let working_directory_id = self.pool.get_first()?;
         self.pool.process_working_directory(
             working_directory_id,
-            |working_directory| {
+            |working_directory, _timestamp| {
                 // Check for the commit first, then if it fails, try
                 // to update; both for performance, but also to
                 // minimize contact with issues with remote server.
@@ -66,7 +66,7 @@ impl PollingPool {
         let working_directory_id = self.pool.get_first()?;
         self.pool.process_working_directory(
             working_directory_id,
-            |working_directory| {
+            |working_directory, _timestamp| {
                 let git_working_dir = &working_directory.git_working_dir;
                 git_working_dir.git(&["remote", "update"], true)?;
                 Ok(working_directory_id)
@@ -87,7 +87,7 @@ impl PollingPool {
         let git_url = self.pool.git_url().clone();
         self.pool.process_working_directory(
             working_directory_id,
-            |working_directory| {
+            |working_directory, _timestamp| {
                 let mut errors = Vec::new();
                 let git_working_dir = &working_directory.git_working_dir;
                 let mut ids = Vec::new();

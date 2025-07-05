@@ -18,7 +18,6 @@ use crate::{
     ctx, info,
     io_utils::capture::{CaptureOpts, OutFile},
     key::RunParameters,
-    serde::date_and_time::DateTimeWithOffset,
     utillib::info::verbose,
     zstd_file::compress_file,
 };
@@ -117,9 +116,7 @@ pub fn run_job(
 
     working_directory_pool.process_working_directory(
         working_directory_id,
-        |working_directory| {
-            let timestamp = DateTimeWithOffset::now();
-
+        |working_directory, timestamp| {
             working_directory.checkout(commit_id.clone())?;
 
             if dry_run.means(DryRun::DoWorkingDir) {

@@ -194,15 +194,17 @@ impl WorkingDirectoryPool {
         &mut self,
         id: WorkingDirectoryId,
         processing_error: ProcessingError,
+        timestamp: &DateTimeWithOffset,
     ) -> Result<()> {
-        let now = DateTimeWithOffset::now();
         let old_dir_path = self.base_dir().append(id.to_directory_file_name());
-        let new_dir_path = self
-            .base_dir()
-            .append(format!("{}.dir_at_{now}", id.to_directory_file_name()));
-        let error_file_path = self
-            .base_dir()
-            .append(format!("{}.error_at_{now}", id.to_directory_file_name()));
+        let new_dir_path = self.base_dir().append(format!(
+            "{}.dir_at_{timestamp}",
+            id.to_directory_file_name()
+        ));
+        let error_file_path = self.base_dir().append(format!(
+            "{}.error_at_{timestamp}",
+            id.to_directory_file_name()
+        ));
         let processing_error_string = serde_yml::to_string(&processing_error)?;
         std::fs::rename(&old_dir_path, &new_dir_path)
             .map_err(ctx!("renaming {old_dir_path:?} to {new_dir_path:?}"))?;
@@ -215,8 +217,9 @@ impl WorkingDirectoryPool {
         Ok(())
     }
 
-    ///  Runs the given action on the requested working directory, and
-    ///  if there are errors, store them as metadata with the
+    ///  Runs the given action on the requested working directory and
+    ///  with the timestamp of the action start (used in error paths),
+    ///  and if there are errors, store them as metadata with the
     ///  directory and remove it from the pool. Panics if a working
     ///  directory with the given id doesn't exist. `run_parameters`
     ///  and `context` are only used to be stored with the error, if
@@ -224,7 +227,7 @@ impl WorkingDirectoryPool {
     pub fn process_working_directory<T>(
         &mut self,
         working_directory_id: WorkingDirectoryId,
-        action: impl FnOnce(&mut WorkingDirectory) -> Result<T>,
+        action: impl FnOnce(&mut WorkingDirectory, &DateTimeWithOffset) -> Result<T>,
         run_parameters: Option<&RunParameters>,
         context: &str,
     ) -> Result<T> {
@@ -233,12 +236,14 @@ impl WorkingDirectoryPool {
             .get_mut(&working_directory_id)
             .expect("working directory id must still exist");
 
+        let timestamp = DateTimeWithOffset::now();
+
         info!(
             "process_working_directory {working_directory_id:?} \
              ({context}, {run_parameters:?})..."
         );
 
-        match action(wd) {
+        match action(wd, &timestamp) {
             Ok(v) => {
                 info!(
                     "process_working_directory {working_directory_id:?} \
@@ -263,6 +268,7 @@ impl WorkingDirectoryPool {
                         context: context.to_string(),
                         error: err.clone(),
                     },
+                    &timestamp,
                 )
                 .map_err(ctx!("error storing the error {err}"))?;
                 Err(error)
