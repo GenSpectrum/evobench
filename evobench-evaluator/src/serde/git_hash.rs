@@ -4,6 +4,7 @@ use std::{
 };
 
 use anyhow::{bail, Result};
+use serde::de::Visitor;
 
 fn decode_hex_digit(b: u8) -> Result<u8> {
     if b >= b'0' && b <= b'9' {
@@ -31,7 +32,7 @@ fn decode_hex<const N: usize>(input: &[u8], output: &mut [u8; N]) -> Result<()> 
     Ok(())
 }
 
-#[derive(Clone, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub struct GitHash([u8; 20]);
 
 impl Debug for GitHash {
@@ -95,4 +96,37 @@ fn t_githash() -> Result<()> {
     assert_eq!(h.0[2], 0xd1);
     assert_eq!(format!("{h}"), s);
     Ok(())
+}
+
+const ERR_MSG: &str = "a full hexadecimal Git hash";
+
+struct GitHashVisitor;
+impl<'de> Visitor<'de> for GitHashVisitor {
+    type Value = GitHash;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str(ERR_MSG)
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        v.parse().map_err(E::custom)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for GitHash {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_str(GitHashVisitor)
+    }
+}
+
+impl serde::Serialize for GitHash {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
 }
