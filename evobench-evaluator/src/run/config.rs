@@ -1,10 +1,15 @@
-use std::{collections::BTreeMap, fmt::Debug, path::PathBuf, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    fmt::{Debug, Display},
+    path::PathBuf,
+    sync::Arc,
+};
 
 use anyhow::{anyhow, Result};
 
 use crate::{
     config_file::DefaultConfigPath,
-    io_utils::div::create_dir_if_not_exists,
+    io_utils::{bash::cmd_as_bash_string, div::create_dir_if_not_exists},
     key::CustomParametersSetOpts,
     serde::{
         date_and_time::LocalNaiveTime, git_branch_name::GitBranchName, git_url::GitUrl,
@@ -53,6 +58,38 @@ pub enum ScheduleCondition {
     /// of the queue pipeline to take up jobs that have been expelled
     /// from the second last queue, for informational purposes.
     GraveYard,
+}
+
+impl Display for ScheduleCondition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ScheduleCondition::Immediately => f.write_str("Immediately"),
+            ScheduleCondition::LocalNaiveTimeWindow {
+                stop_start,
+                repeatedly,
+                move_when_time_window_ends,
+                from,
+                to,
+            } => {
+                let rep = if *repeatedly { "repeatedly" } else { "once" };
+                let mov = if *move_when_time_window_ends {
+                    "move"
+                } else {
+                    "stay"
+                };
+                let cmd = if let Some(st) = stop_start {
+                    cmd_as_bash_string(st)
+                } else {
+                    "-".into()
+                };
+                write!(
+                    f,
+                    "LocalNaiveTimeWindow {from} - {to} ({rep}, {mov}, cmd: {cmd})"
+                )
+            }
+            ScheduleCondition::GraveYard => f.write_str("GraveYard"),
+        }
+    }
 }
 
 impl ScheduleCondition {

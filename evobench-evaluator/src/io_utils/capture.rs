@@ -10,9 +10,10 @@ use std::{
 };
 
 use anyhow::{anyhow, Result};
-use itertools::Itertools;
 
 use crate::{ctx, serde::date_and_time::DateTimeWithOffset};
+
+use super::bash::cmd_as_bash_string;
 
 // ETOOCOMPLICATED.
 pub fn get_cmd_and_args(cmd: &Command) -> Vec<Cow<str>> {
@@ -26,33 +27,8 @@ pub fn get_cmd_and_args(cmd: &Command) -> Vec<Cow<str>> {
     cmd_and_args
 }
 
-// Once again. Have a better one somewhere.
-pub fn bash_string(s: &str) -> Cow<str> {
-    if s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-        s.into()
-    } else {
-        let mut ss = String::new();
-        ss.push('\'');
-        for c in s.chars() {
-            if c == '\'' {
-                ss.push('\'');
-                ss.push('\\');
-                ss.push('\'');
-                ss.push('\'');
-            } else {
-                ss.push(c);
-            }
-        }
-        ss.push('\'');
-        ss.into()
-    }
-}
-
 pub fn get_cmd_and_args_as_bash_string(cmd: &Command) -> String {
-    get_cmd_and_args(cmd)
-        .iter()
-        .map(|s| bash_string(s))
-        .join(" ")
+    cmd_as_bash_string(get_cmd_and_args(cmd))
 }
 
 pub fn new_proxy_thread<'scope, 'file, 'm, F: Read + Send + 'static>(

@@ -286,7 +286,7 @@ fn main() -> Result<()> {
                 } = run_queue;
 
                 println!("------------------------------------------------------------------");
-                println!("{i}. Queue {file_name} ({schedule_condition:?}):");
+                println!("{i}. Queue {file_name} ({schedule_condition}):");
                 for entry in queue.sorted_entries(false, None) {
                     let mut entry = entry?;
                     let file_name = get_filename(&entry)?;
