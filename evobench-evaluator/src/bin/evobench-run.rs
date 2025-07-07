@@ -67,7 +67,11 @@ enum SubCommand {
     ListAll,
 
     /// List the currently scheduled and running jobs
-    List,
+    List {
+        /// Show details, not just one item per line
+        #[clap(short, long)]
+        verbose: bool,
+    },
 
     /// Insert a job into the benchmarking queue. The given reference
     /// is resolved in a given working directory; if you have a commit
@@ -273,7 +277,7 @@ fn main() -> Result<()> {
             }
         }
 
-        SubCommand::List => {
+        SubCommand::List { verbose } => {
             let show_queue = |i: &str, run_queue: &RunQueue| -> Result<()> {
                 let RunQueue {
                     file_name,
@@ -288,11 +292,20 @@ fn main() -> Result<()> {
                     let file_name = get_filename(&entry)?;
                     let key = entry.key()?;
                     let val = entry.get()?;
-                    let locking = entry
-                        .take_lockable_file()
-                        .expect("not taken before")
-                        .lock_status()?;
-                    println!("\n{file_name} ({key})\t{locking}\n{val:#?}");
+                    let locking = if schedule_condition.is_grave_yard() {
+                        ""
+                    } else {
+                        entry
+                            .take_lockable_file()
+                            .expect("not taken before")
+                            .lock_status()?
+                            .as_str()
+                    };
+                    if verbose {
+                        println!("\n{file_name} ({key})\t{locking}\n{val:#?}");
+                    } else {
+                        println!("{key}\t{locking}");
+                    }
                 }
                 Ok(())
             };
@@ -304,7 +317,7 @@ fn main() -> Result<()> {
             }
             println!("------------------------------------------------------------------");
             if let Some(run_queue) = queues.erroneous_jobs_queue() {
-                show_queue("erroneous_jobs_queue", run_queue)?;
+                show_queue("failures..", run_queue)?;
             } else {
                 println!(
                     "No erroneous_jobs_queue is configured (it would collect \

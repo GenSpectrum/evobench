@@ -56,6 +56,14 @@ pub enum ScheduleCondition {
 }
 
 impl ScheduleCondition {
+    /// Whether this queue will never run its jobs
+    pub fn is_grave_yard(&self) -> bool {
+        match self {
+            ScheduleCondition::GraveYard => true,
+            _ => false,
+        }
+    }
+
     pub fn time_range(&self) -> Option<(LocalNaiveTime, LocalNaiveTime)> {
         match self {
             ScheduleCondition::Immediately => None,
