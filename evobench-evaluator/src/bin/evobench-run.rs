@@ -285,7 +285,6 @@ fn main() -> Result<()> {
                     queue,
                 } = run_queue;
 
-                println!("------------------------------------------------------------------");
                 println!("{i}. Queue {file_name} ({schedule_condition}):");
                 for entry in queue.sorted_entries(false, None) {
                     let mut entry = entry?;
@@ -310,12 +309,18 @@ fn main() -> Result<()> {
                 Ok(())
             };
 
-            // Originally COPY-PASTE from List action in jobqueue.rs, except
-            // printing the job in :#? view on the next line.
+            let width = get_terminal_width();
+            let bar_of = |c: u8| -> String {
+                String::try_from([c].repeat(width)).expect("ascii char given")
+            };
+            let thin_bar = bar_of(b'-');
+            let thick_bar = bar_of(b'=');
+
             for (i, run_queue) in queues.pipeline().iter().enumerate() {
+                println!("{thin_bar}");
                 show_queue(&i.to_string(), run_queue)?;
             }
-            println!("------------------------------------------------------------------");
+            println!("{thick_bar}");
             if let Some(run_queue) = queues.erroneous_jobs_queue() {
                 show_queue("failures..", run_queue)?;
             } else {
@@ -324,7 +329,7 @@ fn main() -> Result<()> {
                      failing jobs"
                 )
             }
-            println!("------------------------------------------------------------------");
+            println!("{thin_bar}");
         }
 
         SubCommand::InsertLocal {
