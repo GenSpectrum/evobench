@@ -1,18 +1,45 @@
-use std::time::SystemTime;
+use std::{process::Command, time::SystemTime};
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 
 use crate::{
-    info_if,
+    ctx, info, info_if,
     key::RunParameters,
     key_val_fs::{
         key_val::KeyValError,
         queue::{Queue, QueueIterationOpts},
     },
     serde::paths::ProperFilename,
+    utillib::slice_or_box::SliceOrBox,
 };
 
 use super::{benchmarking_job::BenchmarkingJob, config::ScheduleCondition};
+
+fn run_command(cmd: &[String], start_stop: &str) -> Result<()> {
+    assert!(
+        !cmd.is_empty(),
+        "start_stop should have been checked in `check_run_queues` already"
+    );
+    let mut cmd: Vec<&str> = cmd.iter().map(|s| s.as_str()).collect();
+    cmd.push(start_stop);
+    info!("running command {cmd:?}");
+    let mut command = Command::new(cmd[0]);
+    command.args(&cmd[1..]);
+    // XX consistent capture?
+    let status = command.status().map_err(ctx!("running {cmd:?}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        bail!("command {cmd:?} gave status {status}")
+    }
+}
+
+pub fn perhaps_run_current_stop_start(perhaps_cmd: Option<SliceOrBox<String>>) -> Result<()> {
+    if let Some(cmd) = perhaps_cmd {
+        run_command(&cmd, "start")?;
+    }
+    Ok(())
+}
 
 #[derive(Debug)]
 pub struct RunQueue<'conf> {
@@ -32,6 +59,14 @@ impl<'conf> RunQueue<'conf> {
         self.queue.push_front(job)
     }
 
+    pub fn stop_start(&self) -> Option<&'conf [String]> {
+        self.schedule_condition.stop_start()
+    }
+
+    /// For `current_stop_start` see `RunQueues.run()`. Also returns
+    /// how many jobs were *handled* (not necessarily run, could have
+    /// just been moved to other queues / rescheduled), and the reason
+    /// for returning.
     pub fn run<'s>(
         &'s self,
         wait: bool,
@@ -43,13 +78,14 @@ impl<'conf> RunQueue<'conf> {
         next_queue: Option<&Self>,
         // Where jobs go when they run out of error budget
         erroneous_jobs_queue: Option<&Self>,
-    ) -> Result<TerminationReason>
+        mut current_stop_start: Option<SliceOrBox<'conf, String>>,
+    ) -> Result<(Option<SliceOrBox<'conf, String>>, usize, TerminationReason)>
     where
         'conf: 's,
     {
         if *self.schedule_condition == ScheduleCondition::GraveYard {
             info_if!(verbose, "skip running jobs in the GraveYard");
-            return Ok(TerminationReason::GraveYard);
+            return Ok((current_stop_start, 0, TerminationReason::GraveYard));
         }
 
         let opts = QueueIterationOpts {
@@ -61,16 +97,53 @@ impl<'conf> RunQueue<'conf> {
             delete_first: false,
         };
         let items = self.queue.items(opts);
+        let mut handled_command = false;
+        let mut num_jobs_handled = 0;
         for item_and_value in items {
+            if !handled_command {
+                // Do the stopping or starting as appropriate for the
+                // new queue context
+                if let Some(new_css) = self.stop_start() {
+                    if let Some(old_css) = &current_stop_start {
+                        if new_css == &**old_css {
+                            info!("no change in stop_start command, leave it as is");
+                        } else {
+                            info!("change in stop_start command: end the previous period");
+                            run_command(&old_css, "start")?;
+                            info!("change in stop_start command: begin the new period");
+                            run_command(new_css, "stop")?;
+                            current_stop_start = Some(new_css.into());
+                        }
+                    } else {
+                        info!("change in stop_start command: begin new period");
+                        run_command(new_css, "stop")?;
+                        current_stop_start = Some(new_css.into());
+                    }
+                } else {
+                    if let Some(old_css) = current_stop_start {
+                        info!("change in stop_start command: end previous period");
+                        run_command(&old_css, "start")?;
+                        current_stop_start = None;
+                    }
+                }
+
+                handled_command = true;
+            }
+
             if let Some(stop_at) = stop_at {
                 let now = SystemTime::now();
                 if now >= stop_at {
                     info_if!(verbose, "reached timeout time {stop_at:?}");
-                    return Ok(TerminationReason::Timeout);
+                    return Ok((
+                        current_stop_start,
+                        num_jobs_handled,
+                        TerminationReason::Timeout,
+                    ));
                 }
             }
 
             let (mut item, queue_arguments) = item_and_value?;
+            num_jobs_handled += 1;
             let BenchmarkingJob {
                 run_parameters,
                 remaining_count,
@@ -162,6 +235,10 @@ impl<'conf> RunQueue<'conf> {
             }
             item.delete()?;
         }
-        Ok(TerminationReason::QueueEmpty)
+        Ok((
+            current_stop_start,
+            num_jobs_handled,
+            TerminationReason::QueueEmpty,
+        ))
     }
 }

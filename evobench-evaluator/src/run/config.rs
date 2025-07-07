@@ -70,6 +70,20 @@ impl ScheduleCondition {
         }
     }
 
+    pub fn stop_start(&self) -> Option<&[String]> {
+        match self {
+            ScheduleCondition::Immediately => None,
+            ScheduleCondition::LocalNaiveTimeWindow {
+                stop_start,
+                repeatedly: _,
+                move_when_time_window_ends: _,
+                from: _,
+                to: _,
+            } => stop_start.as_deref(),
+            ScheduleCondition::GraveYard => None,
+        }
+    }
+
     /// Returns true if the condition offers that flag *and* it is true
     pub fn move_when_time_window_ends(&self) -> bool {
         match self {

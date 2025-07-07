@@ -22,13 +22,14 @@ use crate::{
     path_util::AppendToPath,
     run::run_queue::TerminationReason,
     serde::{date_and_time::LocalNaiveTime, paths::ProperFilename},
+    utillib::slice_or_box::SliceOrBox,
 };
 
 use super::{
     benchmarking_job::BenchmarkingJob,
     config::{QueuesConfig, ScheduleCondition},
     global_app_state_dir::GlobalAppStateDir,
-    run_queue::RunQueue,
+    run_queue::{perhaps_run_current_stop_start, RunQueue},
 };
 
 /// A `RunQueue` paired with its optional successor `RunQueue` (the
@@ -161,25 +162,40 @@ impl RunQueues {
     /// Run jobs in the queues, for one cycle; this needs to be run in
     /// a loop forever for daemon style processing. The reason this
     /// doesn't do the looping inside is to allow for a reload of the
-    /// queue config and then queues.
+    /// queue config and then queues. `current_stop_start`, if given,
+    /// represents an active `stop_start` command that was run with
+    /// `stop` and now needs a `start` when the next running action
+    /// does not require the same command to be `stop`ed. Likewise,
+    /// `run` returns the active `stop_start` command, if any, by the
+    /// time it returns. The caller should pass that back into `run`
+    /// on the next iteration. Using Cow to allow carrying it over a
+    /// config reload.
     pub fn run<'conf>(
-        &self,
+        &'conf self,
         verbose: bool,
         mut execute: impl FnMut(RunParameters) -> Result<()>,
-    ) -> Result<()> {
+        mut current_stop_start: Option<SliceOrBox<'conf, String>>,
+    ) -> Result<Option<SliceOrBox<'conf, String>>> {
         let (immediate_queues, ranged_queues_by_time) = self.immediate_and_ranged_queues();
+
+        let mut did_something = false;
 
         // Immediate queries always have priority, regardless of
         // concurrent ranged queues. Do not pass a timeout.
         for q in &immediate_queues {
-            q.run(
+            let num_jobs_handled;
+            (current_stop_start, num_jobs_handled, _) = q.run(
                 false,
                 verbose,
                 None,
                 &mut execute,
                 q.next,
                 self.erroneous_jobs_queue(),
+                current_stop_start,
             )?;
+            if num_jobs_handled > 0 {
+                did_something = true;
+            }
         }
 
         for ((from, to), q) in &ranged_queues_by_time {
@@ -203,14 +219,22 @@ impl RunQueues {
                         "it is now {now_chrono:?}, {now} -> processing queue {}",
                         q.file_name
                     );
-                    match q.run(
+
+                    let (num_jobs_handled, termination_reason);
+                    (current_stop_start, num_jobs_handled, termination_reason) = q.run(
                         false,
                         verbose,
                         Some(to.into()),
                         &mut execute,
                         q.next,
                         self.erroneous_jobs_queue(),
-                    )? {
+                        current_stop_start,
+                    )?;
+                    if num_jobs_handled > 0 {
+                        did_something = true;
+                    }
+
+                    match termination_reason {
                         TerminationReason::Timeout => {
                             info_if!(verbose, "ran out of time in queue {}", q.file_name);
                             if q.schedule_condition.move_when_time_window_ends() {
@@ -240,10 +264,18 @@ impl RunQueues {
                 }
             }
         }
+
+        if !did_something {
+            // Time to close the previous processing phase.
+            perhaps_run_current_stop_start(current_stop_start)?;
+            current_stop_start = None;
+        }
+
         sleep(Duration::from_secs(5));
-        Ok(())
+        Ok(current_stop_start)
     }
 
+    /// Verify that the queue configuration is valid
     fn check_run_queues(&self) -> Result<()> {
         let (pipeline, erroneous_jobs_queue) = (self.pipeline(), self.erroneous_jobs_queue());
         if pipeline.is_empty() {
@@ -263,12 +295,21 @@ impl RunQueues {
             match run_queue.schedule_condition {
                 ScheduleCondition::Immediately => (),
                 ScheduleCondition::LocalNaiveTimeWindow {
-                    stop_start: _,
+                    stop_start,
                     repeatedly: _,
                     move_when_time_window_ends: _,
                     from: _,
                     to: _,
-                } => (),
+                } => {
+                    if let Some(stop_start) = &stop_start {
+                        if stop_start.is_empty() {
+                            bail!(
+                                "`LocalNaiveTimeWindow.stop_start` was given \
+                                 but is the empty list, require at least a program name/path"
+                            )
+                        }
+                    }
+                }
                 ScheduleCondition::GraveYard => grave_yard_count += 1,
             }
         }

@@ -18,7 +18,7 @@ use evobench_evaluator::{
         insert_jobs::{insert_jobs, open_already_inserted, ForceOpt, QuietOpt},
         polling_pool::PollingPool,
         run_job::{run_job, DryRun},
-        run_queue::RunQueue,
+        run_queue::{perhaps_run_current_stop_start, RunQueue},
         run_queues::{Never, RunQueues},
         working_directory_pool::WorkingDirectoryPool,
     },
@@ -27,7 +27,7 @@ use evobench_evaluator::{
         git_branch_name::GitBranchName,
         paths::ProperFilename,
     },
-    utillib::{info::set_verbose, path_resolve_home::path_resolve_home},
+    utillib::{info::set_verbose, path_resolve_home::path_resolve_home, slice_or_box::SliceOrBox},
 };
 
 #[derive(clap::Parser, Debug)]
@@ -163,21 +163,28 @@ fn run_queues(
     dry_run: DryRun,
     global_app_state_dir: &GlobalAppStateDir,
 ) -> Result<Never> {
+    let mut current_stop_start = None;
     loop {
         // XX handle errors without exiting? Or do that above
-        queues.run(verbose, |run_parameters| {
-            run_job(
-                &mut working_directory_pool,
-                run_parameters,
-                dry_run,
-                &conf.benchmarking_command,
-                &path_resolve_home(&conf.output_base_dir)?,
-            )
-        })?;
+        current_stop_start = queues.run(
+            verbose,
+            |run_parameters| {
+                run_job(
+                    &mut working_directory_pool,
+                    run_parameters,
+                    dry_run,
+                    &conf.benchmarking_command,
+                    &path_resolve_home(&conf.output_base_dir)?,
+                )
+            },
+            current_stop_start,
+        )?;
         if conf.perhaps_reload_config(config_path.as_ref()) {
             // XXX only if changed
             eprintln!("reloaded configuration, re-initializing");
-            // Drop locks before getting new ones
+            // Drop locks before getting new ones; to be able to do that, first ownify the data to be carried over:
+            current_stop_start = current_stop_start
+                .map(|v| -> SliceOrBox<'static, String> { v.into_owned().into() });
             drop(queues);
             drop(working_directory_pool);
             // XX handle errors without exiting? Or do that above
@@ -417,22 +424,25 @@ fn main() -> Result<()> {
                     if let Some((run_queue, next_queue)) = queues.get_run_queue_by_name(&queue_name)
                     {
                         let stop_at = stop_at.map(|t| t.to_systemtime());
-                        run_queue.run(
-                            false,
-                            verbose,
-                            stop_at,
-                            |run_parameters| {
-                                run_job(
-                                    &mut working_directory_pool,
-                                    run_parameters,
-                                    dry_run,
-                                    &conf.benchmarking_command,
-                                    &path_resolve_home(&conf.output_base_dir)?,
-                                )
-                            },
-                            next_queue,
-                            queues.erroneous_jobs_queue(),
-                        )?;
+                        let (current_stop_start, _num_jobs_handled, _termination_reason) =
+                            run_queue.run(
+                                false,
+                                verbose,
+                                stop_at,
+                                |run_parameters| {
+                                    run_job(
+                                        &mut working_directory_pool,
+                                        run_parameters,
+                                        dry_run,
+                                        &conf.benchmarking_command,
+                                        &path_resolve_home(&conf.output_base_dir)?,
+                                    )
+                                },
+                                next_queue,
+                                queues.erroneous_jobs_queue(),
+                                None,
+                            )?;
+                        perhaps_run_current_stop_start(current_stop_start)?;
                     } else {
                         bail!(
                             "unknown queue {queue_name} -- your configuration defines {:?}",
