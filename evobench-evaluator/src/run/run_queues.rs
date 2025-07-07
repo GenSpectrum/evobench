@@ -13,6 +13,7 @@ use chrono::{DateTime, Local};
 use itertools::{EitherOrBoth, Itertools};
 
 use crate::{
+    date_and_time::LocalNaiveTimeRange,
     info_if,
     key::RunParameters,
     key_val_fs::{
@@ -198,22 +199,22 @@ impl RunQueues {
             }
         }
 
-        for ((from, to), q) in &ranged_queues_by_time {
+        for (from_to, q) in &ranged_queues_by_time {
+            let time_span = LocalNaiveTimeRange::from(from_to);
+
             let now_system = SystemTime::now();
             let now_chrono = DateTime::<Local>::from(now_system);
             let now = now_chrono.naive_local();
             info_if!(
                 verbose,
                 "it is now {now_chrono:?}, {now} -- \
-                 checking queue {} with time range {from}..{to}",
+                 checking queue {} with time range {time_span}",
                 q.file_name
             );
-            if let Some((from, to)) = (|| -> Option<_> {
-                let from = from.with_date_as_unambiguous_local(now.date())?;
-                let to = to.with_date_as_unambiguous_local(now.date())?;
-                Some((from, to))
-            })() {
-                if from <= now_chrono && now_chrono < to {
+
+            if let Some(datetime_span) = time_span.with_start_date_as_unambiguous_locals(now.date())
+            {
+                if datetime_span.contains(&now_chrono) {
                     info_if!(
                         verbose,
                         "it is now {now_chrono:?}, {now} -> processing queue {}",
@@ -224,7 +225,7 @@ impl RunQueues {
                     (current_stop_start, num_jobs_handled, termination_reason) = q.run(
                         false,
                         verbose,
-                        Some(to.into()),
+                        Some(datetime_span.to.into()),
                         &mut execute,
                         q.next,
                         self.erroneous_jobs_queue(),

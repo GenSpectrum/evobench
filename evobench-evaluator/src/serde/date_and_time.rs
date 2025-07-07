@@ -70,7 +70,7 @@ impl FromStr for DateTimeWithOffset {
 }
 
 /// Without offset, but representing time in the local time zone.
-#[derive(Debug, PartialEq, Clone, Eq, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Clone, Copy, Eq, PartialOrd, Ord)]
 pub struct LocalNaiveTime {
     /// 24-hour based
     pub hour: u8,
