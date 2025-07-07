@@ -85,6 +85,7 @@ fn bench_tmp_dir() -> Result<PathBuf> {
     }
 }
 
+// XX here, *too*, do capture for consistency?
 fn evobench_evaluator(args: &[OsString]) -> Result<()> {
     let prog = "evobench-evaluator";
     let mut c = Command::new(prog);
@@ -199,9 +200,10 @@ pub fn run_job(
             )?;
 
             if status.success() {
-                let result_dir = checked_run_parameters
-                    .extend_path(output_base_dir.to_owned())
-                    .append(timestamp.as_str());
+                // The directory holding the full key information
+                let key_dir = checked_run_parameters.extend_path(output_base_dir.to_owned());
+                // Below that, we make a dir for this particular run
+                let result_dir = (&key_dir).append(timestamp.as_str());
                 std::fs::create_dir_all(&result_dir)
                     .map_err(ctx!("create_dir_all {result_dir:?}"))?;
 
@@ -244,6 +246,36 @@ pub fn run_job(
                     };
                 compress_file_as(evobench_log, "evobench.log")?;
                 compress_file_as(bench_output_log, "bench_output.log")?;
+
+                info!("(re-)evaluate the summary file across all results for this key");
+
+                let evobench_logs: Vec<PathBuf> = std::fs::read_dir(&key_dir)
+                    .map_err(ctx!("opening dir {key_dir:?}"))?
+                    .map(|entry| -> Result<_, std::io::Error> {
+                        let entry = entry?;
+                        Ok(entry.path().append("evobench.log.zstd"))
+                    })
+                    .collect::<Result<_, _>>()
+                    .map_err(ctx!("getting dir listing for {key_dir:?}"))?;
+
+                let generate_summary = |target_type_opt: &str| -> Result<()> {
+                    let mut args: Vec<OsString> = vec!["summary".into()];
+                    args.push(target_type_opt.into());
+                    args.push("summary".into());
+
+                    for evobench_log in &evobench_logs {
+                        args.push(evobench_log.into());
+                    }
+
+                    evobench_evaluator(&args)?;
+
+                    Ok(())
+                };
+
+                generate_summary("--excel")?;
+                generate_summary("--flame")?;
+
+                info!("done with benchmarking job and post-evaluation");
 
                 Ok(())
             } else {
