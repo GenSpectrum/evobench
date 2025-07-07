@@ -168,8 +168,8 @@ impl RunQueues {
     /// does not require the same command to be `stop`ed. Likewise,
     /// `run` returns the active `stop_start` command, if any, by the
     /// time it returns. The caller should pass that back into `run`
-    /// on the next iteration. Using Cow to allow carrying it over a
-    /// config reload.
+    /// on the next iteration. Using SliceOrBox to allow carrying it
+    /// over a config reload.
     pub fn run<'conf>(
         &'conf self,
         verbose: bool,
