@@ -204,10 +204,8 @@ impl RunQueues {
 
             let now_system = SystemTime::now();
             let now_chrono = DateTime::<Local>::from(now_system);
-            let now = now_chrono.naive_local();
 
-            if let Some(datetime_span) = time_span.with_start_date_as_unambiguous_locals(now.date())
-            {
+            if let Some(datetime_span) = time_span.after_datetime(&now_chrono, true) {
                 if datetime_span.contains(&now_chrono) {
                     info_if!(
                         verbose,
