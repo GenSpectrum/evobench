@@ -258,22 +258,23 @@ pub fn run_job(
                     .collect::<Result<_, _>>()
                     .map_err(ctx!("getting dir listing for {key_dir:?}"))?;
 
-                let generate_summary = |target_type_opt: &str| -> Result<()> {
-                    let mut args: Vec<OsString> = vec!["summary".into()];
-                    args.push(target_type_opt.into());
-                    args.push((&key_dir).append("summary").into());
+                let generate_summary =
+                    |target_type_opt: &str, file_base_name: &str| -> Result<()> {
+                        let mut args: Vec<OsString> = vec!["summary".into()];
+                        args.push(target_type_opt.into());
+                        args.push((&key_dir).append(file_base_name).into());
 
-                    for evobench_log in &evobench_logs {
-                        args.push(evobench_log.into());
-                    }
+                        for evobench_log in &evobench_logs {
+                            args.push(evobench_log.into());
+                        }
 
-                    evobench_evaluator(&args)?;
+                        evobench_evaluator(&args)?;
 
-                    Ok(())
-                };
+                        Ok(())
+                    };
 
-                generate_summary("--excel")?;
-                generate_summary("--flame")?;
+                generate_summary("--excel", "summary.xlsx")?;
+                generate_summary("--flame", "summary")?;
 
                 info!("done with benchmarking job and post-evaluation");
 
