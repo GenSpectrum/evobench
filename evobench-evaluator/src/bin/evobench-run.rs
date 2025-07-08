@@ -118,6 +118,11 @@ enum SubCommand {
         /// commits anyway.
         #[clap(long)]
         force: bool,
+
+        /// Suppress printing the "inserted n jobs" message when n >
+        /// 0, i.e. always be quiet.
+        #[clap(long)]
+        quiet: bool,
     },
 
     /// Run the existing jobs
@@ -386,7 +391,7 @@ fn main() -> Result<()> {
             )?;
         }
 
-        SubCommand::Poll { force } => {
+        SubCommand::Poll { force, quiet } => {
             let (commits, maybe_errors) = {
                 let mut polling_pool = PollingPool::open(
                     &conf.remote_repository.url,
@@ -431,6 +436,12 @@ fn main() -> Result<()> {
                     "inserted {n}/{n_original} references, \
                      but also got git reference resolution errors: {errors}"
                 )
+            } else {
+                if !quiet {
+                    if n > 0 {
+                        println!("inserted {n}/{n_original} references");
+                    }
+                }
             }
         }
 
