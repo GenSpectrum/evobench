@@ -261,7 +261,7 @@ pub fn run_job(
                 let generate_summary = |target_type_opt: &str| -> Result<()> {
                     let mut args: Vec<OsString> = vec!["summary".into()];
                     args.push(target_type_opt.into());
-                    args.push("summary".into());
+                    args.push((&key_dir).append("summary").into());
 
                     for evobench_log in &evobench_logs {
                         args.push(evobench_log.into());
