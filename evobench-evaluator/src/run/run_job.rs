@@ -251,10 +251,16 @@ pub fn run_job(
 
                 let evobench_logs: Vec<PathBuf> = std::fs::read_dir(&key_dir)
                     .map_err(ctx!("opening dir {key_dir:?}"))?
-                    .map(|entry| -> Result<_, std::io::Error> {
-                        let entry = entry?;
-                        Ok(entry.path().append("evobench.log.zstd"))
+                    .map(|entry| -> Result<Option<PathBuf>, std::io::Error> {
+                        let entry: std::fs::DirEntry = entry?;
+                        let ft = entry.file_type()?;
+                        if ft.is_dir() {
+                            Ok(Some(entry.path().append("evobench.log.zstd")))
+                        } else {
+                            Ok(None)
+                        }
                     })
+                    .filter_map(|r| r.transpose())
                     .collect::<Result<_, _>>()
                     .map_err(ctx!("getting dir listing for {key_dir:?}"))?;
 
