@@ -44,6 +44,7 @@ pub struct QuietOpt {
     pub quiet: bool,
 }
 
+/// Returns the number of jobs actually inserted
 pub fn insert_jobs(
     benchmarking_jobs: Vec<BenchmarkingJob>,
     global_app_state_dir: &GlobalAppStateDir,
@@ -51,7 +52,7 @@ pub fn insert_jobs(
     force_opt: ForceOpt,
     quiet_opt: QuietOpt,
     queues: &RunQueues,
-) -> Result<()> {
+) -> Result<usize> {
     let ForceOpt { force } = force_opt;
     let QuietOpt { quiet } = quiet_opt;
 
@@ -63,17 +64,24 @@ pub fn insert_jobs(
         &global_app_state_dir.working_directory_for_polling_pool_base()?,
     )?;
 
+    let mut num_inserted = 0;
+
     for benchmarking_job in benchmarking_jobs {
         let run_parameters_hash = RunParametersHash::from(&benchmarking_job.run_parameters);
 
-        let mut opt_entry = already_inserted.entry_opt(&run_parameters_hash)?;
-
+        // All insertion times, for adding the new ones below
         let insertion_times;
+
+        // Check if already inserted
+        let mut opt_entry = already_inserted.entry_opt(&run_parameters_hash)?;
         if let Some(entry) = &mut opt_entry {
             let params;
             (params, insertion_times) = entry.get()?;
-            if !force {
+            if force {
+                // fall through and do insertion anyway, below
+            } else {
                 if quiet {
+                    // skip insertion
                     continue;
                 } else {
                     let insertion_times = insertion_times
@@ -101,8 +109,11 @@ pub fn insert_jobs(
             }
         }
 
+        // insert it
         queues.first().push_front(&benchmarking_job)?;
+        num_inserted += 1;
 
+        // update the `already_inserted` table
         if let Some(mut entry) = opt_entry {
             entry.delete()?;
         }
@@ -115,5 +126,5 @@ pub fn insert_jobs(
         )?;
     }
 
-    Ok(())
+    Ok(num_inserted)
 }

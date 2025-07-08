@@ -110,9 +110,14 @@ enum SubCommand {
 
     /// Insert jobs for new commits on configured branch names
     Poll {
-        // No QuietOpt since that must be the default
-        #[clap(flatten)]
-        force_opt: ForceOpt,
+        // No QuietOpt since that must be the default. Also, another
+        // force option since the help text is different here.
+        /// Normally, the same job parameters are only inserted once,
+        /// subsequent polls yielding the same commits remain
+        /// no-ops. This overrides the check and inserts the found
+        /// commits anyway.
+        #[clap(long)]
+        force: bool,
     },
 
     /// Run the existing jobs
@@ -381,7 +386,7 @@ fn main() -> Result<()> {
             )?;
         }
 
-        SubCommand::Poll { force_opt } => {
+        SubCommand::Poll { force } => {
             let (commits, maybe_errors) = {
                 let mut polling_pool = PollingPool::open(
                     &conf.remote_repository.url,
@@ -408,12 +413,12 @@ fn main() -> Result<()> {
                 ));
             }
 
-            let n = benchmarking_jobs.len();
-            insert_jobs(
+            let n_original = benchmarking_jobs.len();
+            let n = insert_jobs(
                 benchmarking_jobs,
                 &global_app_state_dir,
                 &conf.remote_repository.url,
-                force_opt,
+                ForceOpt { force },
                 // Must use quiet so that it can try to insert *all*
                 // given jobs (XX: should it continue even with
                 // errors, for the other code places?)
@@ -422,7 +427,10 @@ fn main() -> Result<()> {
             )?;
 
             if let Some(errors) = maybe_errors {
-                bail!("inserted {n} references, but also got resolution errors: {errors}")
+                bail!(
+                    "inserted {n}/{n_original} references, \
+                     but also got git reference resolution errors: {errors}"
+                )
             }
         }
 
