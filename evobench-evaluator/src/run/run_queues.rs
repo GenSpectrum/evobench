@@ -205,19 +205,13 @@ impl RunQueues {
             let now_system = SystemTime::now();
             let now_chrono = DateTime::<Local>::from(now_system);
             let now = now_chrono.naive_local();
-            info_if!(
-                verbose,
-                "it is now {now_chrono:?}, {now} -- \
-                 checking queue {} with time range {time_span}",
-                q.file_name
-            );
 
             if let Some(datetime_span) = time_span.with_start_date_as_unambiguous_locals(now.date())
             {
                 if datetime_span.contains(&now_chrono) {
                     info_if!(
                         verbose,
-                        "it is now {now_chrono:?}, {now} -> processing queue {}",
+                        "{now_chrono:?} -> processing queue {} with time range {datetime_span}",
                         q.file_name
                     );
 
