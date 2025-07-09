@@ -13,7 +13,7 @@ use chrono::{DateTime, Local};
 use itertools::{EitherOrBoth, Itertools};
 
 use crate::{
-    date_and_time::LocalNaiveTimeRange,
+    date_and_time::time_ranges::LocalNaiveTimeRange,
     info_if,
     key::RunParameters,
     key_val_fs::{
