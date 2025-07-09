@@ -7,7 +7,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local};
 use genawaiter::rc::Gen;
 use ouroboros::self_referencing;
 use serde::{de::DeserializeOwned, Serialize};
@@ -38,7 +38,7 @@ pub struct TimeKey {
     id: u64,
 }
 
-fn datetime_from_nanoseconds(nanos: u128) -> DateTime<Utc> {
+fn datetime_from_nanoseconds(nanos: u128) -> DateTime<Local> {
     let secs = (nanos / 1_000_000_000) as u64;
     let nanos = (nanos % 1_000_000_000) as u32;
     let system_time = UNIX_EPOCH + Duration::new(secs, nanos);
