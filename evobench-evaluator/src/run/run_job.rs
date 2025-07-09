@@ -118,14 +118,17 @@ pub fn run_job(
     let working_directory_id =
         working_directory_pool.get_a_working_directory_for_commit(&commit_id)?;
 
-    working_directory_pool.process_working_directory(
+    // Errors after finishing the benchmarking (post-processing phase)
+    // are passed in an Option in `post_benchmark_error`, to avoid the
+    // directory being marked as erroneous.
+    let post_benchmark_error = working_directory_pool.process_working_directory(
         working_directory_id,
-        |working_directory, timestamp| {
+        |working_directory, timestamp| -> Result<Option<anyhow::Error>> {
             working_directory.checkout(commit_id.clone())?;
 
             if dry_run.means(DryRun::DoWorkingDir) {
                 println!("checked out working directory: {working_directory_id:?}");
-                return Ok(());
+                return Ok(None);
             }
 
             let BenchmarkingCommand {
@@ -249,42 +252,50 @@ pub fn run_job(
 
                 info!("(re-)evaluate the summary file across all results for this key");
 
-                let evobench_logs: Vec<PathBuf> = std::fs::read_dir(&key_dir)
-                    .map_err(ctx!("opening dir {key_dir:?}"))?
-                    .map(|entry| -> Result<Option<PathBuf>, std::io::Error> {
-                        let entry: std::fs::DirEntry = entry?;
-                        let ft = entry.file_type()?;
-                        if ft.is_dir() {
-                            Ok(Some(entry.path().append("evobench.log.zstd")))
-                        } else {
-                            Ok(None)
-                        }
-                    })
-                    .filter_map(|r| r.transpose())
-                    .collect::<Result<_, _>>()
-                    .map_err(ctx!("getting dir listing for {key_dir:?}"))?;
+                let res = (|| -> Result<()> {
+                    let evobench_logs: Vec<PathBuf> = std::fs::read_dir(&key_dir)
+                        .map_err(ctx!("opening dir {key_dir:?}"))?
+                        .map(|entry| -> Result<Option<PathBuf>, std::io::Error> {
+                            let entry: std::fs::DirEntry = entry?;
+                            let ft = entry.file_type()?;
+                            if ft.is_dir() {
+                                Ok(Some(entry.path().append("evobench.log.zstd")))
+                            } else {
+                                Ok(None)
+                            }
+                        })
+                        .filter_map(|r| r.transpose())
+                        .collect::<Result<_, _>>()
+                        .map_err(ctx!("getting dir listing for {key_dir:?}"))?;
 
-                let generate_summary =
-                    |target_type_opt: &str, file_base_name: &str| -> Result<()> {
-                        let mut args: Vec<OsString> = vec!["summary".into()];
-                        args.push(target_type_opt.into());
-                        args.push((&key_dir).append(file_base_name).into());
+                    let generate_summary =
+                        |target_type_opt: &str, file_base_name: &str| -> Result<()> {
+                            let mut args: Vec<OsString> = vec!["summary".into()];
+                            args.push(target_type_opt.into());
+                            args.push((&key_dir).append(file_base_name).into());
 
-                        for evobench_log in &evobench_logs {
-                            args.push(evobench_log.into());
-                        }
+                            for evobench_log in &evobench_logs {
+                                args.push(evobench_log.into());
+                            }
 
-                        evobench_evaluator(&args)?;
+                            evobench_evaluator(&args)?;
 
-                        Ok(())
-                    };
+                            Ok(())
+                        };
 
-                generate_summary("--excel", "summary.xlsx")?;
-                generate_summary("--flame", "summary")?;
+                    generate_summary("--excel", "summary.xlsx")?;
+                    generate_summary("--flame", "summary")?;
 
-                info!("done with benchmarking job and post-evaluation");
+                    info!("done with benchmarking job and post-evaluation");
 
-                Ok(())
+                    Ok(())
+                })();
+
+                if let Err(e) = res {
+                    Ok(Some(e))
+                } else {
+                    Ok(None)
+                }
             } else {
                 info!("running {cmd_in_dir} failed.");
                 let last_part = command_output_file.last_part(3000)?;
@@ -303,5 +314,11 @@ pub fn run_job(
         },
         Some(&checked_run_parameters),
         "run_job",
-    )
+    )?;
+
+    if let Some(e) = post_benchmark_error {
+        Err(e)
+    } else {
+        Ok(())
+    }
 }
