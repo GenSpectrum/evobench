@@ -3,7 +3,9 @@ use std::{process::Command, time::SystemTime};
 use anyhow::{bail, Result};
 
 use crate::{
-    ctx, info, info_if,
+    ctx,
+    date_and_time::system_time_with_display::SystemTimeWithDisplay,
+    info, info_if,
     key::RunParameters,
     key_val_fs::{
         key_val::KeyValError,
@@ -131,9 +133,10 @@ impl<'conf> RunQueue<'conf> {
             }
 
             if let Some(stop_at) = stop_at {
-                let now = SystemTime::now();
+                let stop_at = SystemTimeWithDisplay(stop_at);
+                let now = SystemTimeWithDisplay(SystemTime::now());
                 if now >= stop_at {
-                    info_if!(verbose, "reached timeout time {stop_at:?}");
+                    info_if!(verbose, "reached timeout time {stop_at}");
                     return Ok((
                         current_stop_start,
                         num_jobs_handled,
