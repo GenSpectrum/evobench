@@ -6,7 +6,7 @@ use itertools::Itertools;
 const CHARS_NOT_NEEDING_QUOTING: &str = "_:.-+,/=@[]^";
 
 // Once again. Have a better one somewhere.
-pub fn bash_string(s: &str) -> Cow<str> {
+pub fn bash_string_literal(s: &str) -> Cow<str> {
     if s.chars()
         .all(|c| c.is_ascii_alphanumeric() || CHARS_NOT_NEEDING_QUOTING.contains(c))
     {
@@ -31,6 +31,6 @@ pub fn bash_string(s: &str) -> Cow<str> {
 
 pub fn cmd_as_bash_string<S: AsRef<str>>(cmd: impl IntoIterator<Item = S>) -> String {
     cmd.into_iter()
-        .map(|s| bash_string(s.as_ref()).to_string())
+        .map(|s| bash_string_literal(s.as_ref()).to_string())
         .join(" ")
 }
