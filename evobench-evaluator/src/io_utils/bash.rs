@@ -2,9 +2,14 @@ use std::borrow::Cow;
 
 use itertools::Itertools;
 
+// (Todo?: add randomized tests with these calling bash)
+const CHARS_NOT_NEEDING_QUOTING: &str = "_:.-+,/=@[]^";
+
 // Once again. Have a better one somewhere.
 pub fn bash_string(s: &str) -> Cow<str> {
-    if s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+    if s.chars()
+        .all(|c| c.is_ascii_alphanumeric() || CHARS_NOT_NEEDING_QUOTING.contains(c))
+    {
         s.into()
     } else {
         let mut ss = String::new();
