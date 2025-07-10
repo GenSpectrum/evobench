@@ -84,7 +84,7 @@ impl Display for ScheduleCondition {
                 };
                 write!(
                     f,
-                    "LocalNaiveTimeWindow {from} - {to} ({rep}, {mov}, cmd: {cmd})"
+                    "LocalNaiveTimeWindow {from} - {to}: {rep}, {mov}, \"{cmd}\""
                 )
             }
             ScheduleCondition::GraveYard => f.write_str("GraveYard"),
