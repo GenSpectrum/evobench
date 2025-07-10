@@ -13,7 +13,7 @@ use chrono::{DateTime, Local};
 use itertools::{EitherOrBoth, Itertools};
 
 use crate::{
-    date_and_time::time_ranges::LocalNaiveTimeRange,
+    date_and_time::time_ranges::{DateTimeRange, LocalNaiveTimeRange},
     debug, info,
     key::RunParameters,
     key_val_fs::{
@@ -22,7 +22,7 @@ use crate::{
     },
     path_util::AppendToPath,
     run::run_queue::TerminationReason,
-    serde::{date_and_time::LocalNaiveTime, paths::ProperFilename},
+    serde::paths::ProperFilename,
     utillib::slice_or_box::SliceOrBox,
 };
 
@@ -32,6 +32,10 @@ use super::{
     global_app_state_dir::GlobalAppStateDir,
     run_queue::{perhaps_run_current_stop_start, RunQueue},
 };
+
+fn get_now_chrono() -> DateTime<Local> {
+    SystemTime::now().into()
+}
 
 /// A `RunQueue` paired with its optional successor `RunQueue` (the
 /// queue where jobs go next)
@@ -124,24 +128,35 @@ impl RunQueues {
     /// with time ranges, as separate vectors (no other queues with
     /// runnable jobs than those two groups currently exist). The
     /// immediate group is in the original sort order, the group with
-    /// time ranges is sorted by start time, ready to process
+    /// time ranges is sorted by start time (with the times resolved
+    /// based on `reference_time`, possibly omitted if times do not
+    /// resolve around `reference_time`), ready to process
     /// sequentially.
     fn immediate_and_ranged_queues(
         &self,
+        reference_time: &DateTime<Local>,
     ) -> (
         Vec<RunQueueWithNext>,
-        Vec<((LocalNaiveTime, LocalNaiveTime), RunQueueWithNext)>,
+        Vec<(DateTimeRange<Local>, RunQueueWithNext)>,
     ) {
         let mut immediate_queues: Vec<RunQueueWithNext> = Vec::new();
-        let mut ranged_queues: Vec<((LocalNaiveTime, LocalNaiveTime), RunQueueWithNext)> =
-            Vec::new();
+        let mut ranged_queues: Vec<(DateTimeRange<Local>, RunQueueWithNext)> = Vec::new();
         let mut other: Vec<RunQueueWithNext> = Vec::new();
 
         for q in self.run_queue_with_nexts() {
             if *q.schedule_condition == ScheduleCondition::Immediately {
                 immediate_queues.push(q);
             } else if let Some(range) = q.schedule_condition.time_range() {
-                ranged_queues.push((range, q));
+                let dtr: Option<DateTimeRange<Local>> =
+                    LocalNaiveTimeRange::from(&range).after_datetime(reference_time, true);
+                if let Some(dtr) = dtr {
+                    ranged_queues.push((dtr, q));
+                } else {
+                    info!(
+                        "times in {range:?} do not resolve for {reference_time}, omitting queue {:?}",
+                        q.file_name,
+                    )
+                }
             } else if *q.schedule_condition == ScheduleCondition::GraveYard {
                 // Not scheduling jobs from this queue
                 ()
@@ -155,7 +170,7 @@ impl RunQueues {
             unreachable!("queues I don't know how to schedule: {other:?}")
         }
 
-        ranged_queues.sort_by_key(|((start, _), _)| start.clone());
+        ranged_queues.sort_by_key(|(range, _)| range.from.clone());
 
         (immediate_queues, ranged_queues)
     }
@@ -176,7 +191,11 @@ impl RunQueues {
         mut execute: impl FnMut(RunParameters) -> Result<()>,
         mut current_stop_start: Option<SliceOrBox<'conf, String>>,
     ) -> Result<Option<SliceOrBox<'conf, String>>> {
-        let (immediate_queues, ranged_queues_by_time) = self.immediate_and_ranged_queues();
+        // The current time will be considerably out of date by the
+        // time ranged_queues get to run. Hence do *not* keep this
+        // time around, get a fresh one below.
+        let (immediate_queues, ranged_queues_by_time) =
+            self.immediate_and_ranged_queues(&get_now_chrono());
 
         let mut did_something = false;
 
@@ -197,58 +216,56 @@ impl RunQueues {
             }
         }
 
-        for (from_to, q) in &ranged_queues_by_time {
-            let time_span = LocalNaiveTimeRange::from(from_to);
+        for (datetime_span, q) in &ranged_queues_by_time {
+            // Get the current time again, it may very well be that by
+            // now (after processing the immediate queues above, or
+            // previous ranged queues) the calculated time ranges have
+            // passed already.
+            let now_chrono = get_now_chrono();
+            if datetime_span.contains(&now_chrono) {
+                debug!(
+                    "{now_chrono:?} -> processing queue {} with time range {datetime_span}",
+                    q.file_name
+                );
 
-            let now_system = SystemTime::now();
-            let now_chrono = DateTime::<Local>::from(now_system);
+                let (num_jobs_handled, termination_reason);
+                (current_stop_start, num_jobs_handled, termination_reason) = q.run(
+                    false,
+                    Some(datetime_span.to.into()),
+                    &mut execute,
+                    q.next,
+                    self.erroneous_jobs_queue(),
+                    current_stop_start,
+                )?;
+                if num_jobs_handled > 0 {
+                    did_something = true;
+                }
 
-            if let Some(datetime_span) = time_span.after_datetime(&now_chrono, true) {
-                if datetime_span.contains(&now_chrono) {
-                    debug!(
-                        "{now_chrono:?} -> processing queue {} with time range {datetime_span}",
-                        q.file_name
-                    );
-
-                    let (num_jobs_handled, termination_reason);
-                    (current_stop_start, num_jobs_handled, termination_reason) = q.run(
-                        false,
-                        Some(datetime_span.to.into()),
-                        &mut execute,
-                        q.next,
-                        self.erroneous_jobs_queue(),
-                        current_stop_start,
-                    )?;
-                    if num_jobs_handled > 0 {
-                        did_something = true;
-                    }
-
-                    match termination_reason {
-                        TerminationReason::Timeout => {
-                            info!("ran out of time in queue {}", q.file_name);
-                            if q.schedule_condition.move_when_time_window_ends() {
-                                let mut count = 0;
-                                for entry in q.current.queue.sorted_entries(false, None) {
-                                    // XX continue in the face of
-                                    // errors? Just globally in
-                                    // the queue?
-                                    let mut entry = entry?;
-                                    let val = entry.get()?;
-                                    if let Some(next) = q.next {
-                                        next.push_front(&val)?;
-                                    }
-                                    entry.delete()?;
-                                    count += 1;
+                match termination_reason {
+                    TerminationReason::Timeout => {
+                        info!("ran out of time in queue {}", q.file_name);
+                        if q.schedule_condition.move_when_time_window_ends() {
+                            let mut count = 0;
+                            for entry in q.current.queue.sorted_entries(false, None) {
+                                // XX continue in the face of
+                                // errors? Just globally in
+                                // the queue?
+                                let mut entry = entry?;
+                                let val = entry.get()?;
+                                if let Some(next) = q.next {
+                                    next.push_front(&val)?;
                                 }
-                                info!(
-                                    "moved {count} entries to queue {:?}",
-                                    q.next.map(|q| &q.file_name)
-                                );
+                                entry.delete()?;
+                                count += 1;
                             }
+                            info!(
+                                "moved {count} entries to queue {:?}",
+                                q.next.map(|q| &q.file_name)
+                            );
                         }
-                        TerminationReason::QueueEmpty => (),
-                        TerminationReason::GraveYard => unreachable!("not a ranged queue"),
                     }
+                    TerminationReason::QueueEmpty => (),
+                    TerminationReason::GraveYard => unreachable!("not a ranged queue"),
                 }
             }
         }
