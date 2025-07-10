@@ -21,7 +21,7 @@ use crate::{
         temporary_file::TemporaryFile,
     },
     key::RunParameters,
-    utillib::info::verbose,
+    utillib::logging::verbose,
     zstd_file::compress_file,
 };
 

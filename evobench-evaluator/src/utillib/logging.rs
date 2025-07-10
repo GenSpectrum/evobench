@@ -34,7 +34,7 @@ pub fn verbose() -> bool {
 #[macro_export]
 macro_rules! info {
     { $($arg:tt)* } => {
-        if $crate::utillib::info::verbose() {
+        if $crate::utillib::logging::verbose() {
             eprintln!($($arg)*);
         }
     }

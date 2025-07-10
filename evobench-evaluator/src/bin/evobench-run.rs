@@ -27,7 +27,9 @@ use evobench_evaluator::{
         git_branch_name::GitBranchName,
         paths::ProperFilename,
     },
-    utillib::{info::set_verbose, path_resolve_home::path_resolve_home, slice_or_box::SliceOrBox},
+    utillib::{
+        logging::set_verbose, path_resolve_home::path_resolve_home, slice_or_box::SliceOrBox,
+    },
 };
 
 #[derive(clap::Parser, Debug)]
