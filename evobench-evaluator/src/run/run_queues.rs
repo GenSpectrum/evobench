@@ -14,7 +14,7 @@ use itertools::{EitherOrBoth, Itertools};
 
 use crate::{
     date_and_time::time_ranges::LocalNaiveTimeRange,
-    info,
+    debug, info,
     key::RunParameters,
     key_val_fs::{
         key_val::{KeyValConfig, KeyValSync},
@@ -205,7 +205,7 @@ impl RunQueues {
 
             if let Some(datetime_span) = time_span.after_datetime(&now_chrono, true) {
                 if datetime_span.contains(&now_chrono) {
-                    info!(
+                    debug!(
                         "{now_chrono:?} -> processing queue {} with time range {datetime_span}",
                         q.file_name
                     );
