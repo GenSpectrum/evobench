@@ -14,7 +14,7 @@ use itertools::{EitherOrBoth, Itertools};
 
 use crate::{
     date_and_time::time_ranges::LocalNaiveTimeRange,
-    info_if,
+    info,
     key::RunParameters,
     key_val_fs::{
         key_val::{KeyValConfig, KeyValSync},
@@ -173,7 +173,6 @@ impl RunQueues {
     /// over a config reload.
     pub fn run<'conf>(
         &'conf self,
-        verbose: bool,
         mut execute: impl FnMut(RunParameters) -> Result<()>,
         mut current_stop_start: Option<SliceOrBox<'conf, String>>,
     ) -> Result<Option<SliceOrBox<'conf, String>>> {
@@ -187,7 +186,6 @@ impl RunQueues {
             let num_jobs_handled;
             (current_stop_start, num_jobs_handled, _) = q.run(
                 false,
-                verbose,
                 None,
                 &mut execute,
                 q.next,
@@ -207,8 +205,7 @@ impl RunQueues {
 
             if let Some(datetime_span) = time_span.after_datetime(&now_chrono, true) {
                 if datetime_span.contains(&now_chrono) {
-                    info_if!(
-                        verbose,
+                    info!(
                         "{now_chrono:?} -> processing queue {} with time range {datetime_span}",
                         q.file_name
                     );
@@ -216,7 +213,6 @@ impl RunQueues {
                     let (num_jobs_handled, termination_reason);
                     (current_stop_start, num_jobs_handled, termination_reason) = q.run(
                         false,
-                        verbose,
                         Some(datetime_span.to.into()),
                         &mut execute,
                         q.next,
@@ -229,7 +225,7 @@ impl RunQueues {
 
                     match termination_reason {
                         TerminationReason::Timeout => {
-                            info_if!(verbose, "ran out of time in queue {}", q.file_name);
+                            info!("ran out of time in queue {}", q.file_name);
                             if q.schedule_condition.move_when_time_window_ends() {
                                 let mut count = 0;
                                 for entry in q.current.queue.sorted_entries(false, None) {
@@ -244,8 +240,7 @@ impl RunQueues {
                                     entry.delete()?;
                                     count += 1;
                                 }
-                                info_if!(
-                                    verbose,
+                                info!(
                                     "moved {count} entries to queue {:?}",
                                     q.next.map(|q| &q.file_name)
                                 );

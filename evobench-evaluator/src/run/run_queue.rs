@@ -5,14 +5,17 @@ use anyhow::{bail, Result};
 use crate::{
     ctx,
     date_and_time::system_time_with_display::SystemTimeWithDisplay,
-    info, info_if,
+    info,
     key::RunParameters,
     key_val_fs::{
         key_val::KeyValError,
         queue::{Queue, QueueIterationOpts},
     },
     serde::paths::ProperFilename,
-    utillib::slice_or_box::SliceOrBox,
+    utillib::{
+        logging::{log_level, LogLevel},
+        slice_or_box::SliceOrBox,
+    },
 };
 
 use super::{benchmarking_job::BenchmarkingJob, config::ScheduleCondition};
@@ -72,7 +75,6 @@ impl<'conf> RunQueue<'conf> {
     pub fn run<'s>(
         &'s self,
         wait: bool,
-        verbose: bool,
         stop_at: Option<SystemTime>,
         // Have to give ownership to CheckedRunParameters, don't
         // understand why.
@@ -86,7 +88,7 @@ impl<'conf> RunQueue<'conf> {
         'conf: 's,
     {
         if *self.schedule_condition == ScheduleCondition::GraveYard {
-            info_if!(verbose, "skip running jobs in the GraveYard");
+            info!("skip running jobs in the GraveYard");
             return Ok((current_stop_start, 0, TerminationReason::GraveYard));
         }
 
@@ -95,7 +97,7 @@ impl<'conf> RunQueue<'conf> {
             error_when_locked: false,
             wait,
             stop_at,
-            verbose,
+            verbose: log_level() >= LogLevel::Info,
             delete_first: false,
         };
         let items = self.queue.items(opts);
@@ -136,7 +138,7 @@ impl<'conf> RunQueue<'conf> {
                 let stop_at = SystemTimeWithDisplay(stop_at);
                 let now = SystemTimeWithDisplay(SystemTime::now());
                 if now >= stop_at {
-                    info_if!(verbose, "reached timeout time {stop_at}");
+                    info!("reached timeout time {stop_at}");
                     return Ok((
                         current_stop_start,
                         num_jobs_handled,
@@ -164,7 +166,7 @@ impl<'conf> RunQueue<'conf> {
                             remaining_count,
                             remaining_error_budget,
                         };
-                        info_if!(verbose, "job gave error: {job:?}: {error:#?}");
+                        info!("job gave error: {job:?}: {error:#?}");
                         if remaining_error_budget > 0 {
                             // Re-schedule
                             self.push_front(&job)?;
@@ -213,7 +215,7 @@ impl<'conf> RunQueue<'conf> {
                             if let Some(queue) = maybe_queue {
                                 queue.push_front(&job)?;
                             } else {
-                                info_if!(verbose, "job dropping off the pipeline: {job:?}");
+                                info!("job dropping off the pipeline: {job:?}");
                             }
                         }
                     }
@@ -229,8 +231,7 @@ impl<'conf> RunQueue<'conf> {
                 if let Some(queue) = &erroneous_jobs_queue {
                     queue.push_front(&job)?;
                 } else {
-                    info_if!(
-                        verbose,
+                    info!(
                         "job dropped due to running out of error budget \
                          and no configured erroneous_jobs_queue: {job:?}"
                     );
