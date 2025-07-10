@@ -21,7 +21,7 @@ use crate::{
         temporary_file::TemporaryFile,
     },
     key::RunParameters,
-    utillib::logging::verbose,
+    utillib::logging::{log_level, LogLevel},
     zstd_file::compress_file,
 };
 
@@ -187,8 +187,9 @@ pub fn run_job(
             }
 
             let mut other_files: Vec<Box<dyn Write + Send + 'static>> = vec![];
-            // Evil to use verbose() for this and not a function argument?
-            if verbose() {
+            // Is it evil to use log_level() for this and not a
+            // function argument?
+            if log_level() >= LogLevel::Info {
                 other_files.push(Box::new(stderr()));
             }
             let other_files = Arc::new(Mutex::new(other_files));
@@ -242,7 +243,12 @@ pub fn run_job(
                         let target_filename =
                             add_extension(target_filename, "zstd").expect("got filename");
                         let target = (&result_dir).append(target_filename);
-                        compress_file(source_file.path(), &target, !verbose())?;
+                        compress_file(
+                            source_file.path(),
+                            &target,
+                            // be quiet when:
+                            log_level() < LogLevel::Info,
+                        )?;
                         // Do *not* remove the source file here as
                         // TemporaryFile::drop will do it.
                         Ok(())
@@ -299,7 +305,7 @@ pub fn run_job(
             } else {
                 info!("running {cmd_in_dir} failed.");
                 let last_part = command_output_file.last_part(3000)?;
-                if !verbose() {
+                if log_level() < LogLevel::Info {
                     let mut err = stderr().lock();
                     writeln!(err, "---- run_job: error in dir {dir:?}: -------")?;
                     err.write_all(last_part.as_bytes())?;

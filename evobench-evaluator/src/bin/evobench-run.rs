@@ -28,7 +28,9 @@ use evobench_evaluator::{
         paths::ProperFilename,
     },
     utillib::{
-        logging::set_verbose, path_resolve_home::path_resolve_home, slice_or_box::SliceOrBox,
+        logging::{log_level, set_log_level, LogLevel, LogLevelOpt},
+        path_resolve_home::path_resolve_home,
+        slice_or_box::SliceOrBox,
     },
 };
 
@@ -37,9 +39,8 @@ use evobench_evaluator::{
 #[clap(set_term_width = get_terminal_width())]
 /// Schedule (and query?) benchmarking jobs.
 struct Opts {
-    /// Show what is done
-    #[clap(short, long)]
-    verbose: bool,
+    #[clap(flatten)]
+    log_level: LogLevelOpt,
 
     /// Override the path to the config file (default: the paths
     /// `~/.evobench-run.*` where a single one exists where the `*` is
@@ -217,12 +218,12 @@ fn run_queues(
 
 fn main() -> Result<()> {
     let Opts {
-        verbose,
+        log_level: _log_level, // avoid conflict with log_level()
         config,
         subcommand,
     } = Opts::parse();
 
-    set_verbose(verbose);
+    set_log_level(_log_level.into());
 
     // COPY-PASTE from List action in jobqueue.rs
     let get_filename = |entry: &Entry<_, _>| -> Result<String> {
@@ -466,7 +467,8 @@ fn main() -> Result<()> {
                         let (current_stop_start, _num_jobs_handled, _termination_reason) =
                             run_queue.run(
                                 false,
-                                verbose,
+                                // verbose:
+                                log_level() >= LogLevel::Info,
                                 stop_at,
                                 |run_parameters| {
                                     run_job(
@@ -498,7 +500,8 @@ fn main() -> Result<()> {
                             conf,
                             queues,
                             working_directory_pool,
-                            verbose,
+                            // verbose:
+                            log_level() >= LogLevel::Info,
                             dry_run,
                             &global_app_state_dir,
                         )?;

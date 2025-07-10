@@ -6,15 +6,7 @@ use std::{fmt::Display, str::FromStr};
 use anyhow::{anyhow, bail};
 use chrono::{DateTime, Days, Local, NaiveDate, TimeZone};
 
-use crate::serde::date_and_time::LocalNaiveTime;
-
-macro_rules! debug {
-    { $fmt:expr $(, $arg:expr)* } => {
-        if false {
-            eprintln!($fmt $(, $arg)*)
-        }
-    }
-}
+use crate::{debug, serde::date_and_time::LocalNaiveTime};
 
 pub struct LocalNaiveTimeRange {
     pub from: LocalNaiveTime,
