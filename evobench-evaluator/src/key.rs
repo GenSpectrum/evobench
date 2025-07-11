@@ -20,7 +20,7 @@
 //! Custom parameters can be given and be relevant, e.g. whether
 //! providing input data to an application sorted or not.
 
-use std::{collections::BTreeMap, num::NonZeroU32, ops::Deref, path::PathBuf};
+use std::{collections::BTreeMap, fmt::Display, num::NonZeroU32, ops::Deref, path::PathBuf};
 
 use anyhow::{bail, Result};
 use itertools::Itertools;
@@ -183,6 +183,24 @@ impl RunParameters {
         }
         path.push(self.commit_id.to_string());
         path
+    }
+}
+
+pub struct DisplayRunParametersWithTab<'t>(pub &'t RunParameters);
+
+impl<'t> Display for DisplayRunParametersWithTab<'t> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let RunParameters {
+            commit_id,
+            custom_parameters,
+        } = self.0;
+        write!(f, "{commit_id}\t")?;
+        let mut is_first = true;
+        for (k, v) in custom_parameters.btree_map().iter() {
+            write!(f, "{}{k}={v}", if is_first { "" } else { "," })?;
+            is_first = false;
+        }
+        Ok(())
     }
 }
 

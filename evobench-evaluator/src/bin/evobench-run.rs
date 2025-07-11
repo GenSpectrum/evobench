@@ -9,7 +9,7 @@ use evobench_evaluator::{
     config_file::{self, save_config_file, ConfigFile},
     get_terminal_width::get_terminal_width,
     git::GitHash,
-    key::RunParametersOpts,
+    key::{DisplayRunParametersWithTab, RunParametersOpts},
     key_val_fs::key_val::Entry,
     run::{
         benchmarking_job::{BenchmarkingJobOpts, BenchmarkingJobSettingsOpts},
@@ -284,7 +284,8 @@ fn main() -> Result<()> {
             flat_jobs.sort_by_key(|v| v.1);
             for (params, insertion_time) in flat_jobs {
                 let t = system_time_to_rfc3339(insertion_time);
-                println!("{t}\t{params:?}");
+                let params = DisplayRunParametersWithTab(&params);
+                println!("{t}\t{params}");
             }
         }
 
