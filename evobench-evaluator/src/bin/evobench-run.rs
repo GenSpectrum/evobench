@@ -3,13 +3,18 @@ use clap::Parser;
 use itertools::Itertools;
 use run_git::git::GitWorkingDir;
 
-use std::{path::PathBuf, str::FromStr};
+use std::{
+    fmt::Display,
+    io::{stdout, BufWriter, Write},
+    path::PathBuf,
+    str::FromStr,
+};
 
 use evobench_evaluator::{
     config_file::{self, save_config_file, ConfigFile},
     get_terminal_width::get_terminal_width,
     git::GitHash,
-    key::{DisplayRunParametersWithTab, RunParametersOpts},
+    key::{RunParameters, RunParametersOpts},
     key_val_fs::key_val::Entry,
     run::{
         benchmarking_job::{BenchmarkingJobOpts, BenchmarkingJobSettingsOpts},
@@ -27,6 +32,7 @@ use evobench_evaluator::{
         git_branch_name::GitBranchName,
         paths::ProperFilename,
     },
+    terminal_table::TerminalTable,
     utillib::{
         logging::{set_log_level, LogLevelOpt},
         path_resolve_home::path_resolve_home,
@@ -67,7 +73,12 @@ enum SubCommand {
 
     /// Show the list of all inserted jobs, including already
     /// processed ones
-    ListAll,
+    ListAll {
+        /// Whether to show the table as CSV (with '\t' as separator)
+        /// instead of human-readable
+        #[clap(long)]
+        tsv: bool,
+    },
 
     /// List the currently scheduled and running jobs
     List {
@@ -264,7 +275,7 @@ fn main() -> Result<()> {
             save_config_file(&output_path, &*conf)?;
         }
 
-        SubCommand::ListAll => {
+        SubCommand::ListAll { tsv } => {
             let already_inserted = open_already_inserted(&global_app_state_dir)?;
 
             let mut flat_jobs = Vec::new();
@@ -282,11 +293,23 @@ fn main() -> Result<()> {
                 }
             }
             flat_jobs.sort_by_key(|v| v.1);
+            let table = TerminalTable::new(
+                &[38, 43],
+                &["Insertion time", "Commit id", "Custom parameters"],
+                tsv,
+            );
+            let mut out = BufWriter::new(stdout().lock());
+            table.write_title_row(&mut out)?;
             for (params, insertion_time) in flat_jobs {
                 let t = system_time_to_rfc3339(insertion_time);
-                let params = DisplayRunParametersWithTab(&params);
-                println!("{t}\t{params}");
+                let RunParameters {
+                    commit_id,
+                    custom_parameters,
+                } = params;
+                let values: &[&dyn Display] = &[&t, &commit_id, &custom_parameters];
+                table.write_data_row(values, &mut out)?;
             }
+            out.flush()?;
         }
 
         SubCommand::List { verbose } => {

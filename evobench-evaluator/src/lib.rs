@@ -31,6 +31,7 @@ pub mod stats;
 pub mod table;
 pub mod table_field_view;
 pub mod table_view;
+pub mod terminal_table;
 pub mod times;
 pub mod tree;
 pub mod utillib;

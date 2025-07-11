@@ -90,6 +90,17 @@ impl CustomParameters {
     }
 }
 
+impl Display for CustomParameters {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut is_first = true;
+        for (k, v) in self.btree_map().iter() {
+            write!(f, "{}{k}={v}", if is_first { "" } else { "," })?;
+            is_first = false;
+        }
+        Ok(())
+    }
+}
+
 impl CustomParametersOpts {
     pub fn checked(
         &self,
@@ -183,24 +194,6 @@ impl RunParameters {
         }
         path.push(self.commit_id.to_string());
         path
-    }
-}
-
-pub struct DisplayRunParametersWithTab<'t>(pub &'t RunParameters);
-
-impl<'t> Display for DisplayRunParametersWithTab<'t> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let RunParameters {
-            commit_id,
-            custom_parameters,
-        } = self.0;
-        write!(f, "{commit_id}\t")?;
-        let mut is_first = true;
-        for (k, v) in custom_parameters.btree_map().iter() {
-            write!(f, "{}{k}={v}", if is_first { "" } else { "," })?;
-            is_first = false;
-        }
-        Ok(())
     }
 }
 
