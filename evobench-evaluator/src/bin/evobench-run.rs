@@ -3,12 +3,7 @@ use clap::Parser;
 use itertools::Itertools;
 use run_git::git::GitWorkingDir;
 
-use std::{
-    fmt::Display,
-    io::{stdout, BufWriter, Write},
-    path::PathBuf,
-    str::FromStr,
-};
+use std::{fmt::Display, io::stdout, path::PathBuf, str::FromStr};
 
 use evobench_evaluator::{
     config_file::{self, save_config_file, ConfigFile},
@@ -293,13 +288,12 @@ fn main() -> Result<()> {
                 }
             }
             flat_jobs.sort_by_key(|v| v.1);
-            let table = TerminalTable::new(
+            let mut table = TerminalTable::start(
                 &[38, 43],
                 &["Insertion time", "Commit id", "Custom parameters"],
                 terminal_table_opts,
-            );
-            let mut out = BufWriter::new(stdout().lock());
-            table.write_title_row(&mut out)?;
+                stdout().lock(),
+            )?;
             for (params, insertion_time) in flat_jobs {
                 let t = system_time_to_rfc3339(insertion_time);
                 let RunParameters {
@@ -307,9 +301,9 @@ fn main() -> Result<()> {
                     custom_parameters,
                 } = params;
                 let values: &[&dyn Display] = &[&t, &commit_id, &custom_parameters];
-                table.write_data_row(values, &mut out)?;
+                table.write_data_row(values)?;
             }
-            out.flush()?;
+            drop(table.finish()?);
         }
 
         SubCommand::List { verbose } => {

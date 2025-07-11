@@ -8,7 +8,10 @@
 //! can print tabs or newlines (or on the terminal even spaces could
 //! make it ambiguous).
 
-use std::{fmt::Display, io::Write};
+use std::{
+    fmt::Display,
+    io::{BufWriter, IsTerminal, Write},
+};
 
 use anyhow::{anyhow, bail, Result};
 use itertools::Itertools;
@@ -57,45 +60,64 @@ impl TerminalTableOpts {
     }
 }
 
+struct TerminalTableSettings {
+    widths: Vec<usize>,
+    titles: Vec<String>,
+    padding: String,
+    is_terminal: bool,
+}
+
 /// Capable of streaming, which requires defining the column widths
 /// beforehand. If a value is wider than the defined column width for
 /// that value, a single space is still printed between the value and
 /// the next. The last column does not need a width, and no padding is
 /// printed.
-pub struct TerminalTable {
-    widths: Vec<usize>,
-    titles: Vec<String>,
-    padding: String,
-    /// Whether to print as CSV (with tab as separator) and omit
-    /// printing ANSI codes and padding.
+pub struct TerminalTable<O: Write + IsTerminal> {
     pub opts: TerminalTableOpts,
+    settings: TerminalTableSettings,
+    out: BufWriter<O>,
 }
 
-impl TerminalTable {
+impl<O: Write + IsTerminal> TerminalTable<O> {
     /// The length of `widths` must be one less than that of `titles`
     /// (the last column does not need a width).  Appends a space to
     /// each title, to make sure italic text is not clipped on
     /// terminals. That will be fine as you'll want your widths to be
     /// at least 1 longer than the text itself, anyway.
-    pub fn new<S: Display>(widths: &[usize], titles: &[S], opts: TerminalTableOpts) -> Self {
+    pub fn start<S: Display>(
+        widths: &[usize],
+        titles: &[S],
+        opts: TerminalTableOpts,
+        out: O,
+    ) -> Result<Self> {
         let titles = titles.iter().map(|title| format!("{title} ")).collect();
         let max_width = widths.iter().max().copied().unwrap_or(0);
         let padding = " ".repeat(max_width);
-        Self {
-            widths: widths.to_owned(),
-            titles,
-            padding,
+        let is_terminal = out.is_terminal();
+        let mut slf = Self {
+            settings: TerminalTableSettings {
+                widths: widths.to_owned(),
+                titles,
+                padding,
+                is_terminal,
+            },
             opts,
-        }
+            out: BufWriter::new(out),
+        };
+        slf.write_title_row()?;
+        Ok(slf)
     }
 
+    // Not making this an instance method so that we can give mut vs
+    // non-mut parts independently
     fn write_row<V: Display>(
-        &self,
+        opts: &TerminalTableOpts,
+        settings: &TerminalTableSettings,
+        out: &mut BufWriter<O>,
         row: &[V],
         line_style: Option<&Style>,
-        out: &mut impl Write,
     ) -> Result<()> {
-        let lens = (self.widths.len(), row.len());
+        let lens = (settings.widths.len(), row.len());
         let (l1, l2) = lens;
         if l1
             != l2
@@ -106,8 +128,8 @@ impl TerminalTable {
         }
 
         let mut is_first = true;
-        for either_or_both in self.widths.iter().zip_longest(row) {
-            if self.opts.tsv && !is_first {
+        for either_or_both in settings.widths.iter().zip_longest(row) {
+            if opts.tsv && !is_first {
                 out.write_all("\t".as_bytes())?;
             }
 
@@ -128,10 +150,10 @@ impl TerminalTable {
             }
 
             if let Some(width) = either_or_both.left() {
-                if !self.opts.tsv {
+                if !opts.tsv {
                     if *width > s_len {
                         let needed_padding = width - s_len;
-                        let padding = &self.padding[0..needed_padding];
+                        let padding = &settings.padding[0..needed_padding];
                         out.write_all(padding.as_bytes())?;
                     } else {
                         // write out at least 1 space anyway
@@ -146,23 +168,28 @@ impl TerminalTable {
         Ok(())
     }
 
-    pub fn write_title_row(&self, out: &mut impl Write) -> Result<()> {
+    pub fn write_title_row(&mut self) -> Result<()> {
         const STYLE: Style = Style::new().bold().italic();
-        self.write_row(
-            &self.titles,
-            if self.opts.want_color(
-                // detected_terminal:
-                true, // XX
-            ) {
+        Self::write_row(
+            &self.opts,
+            &self.settings,
+            &mut self.out,
+            &self.settings.titles,
+            if self.opts.want_color(self.settings.is_terminal) {
                 Some(&STYLE)
             } else {
                 None
             },
-            out,
         )
     }
 
-    pub fn write_data_row<V: Display>(&self, data: &[V], out: &mut impl Write) -> Result<()> {
-        self.write_row(data, None, out)
+    pub fn write_data_row<V: Display>(&mut self, data: &[V]) -> Result<()> {
+        Self::write_row(&self.opts, &self.settings, &mut self.out, data, None)
+    }
+
+    pub fn finish(self) -> Result<O> {
+        self.out
+            .into_inner()
+            .map_err(|e| anyhow!("flushing the buffer: {}", e.error()))
     }
 }
