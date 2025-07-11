@@ -12,7 +12,50 @@ use std::{fmt::Display, io::Write};
 
 use anyhow::{anyhow, bail, Result};
 use itertools::Itertools;
+use strum_macros::EnumString;
 use yansi::{Paint, Style};
+
+#[derive(Debug, EnumString, PartialEq, Clone, Copy)]
+#[strum(serialize_all = "kebab_case")]
+pub enum ColorOpt {
+    Auto,
+    Always,
+    Never,
+}
+
+impl ColorOpt {
+    pub fn want_color(self, detected_terminal: bool) -> bool {
+        match self {
+            ColorOpt::Auto => detected_terminal,
+            ColorOpt::Always => true,
+            ColorOpt::Never => false,
+        }
+    }
+}
+
+#[derive(Debug, clap::Args, Clone)]
+pub struct TerminalTableOpts {
+    /// Whether to show the table as CSV (with '\t' as separator)
+    /// instead of human-readable
+    #[clap(long)]
+    tsv: bool,
+
+    /// Whether to use ANSI codes to format human-readable output on
+    /// terminals (auto, always, never)
+    #[clap(long, default_value = "auto")]
+    color: ColorOpt,
+}
+
+impl TerminalTableOpts {
+    pub fn want_color(&self, detected_terminal: bool) -> bool {
+        let Self { tsv, color } = self;
+        if *tsv {
+            false
+        } else {
+            color.want_color(detected_terminal)
+        }
+    }
+}
 
 /// Capable of streaming, which requires defining the column widths
 /// beforehand. If a value is wider than the defined column width for
@@ -25,7 +68,7 @@ pub struct TerminalTable {
     padding: String,
     /// Whether to print as CSV (with tab as separator) and omit
     /// printing ANSI codes and padding.
-    pub tsv_mode: bool,
+    pub opts: TerminalTableOpts,
 }
 
 impl TerminalTable {
@@ -34,7 +77,7 @@ impl TerminalTable {
     /// each title, to make sure italic text is not clipped on
     /// terminals. That will be fine as you'll want your widths to be
     /// at least 1 longer than the text itself, anyway.
-    pub fn new<S: Display>(widths: &[usize], titles: &[S], tsv_mode: bool) -> Self {
+    pub fn new<S: Display>(widths: &[usize], titles: &[S], opts: TerminalTableOpts) -> Self {
         let titles = titles.iter().map(|title| format!("{title} ")).collect();
         let max_width = widths.iter().max().copied().unwrap_or(0);
         let padding = " ".repeat(max_width);
@@ -42,7 +85,7 @@ impl TerminalTable {
             widths: widths.to_owned(),
             titles,
             padding,
-            tsv_mode,
+            opts,
         }
     }
 
@@ -64,7 +107,7 @@ impl TerminalTable {
 
         let mut is_first = true;
         for either_or_both in self.widths.iter().zip_longest(row) {
-            if self.tsv_mode && !is_first {
+            if self.opts.tsv && !is_first {
                 out.write_all("\t".as_bytes())?;
             }
 
@@ -85,7 +128,7 @@ impl TerminalTable {
             }
 
             if let Some(width) = either_or_both.left() {
-                if !self.tsv_mode {
+                if !self.opts.tsv {
                     if *width > s_len {
                         let needed_padding = width - s_len;
                         let padding = &self.padding[0..needed_padding];
@@ -107,7 +150,14 @@ impl TerminalTable {
         const STYLE: Style = Style::new().bold().italic();
         self.write_row(
             &self.titles,
-            if self.tsv_mode { None } else { Some(&STYLE) },
+            if self.opts.want_color(
+                // detected_terminal:
+                true, // XX
+            ) {
+                Some(&STYLE)
+            } else {
+                None
+            },
             out,
         )
     }

@@ -32,7 +32,7 @@ use evobench_evaluator::{
         git_branch_name::GitBranchName,
         paths::ProperFilename,
     },
-    terminal_table::TerminalTable,
+    terminal_table::{TerminalTable, TerminalTableOpts},
     utillib::{
         logging::{set_log_level, LogLevelOpt},
         path_resolve_home::path_resolve_home,
@@ -74,10 +74,8 @@ enum SubCommand {
     /// Show the list of all inserted jobs, including already
     /// processed ones
     ListAll {
-        /// Whether to show the table as CSV (with '\t' as separator)
-        /// instead of human-readable
-        #[clap(long)]
-        tsv: bool,
+        #[clap(flatten)]
+        terminal_table_opts: TerminalTableOpts,
     },
 
     /// List the currently scheduled and running jobs
@@ -275,7 +273,9 @@ fn main() -> Result<()> {
             save_config_file(&output_path, &*conf)?;
         }
 
-        SubCommand::ListAll { tsv } => {
+        SubCommand::ListAll {
+            terminal_table_opts,
+        } => {
             let already_inserted = open_already_inserted(&global_app_state_dir)?;
 
             let mut flat_jobs = Vec::new();
@@ -296,7 +296,7 @@ fn main() -> Result<()> {
             let table = TerminalTable::new(
                 &[38, 43],
                 &["Insertion time", "Commit id", "Custom parameters"],
-                tsv,
+                terminal_table_opts,
             );
             let mut out = BufWriter::new(stdout().lock());
             table.write_title_row(&mut out)?;
