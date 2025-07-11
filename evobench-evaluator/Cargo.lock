@@ -446,6 +446,7 @@ dependencies = [
  "terminal_size",
  "thiserror 1.0.40",
  "walkdir",
+ "yansi",
 ]
 
 [[package]]
