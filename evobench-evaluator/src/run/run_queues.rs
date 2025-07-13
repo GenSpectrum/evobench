@@ -327,6 +327,9 @@ impl RunQueues {
                      uses a name also used in the pipeline"
                 )
             }
+            if !run_queue.schedule_condition.is_grave_yard() {
+                bail!("the `erroneous_jobs_queue` must be of kind `GraveYard`")
+            }
         }
         if grave_yard_count > 1 {
             bail!("can have at most one `GraveYard` queue");
