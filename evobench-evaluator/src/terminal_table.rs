@@ -79,11 +79,15 @@ pub struct TerminalTable<O: Write + IsTerminal> {
 }
 
 impl<O: Write + IsTerminal> TerminalTable<O> {
+    /// How many spaces to put between columns in human-readable
+    /// format at minimum, even if a value is longer than anticipated.
+    const MINIMAL_PADDING_LEN: usize = 2;
+
     /// The length of `widths` must be one less than that of `titles`
     /// (the last column does not need a width).  Appends a space to
     /// each title, to make sure italic text is not clipped on
     /// terminals. That will be fine as you'll want your widths to be
-    /// at least 1 longer than the text itself, anyway.
+    /// at least 2 longer than the text itself, anyway.
     pub fn start<S: Display>(
         widths: &[usize],
         titles: &[S],
@@ -151,14 +155,10 @@ impl<O: Write + IsTerminal> TerminalTable<O> {
 
             if let Some(width) = either_or_both.left() {
                 if !opts.tsv {
-                    if *width > s_len {
-                        let needed_padding = width - s_len;
-                        let padding = &settings.padding[0..needed_padding];
-                        out.write_all(padding.as_bytes())?;
-                    } else {
-                        // write out at least 1 space anyway
-                        out.write_all(b" ")?;
-                    }
+                    let missing_padding_len = width.checked_sub(s_len).unwrap_or(0);
+                    let wanted_padding_len = missing_padding_len.max(Self::MINIMAL_PADDING_LEN);
+                    let padding = &settings.padding[0..wanted_padding_len];
+                    out.write_all(padding.as_bytes())?;
                 }
             }
 
