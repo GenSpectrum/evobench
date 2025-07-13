@@ -191,11 +191,12 @@ impl RunQueues {
         mut execute: impl FnMut(RunParameters) -> Result<()>,
         mut current_stop_start: Option<SliceOrBox<'conf, String>>,
     ) -> Result<Option<SliceOrBox<'conf, String>>> {
-        // The current time will be considerably out of date by the
-        // time ranged_queues get to run. Hence do *not* keep this
-        // time around, get a fresh one below.
-        let (immediate_queues, ranged_queues_by_time) =
-            self.immediate_and_ranged_queues(&get_now_chrono());
+        let (immediate_queues, ranged_queues_by_time) = self.immediate_and_ranged_queues(
+            // The current time will be considerably out of date by the
+            // time ranged_queues get to run. Hence do *not* keep this
+            // time around, get a fresh one below.
+            &get_now_chrono(),
+        );
 
         let mut did_something = false;
 
