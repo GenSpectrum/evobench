@@ -423,6 +423,7 @@ fn main() -> Result<()> {
                     &conf.remote_repository.remote_branch_names,
                 )?
             };
+            let num_commits = commits.len();
 
             let mut benchmarking_jobs = Vec::new();
             for commit_id in commits {
@@ -452,13 +453,16 @@ fn main() -> Result<()> {
 
             if let Some(errors) = maybe_errors {
                 bail!(
-                    "inserted {n}/{n_original} jobs, \
+                    "inserted {n}/{n_original} jobs (for {num_commits} commits), \
                      but also got git reference resolution errors: {errors}"
                 )
             } else {
                 if !quiet {
                     if n > 0 {
-                        println!("inserted {n}/{n_original} jobs");
+                        println!(
+                            "inserted {n}/{n_original} jobs \
+                                  (for {num_commits} commits)"
+                        );
                     }
                 }
             }
