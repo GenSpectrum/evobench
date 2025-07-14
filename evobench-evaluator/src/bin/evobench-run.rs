@@ -3,7 +3,9 @@ use clap::Parser;
 use itertools::Itertools;
 use run_git::git::GitWorkingDir;
 
-use std::{fmt::Display, io::stdout, path::PathBuf, str::FromStr};
+use std::{
+    fmt::Display, io::stdout, path::PathBuf, process::exit, str::FromStr, thread, time::Duration,
+};
 
 use evobench_evaluator::{
     config_file::{self, save_config_file, ConfigFile},
@@ -17,21 +19,17 @@ use evobench_evaluator::{
         global_app_state_dir::GlobalAppStateDir,
         insert_jobs::{insert_jobs, open_already_inserted, ForceOpt, QuietOpt},
         polling_pool::PollingPool,
+        run_context::RunContext,
         run_job::{run_job, DryRun},
-        run_queue::{perhaps_run_current_stop_start, RunQueue},
-        run_queues::{Never, RunQueues},
+        run_queue::RunQueue,
+        run_queues::{get_now_chrono, RunQueues},
         working_directory_pool::WorkingDirectoryPool,
     },
-    serde::{
-        date_and_time::{system_time_to_rfc3339, DateTimeWithOffset},
-        git_branch_name::GitBranchName,
-        paths::ProperFilename,
-    },
+    serde::{date_and_time::system_time_to_rfc3339, git_branch_name::GitBranchName},
     terminal_table::{TerminalTable, TerminalTableOpts},
     utillib::{
         logging::{set_log_level, LogLevelOpt},
         path_resolve_home::path_resolve_home,
-        slice_or_box::SliceOrBox,
     },
 };
 
@@ -156,14 +154,11 @@ pub enum DaemonizationAction {
 
 #[derive(Debug, Clone, clap::Subcommand)]
 pub enum RunMode {
-    /// Run through the jobs in one queue, exit if there are no jobs
-    /// left or, if given, the `stop_at` time is reached
-    Once {
-        /// Stop processing at the given time in the local time zone
-        #[clap(short, long)]
-        stop_at: Option<DateTimeWithOffset>,
-
-        queue_name: ProperFilename,
+    /// Run the single jobs that is first due.
+    One {
+        /// Exit with code 1 if there is no runnable job
+        #[clap(long)]
+        false_if_none: bool,
     },
     /// Run forever, until terminated
     Daemon {
@@ -174,7 +169,8 @@ pub enum RunMode {
     },
 }
 
-/// Run through the queues forever, but pick up config changes
+/// Run through the queues forever unless `once` is true (in which
+/// case it returns true if a job was run), but pick up config changes
 fn run_queues(
     config_path: Option<PathBuf>,
     mut conf: ConfigFile<RunConfig>,
@@ -182,11 +178,13 @@ fn run_queues(
     mut working_directory_pool: WorkingDirectoryPool,
     dry_run: DryRun,
     global_app_state_dir: &GlobalAppStateDir,
-) -> Result<Never> {
-    let mut current_stop_start = None;
+    once: bool,
+) -> Result<bool> {
+    let mut run_context = RunContext::default();
     loop {
         // XX handle errors without exiting? Or do that above
-        current_stop_start = queues.run(
+
+        let ran = queues.run_next_job(
             |run_parameters| {
                 run_job(
                     &mut working_directory_pool,
@@ -196,14 +194,19 @@ fn run_queues(
                     &path_resolve_home(&conf.output_base_dir)?,
                 )
             },
-            current_stop_start,
+            &mut run_context,
+            get_now_chrono(),
         )?;
+
+        if once {
+            return Ok(ran);
+        }
+
+        thread::sleep(Duration::from_secs(5));
+
         if conf.perhaps_reload_config(config_path.as_ref()) {
             // XX only if changed
             eprintln!("reloaded configuration, re-initializing");
-            // Drop locks before getting new ones; to be able to do that, first ownify the data to be carried over:
-            current_stop_start = current_stop_start
-                .map(|v| -> SliceOrBox<'static, String> { v.into_owned().into() });
             drop(queues);
             drop(working_directory_pool);
             // XX handle errors without exiting? Or do that above
@@ -469,7 +472,7 @@ fn main() -> Result<()> {
         }
 
         SubCommand::Run { dry_run, mode } => {
-            let mut working_directory_pool = WorkingDirectoryPool::open(
+            let working_directory_pool = WorkingDirectoryPool::open(
                 conf.working_directory_pool.clone(),
                 conf.remote_repository.url.clone(),
                 true,
@@ -477,36 +480,19 @@ fn main() -> Result<()> {
             )?;
 
             match mode {
-                RunMode::Once {
-                    stop_at,
-                    queue_name,
-                } => {
-                    if let Some((run_queue, next_queue)) = queues.get_run_queue_by_name(&queue_name)
-                    {
-                        let stop_at = stop_at.map(|t| t.to_systemtime());
-                        let (current_stop_start, _num_jobs_handled, _termination_reason) =
-                            run_queue.run(
-                                false,
-                                stop_at,
-                                |run_parameters| {
-                                    run_job(
-                                        &mut working_directory_pool,
-                                        run_parameters,
-                                        dry_run,
-                                        &conf.benchmarking_command,
-                                        &path_resolve_home(&conf.output_base_dir)?,
-                                    )
-                                },
-                                next_queue,
-                                queues.erroneous_jobs_queue(),
-                                None,
-                            )?;
-                        perhaps_run_current_stop_start(current_stop_start)?;
-                    } else {
-                        bail!(
-                            "unknown queue {queue_name} -- your configuration defines {:?}",
-                            queues.queue_names()
-                        )
+                RunMode::One { false_if_none } => {
+                    let ran = run_queues(
+                        config,
+                        conf,
+                        queues,
+                        working_directory_pool,
+                        dry_run,
+                        &global_app_state_dir,
+                        true,
+                    )?;
+                    if false_if_none {
+                        let code = if ran { 0 } else { 1 };
+                        exit(code)
                     }
                 }
                 RunMode::Daemon { action } => {
@@ -520,6 +506,7 @@ fn main() -> Result<()> {
                             working_directory_pool,
                             dry_run,
                             &global_app_state_dir,
+                            false,
                         )?;
                     }
                 }

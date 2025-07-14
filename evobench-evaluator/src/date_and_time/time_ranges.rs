@@ -181,6 +181,7 @@ impl Display for LocalNaiveTimeRange {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct DateTimeRange<Tz: TimeZone> {
     pub from: DateTime<Tz>,
     pub to: DateTime<Tz>,

@@ -1,11 +1,6 @@
 use std::{
-    collections::BTreeSet,
-    convert::Infallible,
-    ops::Deref,
-    path::PathBuf,
-    sync::Arc,
-    thread::sleep,
-    time::{Duration, SystemTime},
+    collections::BTreeSet, convert::Infallible, ops::Neg, path::PathBuf, sync::Arc,
+    time::SystemTime,
 };
 
 use anyhow::{bail, Result};
@@ -13,44 +8,30 @@ use chrono::{DateTime, Local};
 use itertools::{EitherOrBoth, Itertools};
 
 use crate::{
+    ctx,
     date_and_time::time_ranges::{DateTimeRange, LocalNaiveTimeRange},
-    debug, info,
+    info,
     key::RunParameters,
     key_val_fs::{
-        key_val::{KeyValConfig, KeyValSync},
-        queue::Queue,
+        key_val::{KeyValConfig, KeyValError, KeyValSync},
+        queue::{Queue, QueueGetItemOpts, QueueItem, TimeKey},
     },
     path_util::AppendToPath,
-    run::run_queue::TerminationReason,
     serde::paths::ProperFilename,
-    utillib::slice_or_box::SliceOrBox,
+    utillib::logging::{log_level, LogLevel},
 };
 
 use super::{
     benchmarking_job::BenchmarkingJob,
     config::{QueuesConfig, ScheduleCondition},
     global_app_state_dir::GlobalAppStateDir,
-    run_queue::{perhaps_run_current_stop_start, RunQueue},
+    run_context::RunContext,
+    run_queue::{RunQueue, RunQueueWithNext},
 };
 
-fn get_now_chrono() -> DateTime<Local> {
+// Move, where?
+pub fn get_now_chrono() -> DateTime<Local> {
     SystemTime::now().into()
-}
-
-/// A `RunQueue` paired with its optional successor `RunQueue` (the
-/// queue where jobs go next)
-#[derive(Debug, Clone, Copy)]
-pub struct RunQueueWithNext<'conf, 'r> {
-    pub current: &'r RunQueue<'conf>,
-    pub next: Option<&'r RunQueue<'conf>>,
-}
-
-impl<'conf, 'r> Deref for RunQueueWithNext<'conf, 'r> {
-    type Target = RunQueue<'conf>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.current
-    }
 }
 
 pub type Never = Infallible;
@@ -90,15 +71,15 @@ impl RunQueues {
     }
 
     /// Also returns the queue following the requested one, if any
-    pub fn get_run_queue_by_name(
+    pub fn get_run_queue_with_next_by_name(
         &self,
         file_name: &ProperFilename,
-    ) -> Option<(&RunQueue, Option<&RunQueue>)> {
+    ) -> Option<RunQueueWithNext> {
         let mut queues = self.pipeline().iter();
-        while let Some(run_queue) = queues.next() {
-            if &run_queue.file_name == file_name {
-                let next_queue = queues.next();
-                return Some((run_queue, next_queue));
+        while let Some(current) = queues.next() {
+            if current.file_name == *file_name {
+                let next = queues.next();
+                return Some(RunQueueWithNext { current, next });
             }
         }
         None
@@ -106,7 +87,7 @@ impl RunQueues {
 
     /// The `RunQueue`s paired with their successor (still in the
     /// original, configured, order)
-    pub fn run_queue_with_nexts<'s>(&'s self) -> Vec<RunQueueWithNext<'s, 's>> {
+    pub fn run_queue_with_nexts<'s>(&'s self) -> impl Iterator<Item = RunQueueWithNext<'s, 's>> {
         self.pipeline()
             .iter()
             .zip_longest(self.pipeline().iter().skip(1))
@@ -121,164 +102,141 @@ impl RunQueues {
                 },
                 EitherOrBoth::Right(_) => unreachable!("because the left sequence is longer"),
             })
-            .collect()
     }
 
-    /// The queues with `ScheduleCondition::Immediately`, and those
-    /// with time ranges, as separate vectors (no other queues with
-    /// runnable jobs than those two groups currently exist). The
-    /// immediate group is in the original sort order, the group with
-    /// time ranges is sorted by start time (with the times resolved
-    /// based on `reference_time`, possibly omitted if times do not
-    /// resolve around `reference_time`), ready to process
-    /// sequentially.
-    fn immediate_and_ranged_queues(
-        &self,
-        reference_time: &DateTime<Local>,
-    ) -> (
-        Vec<RunQueueWithNext>,
-        Vec<(DateTimeRange<Local>, RunQueueWithNext)>,
-    ) {
-        let mut immediate_queues: Vec<RunQueueWithNext> = Vec::new();
-        let mut ranged_queues: Vec<(DateTimeRange<Local>, RunQueueWithNext)> = Vec::new();
-        let mut other: Vec<RunQueueWithNext> = Vec::new();
-
-        for q in self.run_queue_with_nexts() {
-            if *q.schedule_condition == ScheduleCondition::Immediately {
-                immediate_queues.push(q);
-            } else if let Some(range) = q.schedule_condition.time_range() {
-                let dtr: Option<DateTimeRange<Local>> =
-                    LocalNaiveTimeRange::from(&range).after_datetime(reference_time, true);
-                if let Some(dtr) = dtr {
-                    ranged_queues.push((dtr, q));
-                } else {
-                    info!(
-                        "times in {range:?} do not resolve for {reference_time}, omitting queue {:?}",
-                        q.file_name,
-                    )
-                }
-            } else if *q.schedule_condition == ScheduleCondition::GraveYard {
-                // Not scheduling jobs from this queue
-                ()
-            } else {
-                other.push(q);
-            }
-        }
-
-        if !other.is_empty() {
-            // XXX should instead add a method to do the above ^, checked statically!
-            unreachable!("queues I don't know how to schedule: {other:?}")
-        }
-
-        ranged_queues.sort_by_key(|(range, _)| range.from.clone());
-
-        (immediate_queues, ranged_queues)
-    }
-
-    /// Run jobs in the queues, for one cycle; this needs to be run in
-    /// a loop forever for daemon style processing. The reason this
-    /// doesn't do the looping inside is to allow for a reload of the
-    /// queue config and then queues. `current_stop_start`, if given,
-    /// represents an active `stop_start` command that was run with
-    /// `stop` and now needs a `start` when the next running action
-    /// does not require the same command to be `stop`ed. Likewise,
-    /// `run` returns the active `stop_start` command, if any, by the
-    /// time it returns. The caller should pass that back into `run`
-    /// on the next iteration. Using SliceOrBox to allow carrying it
-    /// over a config reload.
-    pub fn run<'conf>(
-        &'conf self,
-        mut execute: impl FnMut(RunParameters) -> Result<()>,
-        mut current_stop_start: Option<SliceOrBox<'conf, String>>,
-    ) -> Result<Option<SliceOrBox<'conf, String>>> {
-        let (immediate_queues, ranged_queues_by_time) = self.immediate_and_ranged_queues(
-            // The current time will be considerably out of date by the
-            // time ranged_queues get to run. Hence do *not* keep this
-            // time around, get a fresh one below.
-            &get_now_chrono(),
-        );
-
-        let mut did_something = false;
-
-        // Immediate queries always have priority, regardless of
-        // concurrent ranged queues. Do not pass a timeout.
-        for q in &immediate_queues {
-            let num_jobs_handled;
-            (current_stop_start, num_jobs_handled, _) = q.run(
-                false,
-                None,
-                &mut execute,
-                q.next,
-                self.erroneous_jobs_queue(),
-                current_stop_start,
-            )?;
-            if num_jobs_handled > 0 {
-                did_something = true;
-            }
-        }
-
-        for (datetime_span, q) in &ranged_queues_by_time {
-            // Get the current time again, it may very well be that by
-            // now (after processing the immediate queues above, or
-            // previous ranged queues) the calculated time ranges have
-            // passed already.
-            let now_chrono = get_now_chrono();
-            if datetime_span.contains(&now_chrono) {
-                debug!(
-                    "{now_chrono:?} -> processing queue {} with time range {datetime_span}",
-                    q.file_name
-                );
-
-                let (num_jobs_handled, termination_reason);
-                (current_stop_start, num_jobs_handled, termination_reason) = q.run(
-                    false,
-                    Some(datetime_span.to.into()),
-                    &mut execute,
-                    q.next,
-                    self.erroneous_jobs_queue(),
-                    current_stop_start,
-                )?;
-                if num_jobs_handled > 0 {
-                    did_something = true;
-                }
-
-                match termination_reason {
-                    TerminationReason::Timeout => {
-                        info!("ran out of time in queue {}", q.file_name);
-                        if q.schedule_condition.move_when_time_window_ends() {
-                            let mut count = 0;
-                            for entry in q.current.queue.sorted_entries(false, None) {
-                                // XX continue in the face of
-                                // errors? Just globally in
-                                // the queue?
-                                let mut entry = entry?;
-                                let val = entry.get()?;
-                                if let Some(next) = q.next {
-                                    next.push_front(&val)?;
-                                }
-                                entry.delete()?;
-                                count += 1;
-                            }
-                            info!(
-                                "moved {count} entries to queue {:?}",
-                                q.next.map(|q| &q.file_name)
-                            );
+    /// All queues which are runnable at the given time, with their
+    /// successor queue, and calculated time window if any
+    fn active_queues<'s>(
+        &'s self,
+        reference_time: DateTime<Local>,
+    ) -> impl Iterator<Item = (RunQueueWithNext<'s, 's>, Option<DateTimeRange<Local>>)> {
+        self.run_queue_with_nexts()
+            .filter_map(move |rq| match rq.schedule_condition {
+                ScheduleCondition::Immediately => Some((rq, None)),
+                ScheduleCondition::LocalNaiveTimeWindow {
+                    stop_start: _,
+                    repeatedly: _,
+                    move_when_time_window_ends: _,
+                    from,
+                    to,
+                } => {
+                    let ltr = LocalNaiveTimeRange {
+                        from: *from,
+                        to: *to,
+                    };
+                    let dtr: Option<DateTimeRange<Local>> =
+                        ltr.after_datetime(&reference_time, true);
+                    if let Some(dtr) = dtr {
+                        if dtr.contains(&reference_time) {
+                            Some((rq, Some(dtr)))
+                        } else {
+                            None
                         }
+                    } else {
+                        info!(
+                            "times in {ltr} do not resolve for {reference_time}, \
+                             omitting queue {:?}",
+                            rq.file_name,
+                        );
+                        None
                     }
-                    TerminationReason::QueueEmpty => (),
-                    TerminationReason::GraveYard => unreachable!("not a ranged queue"),
                 }
+                ScheduleCondition::GraveYard => None,
+            })
+    }
+
+    /// Run the first or most prioritized job in the queues. Returns
+    /// true if a job was found, false if all runnable queues are
+    /// empty. This method needs to be run in a loop forever for
+    /// daemon style processing. The reason this doesn't do the
+    /// looping inside is to allow for a reload of the queue config
+    /// and then queues. `current_stop_start`, if given, represents an
+    /// active `stop_start` command that was run with `stop` and now
+    /// needs a `start` when the next running action does not require
+    /// the same command to be `stop`ed. Likewise, this method returns
+    /// the active `stop_start` command, if any, by the time it
+    /// returns. The caller should pass that back into this method on
+    /// the next iteration. Using SliceOrBox to allow carrying it over
+    /// a config reload. `now` should be the current time (at least is
+    /// understood as such), get it via `get_now_chrono()` right
+    /// before calling this method.
+    pub fn run_next_job<'s, 'conf, 'r, 'rc>(
+        &'s self,
+        execute: impl FnMut(RunParameters) -> Result<()>,
+        run_context: &mut RunContext,
+        now: DateTime<Local>,
+    ) -> Result<bool> {
+        let verbose = log_level() >= LogLevel::Info;
+        let active_queues: Vec<(RunQueueWithNext<'s, 's>, Option<DateTimeRange<Local>>)> =
+            self.active_queues(now).collect();
+
+        let job = {
+            // Get the single most prioritized job from each queue (if
+            // any). Note: these `QueueItem`s are not locked!
+            let mut jobs: Vec<(
+                &RunQueueWithNext<'s, 's>,
+                Option<DateTimeRange<Local>>,
+                QueueItem<BenchmarkingJob>,
+                BenchmarkingJob,
+            )> = active_queues
+                .iter()
+                .map(|(rq, dtr)| -> Result<Option<_>> {
+                    let mut jobs: Vec<(TimeKey, BenchmarkingJob)> = rq
+                        .jobs()
+                        .map(|r| {
+                            let (item, job) = r?;
+                            // Get key and drop item to avoid keeping
+                            // open a file handle for every entry in
+                            // the queue
+                            Ok((item.key()?, job))
+                        })
+                        .collect::<Result<_, KeyValError>>()
+                        .map_err(ctx!("reading entries from queue {:?}", *rq))?;
+                    jobs.sort_by_key(|(_, job)| job.priority.neg());
+
+                    if let Some((key, job)) = jobs.into_iter().next() {
+                        if let Some(item) = rq.queue.get_item(
+                            &key,
+                            QueueGetItemOpts {
+                                verbose,
+                                no_lock: true,
+                                error_when_locked: false,
+                                delete_first: false,
+                            },
+                        )? {
+                            Ok(Some((rq, (*dtr).clone(), item, job)))
+                        } else {
+                            info!("entry {key} has disappeared in the mean time, skipping it");
+                            Ok(None)
+                        }
+                    } else {
+                        Ok(None)
+                    }
+                })
+                .filter_map(|r| r.transpose())
+                .collect::<Result<_>>()?;
+
+            // And then get the most prioritized job of all
+            jobs.sort_by_key(|(_, _, _, job)| job.priority.neg());
+            jobs.into_iter().next()
+        };
+
+        let ran_job = if let Some((rqwn, dtr, item, job)) = job {
+            run_context.stop_start_be(rqwn.schedule_condition.stop_start())?;
+            if let Some(dtr) = dtr {
+                run_context.running_job_in_windowed_queue(&*rqwn, dtr);
             }
-        }
 
-        if !did_something {
-            // Time to close the previous processing phase.
-            perhaps_run_current_stop_start(current_stop_start)?;
-            current_stop_start = None;
-        }
+            rqwn.run_job(&item, job, self.erroneous_jobs_queue(), execute)?;
 
-        sleep(Duration::from_secs(5));
-        Ok(current_stop_start)
+            true
+        } else {
+            run_context.stop_start_be(None)?;
+
+            false
+        };
+
+        Ok(ran_job)
     }
 
     /// Verify that the queue configuration is valid

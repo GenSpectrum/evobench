@@ -67,6 +67,7 @@ define_lock_helper! {lock_shared, SharedFileLock, lock_shared}
 
 /// Accessor for an entry, embeds an open file handle, allows to load
 /// or lock-and-delete etc.
+#[derive(Debug)]
 pub struct Entry<'p, K: AsKey, V: DeserializeOwned + Serialize> {
     key_type: PhantomData<fn() -> K>,
     val_type: PhantomData<fn() -> V>,
@@ -135,7 +136,7 @@ impl<'p, K: AsKey, V: DeserializeOwned + Serialize> Entry<'p, K, V> {
     /// Returns whether a file deletion actually happened (concurrent
     /// deletes might already have removed it). XX Same caveat as with
     /// `exists`.
-    pub fn delete(&mut self) -> Result<bool, KeyValError> {
+    pub fn delete(&self) -> Result<bool, KeyValError> {
         match std::fs::remove_file(&self.target_path) {
             Ok(()) => Ok(true),
             Err(error) => match error.kind() {
@@ -191,6 +192,8 @@ pub enum KeyValError {
     FileTaken { base_dir: PathBuf, path: PathBuf },
     #[error("lock is already taken in {base_dir:?} for {path:?}")]
     LockTaken { base_dir: PathBuf, path: PathBuf },
+    #[error("bug: lock has already been taken, `no_lock` was false")]
+    AlreadyLocked { base_dir: PathBuf, path: PathBuf },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

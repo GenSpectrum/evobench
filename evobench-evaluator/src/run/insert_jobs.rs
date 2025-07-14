@@ -114,7 +114,7 @@ pub fn insert_jobs(
         num_inserted += 1;
 
         // update the `already_inserted` table
-        if let Some(mut entry) = opt_entry {
+        if let Some(entry) = opt_entry {
             entry.delete()?;
         }
         let mut insertion_times = insertion_times;

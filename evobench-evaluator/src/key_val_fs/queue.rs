@@ -1,6 +1,6 @@
 use std::{
     borrow::Cow,
-    fmt::Display,
+    fmt::{Debug, Display},
     fs::File,
     path::{Path, PathBuf},
     sync::atomic::AtomicU64,
@@ -84,15 +84,10 @@ impl AsKey for TimeKey {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub struct QueueIterationOpts {
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub struct QueueGetItemOpts {
     /// Used for debugging in some places
     pub verbose: bool,
-    /// Wait for entries if the queue is empty (i.e. go on forever)
-    pub wait: bool,
-    /// Stop at this time if given. Unblocks "wait" (waiting for new
-    /// messages), but not currently blocking on locks of entries!
-    pub stop_at: Option<SystemTime>,
     /// Do not attempt to lock entries (default: false)
     pub no_lock: bool,
     /// Instead of blocking to get a lock on an entry, return with an
@@ -103,19 +98,31 @@ pub struct QueueIterationOpts {
     pub delete_first: bool,
 }
 
-enum PerhapsLock<T> {
+#[derive(Debug, PartialEq, Clone)]
+pub struct QueueIterationOpts {
+    /// Wait for entries if the queue is empty (i.e. go on forever)
+    pub wait: bool,
+    /// Stop at this time if given. Unblocks "wait" (waiting for new
+    /// messages), but not currently blocking on locks of entries!
+    pub stop_at: Option<SystemTime>,
+
+    pub get_item_opts: QueueGetItemOpts,
+}
+
+#[derive(Debug)]
+enum PerhapsLock<'l, T> {
     /// User asked not to lock (`no_lock`)
-    NoLock,
+    NoLock(&'l mut LockableFile<File>),
     /// Entry vanished thus let go lock again
     EntryGone,
     /// Lock
     Lock(T),
 }
 
-impl<T> PerhapsLock<T> {
+impl<'l, T> PerhapsLock<'l, T> {
     fn is_gone(&self) -> bool {
         match self {
-            PerhapsLock::NoLock => false,
+            PerhapsLock::NoLock(_) => false,
             PerhapsLock::EntryGone => true,
             PerhapsLock::Lock(_) => false,
         }
@@ -132,17 +139,121 @@ pub struct QueueItem<'basedir, V: DeserializeOwned + Serialize + 'static> {
     // The lock unless `no_lock` was given.
     perhaps_lock: (
         &'this mut Entry<'basedir, TimeKey, V>,
-        PerhapsLock<ExclusiveFileLock<'this, File>>,
+        PerhapsLock<'this, ExclusiveFileLock<'this, File>>,
     ),
 }
 
+impl<'basedir, V: DeserializeOwned + Serialize + 'static + Debug> Debug for QueueItem<'basedir, V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let perhaps_lock = self.with_perhaps_lock(|v| v);
+        write!(
+            f,
+            "QueueItem {{ verbose: {}, perhaps_lock: {perhaps_lock:?} }}",
+            self.borrow_verbose()
+        )
+    }
+}
+
 impl<'basedir, V: DeserializeOwned + Serialize> QueueItem<'basedir, V> {
+    pub fn from_entry<'s>(
+        mut entry: Entry<'s, TimeKey, V>,
+        base_dir: &PathBuf,
+        opts: QueueGetItemOpts,
+    ) -> Result<QueueItem<'s, V>, KeyValError> {
+        let QueueGetItemOpts {
+            no_lock,
+            error_when_locked,
+            delete_first,
+            verbose,
+        } = opts;
+        let lockable = entry
+            .take_lockable_file()
+            .expect("we have not taken it yet");
+
+        QueueItem::try_new(
+            verbose,
+            lockable,
+            entry,
+            |entry, lockable: &mut LockableFile<File>| -> Result<_, _> {
+                if no_lock {
+                    if delete_first {
+                        entry.delete()?;
+                    }
+                    Ok((entry, PerhapsLock::NoLock(lockable)))
+                } else {
+                    let lock = if error_when_locked {
+                        keyvalerror_from_lock_error(
+                            lockable.try_lock_exclusive(),
+                            base_dir,
+                            entry.target_path(),
+                        )?
+                        .ok_or_else(|| KeyValError::LockTaken {
+                            base_dir: base_dir.clone(),
+                            path: entry.target_path().to_owned(),
+                        })?
+                    } else {
+                        keyvalerror_from_lock_error(
+                            lockable.lock_exclusive(),
+                            base_dir,
+                            entry.target_path(),
+                        )?
+                    };
+                    info_if!(verbose, "got lock");
+                    let exists = entry.exists();
+                    if !exists {
+                        info_if!(verbose, "but entry now deleted by another process");
+                        return Ok((entry, PerhapsLock::EntryGone));
+                    }
+                    if delete_first {
+                        entry.delete()?;
+                    }
+                    Ok((entry, PerhapsLock::Lock(lock)))
+                }
+            },
+        )
+    }
+
+    /// Get the key inside this queue, usable with `get_entry`
+    /// (careful, there is no check against using it in the wrong
+    /// queue!)
+    pub fn key(&self) -> Result<TimeKey, KeyValError> {
+        // (Does not take a lock, in spite of the name of this method
+        // making it sound like.)
+        self.with_perhaps_lock(|(entry, _lock)| entry.key())
+    }
+
     /// Delete this item now (alternatively, give `delete_first` in
     /// `QueueIterationOpts`)
-    pub fn delete(&mut self) -> Result<(), KeyValError> {
-        let deleted = self.with_perhaps_lock_mut(|(entry, _lock)| entry.delete())?;
+    pub fn delete(&self) -> Result<(), KeyValError> {
+        let deleted = self.with_perhaps_lock(|(entry, _lock)| entry.delete())?;
         info_if!(*self.borrow_verbose(), "deleted entry: {:?}", deleted);
         Ok(())
+    }
+
+    /// Lock this item lazily (when `no_lock` == true given, but now a
+    /// lock is needed). If `no_lock` was false, then this gives a
+    /// `KeyValError::AlreadyLocked` error rather than dead-locking.
+    pub fn lock_exclusive<'s>(&'s self) -> Result<ExclusiveFileLock<'s, File>, KeyValError> {
+        let (entry, perhaps_lock) = self.borrow_perhaps_lock();
+        match perhaps_lock {
+            PerhapsLock::NoLock(lockable_file) => {
+                return lockable_file.lock_exclusive().map_err(|error| {
+                    let path = entry.target_path().to_owned();
+                    let base_dir = path.parent().expect("always has a parent dir").to_owned();
+                    KeyValError::IO {
+                        base_dir,
+                        path,
+                        ctx: "QueueItem.lock_exclusive",
+                        error,
+                    }
+                })
+            }
+            PerhapsLock::EntryGone => (),
+            PerhapsLock::Lock(_) => (),
+        }
+        let path = entry.target_path().to_owned();
+        let base_dir = path.parent().expect("always has a parent dir").to_owned();
+        Err(KeyValError::AlreadyLocked { base_dir, path })
     }
 }
 
@@ -167,10 +278,33 @@ impl<V: DeserializeOwned + Serialize + 'static> Queue<V> {
         Ok(Queue(KeyVal::open(base_dir, config)?))
     }
 
-    pub fn lock_exclusive(&mut self) -> Result<ExclusiveFileLock<File>, KeyValError> {
+    pub fn base_dir(&self) -> &PathBuf {
+        &self.0.base_dir
+    }
+
+    pub fn get_entry<'s>(
+        &'s self,
+        key: &TimeKey,
+    ) -> Result<Option<Entry<'s, TimeKey, V>>, KeyValError> {
+        self.0.entry_opt(key)
+    }
+
+    pub fn get_item<'s>(
+        &'s self,
+        key: &TimeKey,
+        opts: QueueGetItemOpts,
+    ) -> Result<Option<QueueItem<'s, V>>, KeyValError> {
+        if let Some(entry) = self.0.entry_opt(key)? {
+            Ok(Some(QueueItem::from_entry(entry, self.base_dir(), opts)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn lock_exclusive(&self) -> Result<ExclusiveFileLock<File>, KeyValError> {
         self.0.lock_exclusive()
     }
-    pub fn lock_shared(&mut self) -> Result<SharedFileLock<File>, KeyValError> {
+    pub fn lock_shared(&self) -> Result<SharedFileLock<File>, KeyValError> {
         self.0.lock_shared()
     }
 
@@ -223,12 +357,9 @@ impl<V: DeserializeOwned + Serialize + 'static> Queue<V> {
         let base_dir = self.0.base_dir.clone();
         Gen::new(|co| async move {
             let QueueIterationOpts {
-                verbose,
                 wait,
                 stop_at,
-                no_lock,
-                error_when_locked,
-                delete_first,
+                get_item_opts,
             } = opts;
 
             let mut entries = None;
@@ -246,54 +377,8 @@ impl<V: DeserializeOwned + Serialize + 'static> Queue<V> {
                             let value = entry
                                 .get()
                                 .expect("version of serialized ds has not changed");
-                            let lockable = entry
-                                .take_lockable_file()
-                                .expect("we have not taken it yet");
 
-                            match QueueItem::try_new(
-                                verbose,
-                                lockable,
-                                entry,
-                                |entry, lockable: &mut LockableFile<File>| -> Result<_, _> {
-                                    if no_lock {
-                                        if delete_first {
-                                            entry.delete()?;
-                                        }
-                                        Ok((entry, PerhapsLock::NoLock))
-                                    } else {
-                                        let lock = if error_when_locked {
-                                            keyvalerror_from_lock_error(
-                                                lockable.try_lock_exclusive(),
-                                                &base_dir,
-                                                entry.target_path(),
-                                            )?
-                                            .ok_or_else(|| KeyValError::LockTaken {
-                                                base_dir: base_dir.clone(),
-                                                path: entry.target_path().to_owned(),
-                                            })?
-                                        } else {
-                                            keyvalerror_from_lock_error(
-                                                lockable.lock_exclusive(),
-                                                &base_dir,
-                                                entry.target_path(),
-                                            )?
-                                        };
-                                        info_if!(verbose, "got lock");
-                                        let exists = entry.exists();
-                                        if !exists {
-                                            info_if!(
-                                                verbose,
-                                                "but entry now deleted by another process"
-                                            );
-                                            return Ok((entry, PerhapsLock::EntryGone));
-                                        }
-                                        if delete_first {
-                                            entry.delete()?;
-                                        }
-                                        Ok((entry, PerhapsLock::Lock(lock)))
-                                    }
-                                },
-                            ) {
+                            match QueueItem::from_entry(entry, &base_dir, get_item_opts) {
                                 Ok(item) => {
                                     if !item.borrow_perhaps_lock().1.is_gone() {
                                         co.yield_(Ok((item, value))).await;

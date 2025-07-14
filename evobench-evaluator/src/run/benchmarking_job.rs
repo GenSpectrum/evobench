@@ -1,4 +1,7 @@
-use crate::key::{CustomParametersSet, RunParameters, RunParametersOpts};
+use crate::{
+    key::{CustomParametersSet, RunParameters, RunParametersOpts},
+    serde::priority::Priority,
+};
 
 #[derive(Debug, PartialEq, Clone, clap::Args, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -13,11 +16,20 @@ pub struct BenchmarkingJobSettingsOpts {
     /// from the pipeline. Default taken from config file or: 3
     #[clap(short, long)]
     error_budget: Option<u8>,
+
+    /// The priority of this job (a floating point number, or the
+    /// names `normal` (alias for 0.), `high` (alias for 1.), and
+    /// `low` (alias for -1.)). Jobs with a higher priority value (in
+    /// the positive direction) are scheduled before other
+    /// jobs. Default taken from config file or: 0
+    #[clap(short, long)]
+    priority: Option<Priority>,
 }
 
 pub struct BenchmarkingJobSettings {
     count: u8,
     error_budget: u8,
+    priority: Priority,
 }
 
 impl BenchmarkingJobSettingsOpts {
@@ -28,6 +40,7 @@ impl BenchmarkingJobSettingsOpts {
         let Self {
             count,
             error_budget,
+            priority,
         } = self;
         let count = count
             .or_else(|| {
@@ -41,9 +54,16 @@ impl BenchmarkingJobSettingsOpts {
                 fallback.error_budget
             })
             .unwrap_or(3);
+        let priority = priority
+            .or_else(|| {
+                let fallback = fallback?;
+                fallback.priority
+            })
+            .unwrap_or(Priority::new(0.).expect("0 works"));
         BenchmarkingJobSettings {
             count,
             error_budget,
+            priority,
         }
     }
 }
@@ -61,6 +81,7 @@ pub struct BenchmarkingJobOpts {
 #[serde(deny_unknown_fields)]
 pub struct BenchmarkingJob {
     pub run_parameters: RunParameters,
+    pub priority: Priority,
     pub remaining_count: u8,
     pub remaining_error_budget: u8,
 }
@@ -78,6 +99,7 @@ impl BenchmarkingJobOpts {
         let BenchmarkingJobSettings {
             count,
             error_budget,
+            priority,
         } = benchmarking_job_settings.complete(benchmarking_job_settings_fallback);
 
         custom_parameters_set
@@ -86,6 +108,7 @@ impl BenchmarkingJobOpts {
                 run_parameters: run_parameters.complete(custom_parameters),
                 remaining_count: count,
                 remaining_error_budget: error_budget,
+                priority,
             })
             .collect()
     }

@@ -12,7 +12,7 @@ use evobench_evaluator::{
     info_if,
     key_val_fs::{
         key_val::{Entry, KeyValConfig},
-        queue::{Queue, QueueIterationOpts},
+        queue::{Queue, QueueGetItemOpts, QueueIterationOpts},
     },
     safe_string::SafeString,
 };
@@ -151,7 +151,7 @@ fn main() -> Result<()> {
             command,
             arguments,
         } => {
-            let mut queue = open_queue(true)?;
+            let queue = open_queue(true)?;
             let lock = queue.lock_exclusive()?;
             info_if!(verbose, "got lock");
             let exit_code = run_command(command, arguments)?;
@@ -163,7 +163,7 @@ fn main() -> Result<()> {
             command,
             arguments,
         } => {
-            let mut queue = open_queue(true)?;
+            let queue = open_queue(true)?;
             let lock = queue.lock_shared()?;
             info_if!(verbose, "got lock");
             let exit_code = run_command(command, arguments)?;
@@ -200,12 +200,14 @@ fn main() -> Result<()> {
         } => {
             let queue = open_queue(true)?;
             let opts = QueueIterationOpts {
-                no_lock,
-                error_when_locked,
                 wait,
-                verbose,
-                delete_first,
                 stop_at: None,
+                get_item_opts: QueueGetItemOpts {
+                    no_lock,
+                    error_when_locked,
+                    verbose,
+                    delete_first,
+                },
             };
             let items = queue.items(opts);
             let items: Box<dyn Iterator<Item = _>> = if let Some(limit) = limit {
@@ -215,7 +217,7 @@ fn main() -> Result<()> {
             };
 
             for item_value in items {
-                let (mut item, mut queue_arguments) = item_value?;
+                let (item, mut queue_arguments) = item_value?;
 
                 let mut arguments = first_arguments.clone();
                 arguments.append(&mut queue_arguments);

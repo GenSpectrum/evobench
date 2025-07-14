@@ -46,6 +46,7 @@ impl<'s, F: FileExt> Deref for SharedFileLock<'s, F> {
 
 // -----------------------------------------------------------------------------
 
+#[derive(Debug)]
 pub struct ExclusiveFileLock<'s, F: FileExt> {
     path: &'s Option<Box<Path>>,
     file: &'s F,

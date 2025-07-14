@@ -16,6 +16,8 @@ pub enum SliceOrBox<'t, T> {
 }
 
 impl<'t, T> SliceOrBox<'t, T> {
+    /// Into the inner owned representation, or convert that to
+    /// owned. Removes the wrapping.
     pub fn into_owned(self) -> Box<[T]>
     where
         T: Clone,
@@ -25,6 +27,10 @@ impl<'t, T> SliceOrBox<'t, T> {
             SliceOrBox::Box(owned) => owned,
         }
     }
+
+    // pub fn to_owned(&self) -> SliceOrBox<'static, T> {
+    // ..  because ToOwned requires Borrow. But, into_owned and the wrap again is fine for now?
+    // }
 }
 
 impl<'t, T> AsRef<[T]> for SliceOrBox<'t, T> {
@@ -65,5 +71,28 @@ impl<'t, T> Deref for SliceOrBox<'t, T> {
 
     fn deref(&self) -> &Self::Target {
         self.as_ref()
+    }
+}
+
+// Need these so that Option<SliceOrBox<..>> can be compared, right?
+// "Why do I have to do this when Deref exists??"
+
+impl<'t, T: PartialEq> PartialEq for SliceOrBox<'t, T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_ref() == other.as_ref()
+    }
+}
+
+impl<'t, T: Eq> Eq for SliceOrBox<'t, T> {}
+
+impl<'t, T: PartialOrd> PartialOrd for SliceOrBox<'t, T> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.as_ref().partial_cmp(other.as_ref())
+    }
+}
+
+impl<'t, T: Ord> Ord for SliceOrBox<'t, T> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.as_ref().cmp(other.as_ref())
     }
 }
