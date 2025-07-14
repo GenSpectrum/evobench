@@ -199,7 +199,7 @@ fn run_queues(
             current_stop_start,
         )?;
         if conf.perhaps_reload_config(config_path.as_ref()) {
-            // XXX only if changed
+            // XX only if changed
             eprintln!("reloaded configuration, re-initializing");
             // Drop locks before getting new ones; to be able to do that, first ownify the data to be carried over:
             current_stop_start = current_stop_start
