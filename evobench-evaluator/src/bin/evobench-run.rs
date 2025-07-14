@@ -452,13 +452,13 @@ fn main() -> Result<()> {
 
             if let Some(errors) = maybe_errors {
                 bail!(
-                    "inserted {n}/{n_original} references, \
+                    "inserted {n}/{n_original} jobs, \
                      but also got git reference resolution errors: {errors}"
                 )
             } else {
                 if !quiet {
                     if n > 0 {
-                        println!("inserted {n}/{n_original} references");
+                        println!("inserted {n}/{n_original} jobs");
                     }
                 }
             }
