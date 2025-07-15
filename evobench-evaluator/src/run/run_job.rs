@@ -286,7 +286,13 @@ pub fn run_job(
 
                         for job_output_dir in job_output_dirs {
                             let evobench_log = job_output_dir.as_ref().append("evobench.log.zstd");
-                            args.push(evobench_log.into());
+                            if std::fs::exists(&evobench_log)
+                                .map_err(ctx!("checking path {evobench_log:?}"))?
+                            {
+                                args.push(evobench_log.into());
+                            } else {
+                                info!("missing file {evobench_log:?}, empty dir?");
+                            }
                         }
 
                         evobench_evaluator(&args)?;
