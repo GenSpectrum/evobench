@@ -185,10 +185,11 @@ fn run_queues(
         // XX handle errors without exiting? Or do that above
 
         let ran = queues.run_next_job(
-            |run_parameters| {
+            |run_parameters, queue| {
                 run_job(
                     &mut working_directory_pool,
                     run_parameters,
+                    &queue.schedule_condition,
                     dry_run,
                     &conf.benchmarking_command,
                     &path_resolve_home(&conf.output_base_dir)?,

@@ -15,6 +15,7 @@ use run_git::path_util::{add_extension, AppendToPath};
 use strum_macros::EnumString;
 
 use crate::{
+    config_file::ron_to_string_pretty,
     ctx, info,
     io_utils::{
         capture::{CaptureOpts, OutFile},
@@ -25,7 +26,10 @@ use crate::{
     zstd_file::compress_file,
 };
 
-use super::{config::BenchmarkingCommand, working_directory_pool::WorkingDirectoryPool};
+use super::{
+    config::{BenchmarkingCommand, ScheduleCondition},
+    working_directory_pool::WorkingDirectoryPool,
+};
 
 #[derive(Debug, EnumString, PartialEq, Clone, Copy)]
 #[repr(u8)]
@@ -102,6 +106,7 @@ fn evobench_evaluator(args: &[OsString]) -> Result<()> {
 pub fn run_job(
     working_directory_pool: &mut WorkingDirectoryPool,
     checked_run_parameters: RunParameters,
+    schedule_condition: &ScheduleCondition,
     dry_run: DryRun,
     benchmarking_command: &BenchmarkingCommand,
     output_base_dir: &Path,
@@ -256,7 +261,15 @@ pub fn run_job(
                 compress_file_as(evobench_log, "evobench.log")?;
                 compress_file_as(bench_output_log, "bench_output.log")?;
 
-                info!("(re-)evaluate the summary file across all results for this key");
+                {
+                    let target = (&result_dir).append("schedule_condition.ron");
+                    info!("saving context to {target:?}");
+                    let schedule_condition_str = ron_to_string_pretty(&schedule_condition)?;
+                    std::fs::write(&target, &schedule_condition_str)
+                        .map_err(ctx!("saving to {target:?}"))?
+                }
+
+                info!("(re-)evaluating the summary file across all results for this key");
 
                 let res = (|| -> Result<()> {
                     let evobench_logs: Vec<PathBuf> = std::fs::read_dir(&key_dir)

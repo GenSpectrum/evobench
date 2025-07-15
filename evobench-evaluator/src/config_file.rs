@@ -26,6 +26,10 @@ use crate::{
     },
 };
 
+pub fn ron_to_string_pretty<V: serde::Serialize>(value: &V) -> Result<String, ron::Error> {
+    ron::Options::default().to_string_pretty(value, ron::ser::PrettyConfig::default())
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum ConfigBackend {
     Ron,
@@ -94,8 +98,7 @@ impl ConfigBackend {
 
     pub fn save_config_file<T: Serialize>(self, path: &Path, value: &T) -> Result<()> {
         let s = match self {
-            ConfigBackend::Ron => ron::Options::default()
-                .to_string_pretty(value, ron::ser::PrettyConfig::default())?,
+            ConfigBackend::Ron => ron_to_string_pretty(value)?,
             ConfigBackend::Json5 => {
                 serde_json::to_string_pretty(value).map_err(ctx!("encoding config as JSON5"))?
             }
