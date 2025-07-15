@@ -4,7 +4,7 @@ use serde::de::Visitor;
 
 /// A unicode file name, not path, i.e. not contain '/', '\n', or '\0'
 /// and must not be ".", "..", or "".
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, serde::Serialize, Hash)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
 pub struct ProperFilename(String);
 
 impl ProperFilename {
@@ -72,5 +72,55 @@ impl<'de> Visitor<'de> for FilenameVisitor {
 impl<'de> serde::Deserialize<'de> for ProperFilename {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         deserializer.deserialize_str(FilenameVisitor)
+    }
+}
+
+impl serde::Serialize for ProperFilename {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Returns Some when actual do, None when it wasn't a proper
+    // filename.
+    fn t_round_trip_json(s: &str) -> Option<()> {
+        let pfn = ProperFilename::from_str(s).ok()?;
+        assert_eq!(pfn.as_str(), s);
+        let v = serde_json::to_string(&pfn).expect("doesn't fail");
+        dbg!(&v);
+        let pfn2: ProperFilename = serde_json::from_str(&v).expect("doesn't fail either");
+        assert_eq!(pfn.as_str(), pfn2.as_str());
+        Some(())
+    }
+
+    fn t_round_trip_ron(s: &str) -> Option<()> {
+        let pfn = ProperFilename::from_str(s).ok()?;
+        assert_eq!(pfn.as_str(), s);
+        let v = ron::to_string(&pfn).expect("doesn't fail");
+        dbg!(&v);
+        let pfn2: ProperFilename = ron::from_str(&v).expect("doesn't fail either");
+        assert_eq!(pfn.as_str(), pfn2.as_str());
+        Some(())
+    }
+
+    fn t_round_trip(s: &str) -> Option<()> {
+        t_round_trip_json(s)?;
+        t_round_trip_ron(s)
+    }
+
+    #[test]
+    fn t_proper_filename() {
+        let t = t_round_trip;
+        assert!(t("foo").is_some());
+        assert!(t("<bar>").is_some());
+        assert!(t(" baz .. bla").is_some());
+        assert!(t(" baz/ .. bla").is_none());
     }
 }
