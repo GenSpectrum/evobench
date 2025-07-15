@@ -17,7 +17,7 @@ use crate::{
         queue::{Queue, QueueGetItemOpts, QueueItem, TimeKey},
     },
     path_util::AppendToPath,
-    serde::paths::ProperFilename,
+    serde::proper_filename::ProperFilename,
     utillib::logging::{log_level, LogLevel},
 };
 

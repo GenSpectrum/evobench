@@ -13,7 +13,7 @@ use crate::{
     key::CustomParametersSetOpts,
     serde::{
         date_and_time::LocalNaiveTime, git_branch_name::GitBranchName, git_url::GitUrl,
-        paths::ProperFilename,
+        proper_filename::ProperFilename,
     },
 };
 

@@ -9,7 +9,7 @@ use crate::{
         key_val::KeyValError,
         queue::{Queue, QueueGetItemOpts, QueueItem, QueueIterationOpts},
     },
-    serde::paths::ProperFilename,
+    serde::proper_filename::ProperFilename,
     utillib::logging::{log_level, LogLevel},
 };
 

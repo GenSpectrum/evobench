@@ -19,7 +19,7 @@ use crate::{
     ctx, info,
     json5_from_str::{json5_from_str, Json5FromStrError},
     path_util::add_extension,
-    serde::paths::ProperFilename,
+    serde::proper_filename::ProperFilename,
     utillib::{
         home::{home_dir, HomeError},
         slice_or_box::SliceOrBox,

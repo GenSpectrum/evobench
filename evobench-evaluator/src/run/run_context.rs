@@ -3,7 +3,9 @@ use std::collections::BTreeMap;
 use anyhow::Result;
 use chrono::{DateTime, Local};
 
-use crate::{date_and_time::time_ranges::DateTimeRange, info, serde::paths::ProperFilename};
+use crate::{
+    date_and_time::time_ranges::DateTimeRange, info, serde::proper_filename::ProperFilename,
+};
 
 use super::{run_queue::RunQueue, run_queues::RunQueues, stop_start_status::StopStartStatus};
 

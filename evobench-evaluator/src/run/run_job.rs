@@ -23,7 +23,7 @@ use crate::{
         temporary_file::TemporaryFile,
     },
     key::RunParameters,
-    serde::paths::ProperFilename,
+    serde::proper_filename::ProperFilename,
     utillib::logging::{log_level, LogLevel},
     zstd_file::compress_file,
 };
