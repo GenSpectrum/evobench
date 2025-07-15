@@ -1,6 +1,7 @@
 //! Running a benchmarking job
 
 use std::{
+    collections::{hash_map::Entry, HashMap},
     ffi::OsString,
     io::{stderr, Write},
     os::unix::fs::MetadataExt,
@@ -22,6 +23,7 @@ use crate::{
         temporary_file::TemporaryFile,
     },
     key::RunParameters,
+    serde::paths::ProperFilename,
     utillib::logging::{log_level, LogLevel},
     zstd_file::compress_file,
 };
@@ -89,7 +91,7 @@ fn bench_tmp_dir() -> Result<PathBuf> {
     }
 }
 
-// XX here, *too*, do capture for consistency?
+// XX here, *too*, do capture for consistency? XX: could do "nice" scheduling here.
 fn evobench_evaluator(args: &[OsString]) -> Result<()> {
     let prog = "evobench-evaluator";
     let mut c = Command::new(prog);
@@ -272,13 +274,33 @@ pub fn run_job(
                 info!("(re-)evaluating the summary file across all results for this key");
 
                 let res = (|| -> Result<()> {
-                    let evobench_logs: Vec<PathBuf> = std::fs::read_dir(&key_dir)
+                    fn generate_summary<P: AsRef<Path>>(
+                        key_dir: &PathBuf,
+                        job_output_dirs: &[P],
+                        target_type_opt: &str,
+                        file_base_name: &str,
+                    ) -> Result<()> {
+                        let mut args: Vec<OsString> = vec!["summary".into()];
+                        args.push(target_type_opt.into());
+                        args.push(key_dir.append(file_base_name).into());
+
+                        for job_output_dir in job_output_dirs {
+                            let evobench_log = job_output_dir.as_ref().append("evobench.log.zstd");
+                            args.push(evobench_log.into());
+                        }
+
+                        evobench_evaluator(&args)?;
+
+                        Ok(())
+                    }
+
+                    let job_output_dirs: Vec<PathBuf> = std::fs::read_dir(&key_dir)
                         .map_err(ctx!("opening dir {key_dir:?}"))?
                         .map(|entry| -> Result<Option<PathBuf>, std::io::Error> {
                             let entry: std::fs::DirEntry = entry?;
                             let ft = entry.file_type()?;
                             if ft.is_dir() {
-                                Ok(Some(entry.path().append("evobench.log.zstd")))
+                                Ok(Some(entry.path()))
                             } else {
                                 Ok(None)
                             }
@@ -287,32 +309,61 @@ pub fn run_job(
                         .collect::<Result<_, _>>()
                         .map_err(ctx!("getting dir listing for {key_dir:?}"))?;
 
-                    let generate_summary =
-                        |target_type_opt: &str, file_base_name: &str| -> Result<()> {
-                            let mut args: Vec<OsString> = vec!["summary".into()];
-                            args.push(target_type_opt.into());
-                            args.push((&key_dir).append(file_base_name).into());
+                    generate_summary(&key_dir, &job_output_dirs, "--excel", "summary.xlsx")?;
+                    generate_summary(&key_dir, &job_output_dirs, "--flame", "summary")?;
 
-                            for evobench_log in &evobench_logs {
-                                args.push(evobench_log.into());
+                    let mut job_output_dirs_by_situation: HashMap<ProperFilename, Vec<&PathBuf>> =
+                        HashMap::new();
+                    for job_output_dir in &job_output_dirs {
+                        let schedule_condition_path =
+                            job_output_dir.append("schedule_condition.ron");
+                        match std::fs::read_to_string(&schedule_condition_path) {
+                            Ok(s) => {
+                                let schedule_condition: ScheduleCondition = ron::from_str(&s)
+                                    .map_err(ctx!("reading file {schedule_condition_path:?}"))?;
+                                if let Some(situation) = schedule_condition.situation() {
+                                    // XX it's just too long, proper abstraction pls?
+                                    match job_output_dirs_by_situation.entry(situation.clone()) {
+                                        Entry::Occupied(mut occupied_entry) => {
+                                            occupied_entry.get_mut().push(job_output_dir);
+                                        }
+                                        Entry::Vacant(vacant_entry) => {
+                                            vacant_entry.insert(vec![job_output_dir]);
+                                        }
+                                    }
+                                }
                             }
+                            Err(e) => match e.kind() {
+                                std::io::ErrorKind::NotFound => (),
+                                _ => Err(e)
+                                    .map_err(ctx!("reading file {schedule_condition_path:?}"))?,
+                            },
+                        }
+                    }
 
-                            evobench_evaluator(&args)?;
-
-                            Ok(())
-                        };
-
-                    generate_summary("--excel", "summary.xlsx")?;
-                    generate_summary("--flame", "summary")?;
-
-                    info!("done with benchmarking job and post-evaluation");
+                    for (situation, job_output_dirs) in job_output_dirs_by_situation.iter() {
+                        generate_summary(
+                            &key_dir,
+                            job_output_dirs.as_slice(),
+                            "--excel",
+                            &format!("summary-{situation}.xlsx"),
+                        )?;
+                        generate_summary(
+                            &key_dir,
+                            job_output_dirs.as_slice(),
+                            "--flame",
+                            &format!("summary-{situation}"),
+                        )?;
+                    }
 
                     Ok(())
                 })();
 
                 if let Err(e) = res {
+                    info!("done with benchmarking job, but post-evaluation gave an error");
                     Ok(Some(e))
                 } else {
+                    info!("done with benchmarking job and post-evaluation");
                     Ok(None)
                 }
             } else {

@@ -112,8 +112,9 @@ impl RunQueues {
     ) -> impl Iterator<Item = (RunQueueWithNext<'s, 's>, Option<DateTimeRange<Local>>)> {
         self.run_queue_with_nexts()
             .filter_map(move |rq| match rq.schedule_condition {
-                ScheduleCondition::Immediately => Some((rq, None)),
+                ScheduleCondition::Immediately { situation: _ } => Some((rq, None)),
                 ScheduleCondition::LocalNaiveTimeWindow {
+                    situation: _,
                     stop_start: _,
                     repeatedly: _,
                     move_when_time_window_ends: _,
@@ -257,8 +258,9 @@ impl RunQueues {
             }
             seen.insert(file_name.clone());
             match run_queue.schedule_condition {
-                ScheduleCondition::Immediately => (),
+                ScheduleCondition::Immediately { situation: _ } => (),
                 ScheduleCondition::LocalNaiveTimeWindow {
+                    situation: _,
                     stop_start,
                     repeatedly: _,
                     move_when_time_window_ends: _,

@@ -26,13 +26,28 @@ use super::{
 #[serde(deny_unknown_fields)]
 pub enum ScheduleCondition {
     /// Run jobs in this queue once right away
-    Immediately,
+    Immediately {
+        /// A description of the situation during which jobs in this
+        /// queue are executed; all jobs of the same context (and same
+        /// key) are grouped together and evaluated to "summary-" file
+        /// names with this string appended. Meant to reflect
+        /// conditions that might influence the results;
+        /// e.g. "immediate" or "night".
+        situation: ProperFilename,
+    },
 
     /// Run jobs in this queue between the given times on every
     /// day. After the time window runs out, remaining jobs in the
     /// queue are moved to the next queue (or are dropped if there is
     /// none).
     LocalNaiveTimeWindow {
+        /// A description of the situation during which jobs in this
+        /// queue are executed; all jobs of the same context (and same
+        /// key) are grouped together and evaluated to "summary-" file
+        /// names with this string appended. Meant to reflect
+        /// conditions that might influence the results;
+        /// e.g. "immediate" or "night".
+        situation: ProperFilename,
         /// A command and arguments, run with "stop" at the `from`
         /// time and with "start" when done / at the `to` time.
         stop_start: Option<Vec<String>>,
@@ -63,8 +78,11 @@ pub enum ScheduleCondition {
 impl Display for ScheduleCondition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ScheduleCondition::Immediately => f.write_str("Immediately"),
+            ScheduleCondition::Immediately { situation } => {
+                write!(f, "Immediately {:?}", situation.as_str())
+            }
             ScheduleCondition::LocalNaiveTimeWindow {
+                situation,
                 stop_start,
                 repeatedly,
                 move_when_time_window_ends,
@@ -84,7 +102,8 @@ impl Display for ScheduleCondition {
                 };
                 write!(
                     f,
-                    "LocalNaiveTimeWindow {from} - {to}: {rep}, {mov}, \"{cmd}\""
+                    "LocalNaiveTimeWindow {:?} {from} - {to}: {rep}, {mov}, \"{cmd}\"",
+                    situation.as_str()
                 )
             }
             ScheduleCondition::GraveYard => f.write_str("GraveYard"),
@@ -103,8 +122,9 @@ impl ScheduleCondition {
 
     pub fn time_range(&self) -> Option<(LocalNaiveTime, LocalNaiveTime)> {
         match self {
-            ScheduleCondition::Immediately => None,
+            ScheduleCondition::Immediately { situation: _ } => None,
             ScheduleCondition::LocalNaiveTimeWindow {
+                situation: _,
                 stop_start: _,
                 repeatedly: _,
                 move_when_time_window_ends: _,
@@ -117,8 +137,9 @@ impl ScheduleCondition {
 
     pub fn stop_start(&self) -> Option<&[String]> {
         match self {
-            ScheduleCondition::Immediately => None,
+            ScheduleCondition::Immediately { situation: _ } => None,
             ScheduleCondition::LocalNaiveTimeWindow {
+                situation: _,
                 stop_start,
                 repeatedly: _,
                 move_when_time_window_ends: _,
@@ -132,8 +153,9 @@ impl ScheduleCondition {
     /// Returns true if the condition offers that flag *and* it is true
     pub fn move_when_time_window_ends(&self) -> bool {
         match self {
-            ScheduleCondition::Immediately => false,
+            ScheduleCondition::Immediately { situation: _ } => false,
             ScheduleCondition::LocalNaiveTimeWindow {
+                situation: _,
                 stop_start: _,
                 repeatedly: _,
                 move_when_time_window_ends,
@@ -141,6 +163,21 @@ impl ScheduleCondition {
                 to: _,
             } => *move_when_time_window_ends,
             ScheduleCondition::GraveYard => false,
+        }
+    }
+
+    pub fn situation(&self) -> Option<&ProperFilename> {
+        match self {
+            ScheduleCondition::Immediately { situation } => Some(situation),
+            ScheduleCondition::LocalNaiveTimeWindow {
+                situation,
+                stop_start: _,
+                repeatedly: _,
+                move_when_time_window_ends: _,
+                from: _,
+                to: _,
+            } => Some(situation),
+            ScheduleCondition::GraveYard => None,
         }
     }
 }

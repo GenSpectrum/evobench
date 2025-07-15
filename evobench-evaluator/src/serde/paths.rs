@@ -4,7 +4,7 @@ use serde::de::Visitor;
 
 /// A unicode file name, not path, i.e. not contain '/', '\n', or '\0'
 /// and must not be ".", "..", or "".
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, serde::Serialize)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, serde::Serialize, Hash)]
 pub struct ProperFilename(String);
 
 impl ProperFilename {

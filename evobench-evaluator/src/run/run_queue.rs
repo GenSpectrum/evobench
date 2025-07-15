@@ -131,11 +131,12 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
                     if remaining_count > 0 {
                         let maybe_queue;
                         match self.schedule_condition {
-                            ScheduleCondition::Immediately => {
+                            ScheduleCondition::Immediately { situation: _ } => {
                                 // Job is always going to the next queue
                                 maybe_queue = self.next;
                             }
                             ScheduleCondition::LocalNaiveTimeWindow {
+                                situation: _,
                                 stop_start: _,
                                 repeatedly,
                                 move_when_time_window_ends: _,
