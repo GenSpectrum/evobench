@@ -341,13 +341,14 @@ fn main() -> Result<()> {
                 // "Insertion time"
                 // "Commit id"
                 // "locked"
+                // "Custom parameters"
                 let title_row = format!("{i}: queue {file_name} ({schedule_condition}):");
                 let titles = &[TerminalTableTitle {
                     text: Cow::Borrowed(&*title_row),
-                    span: 3,
+                    span: 4,
                 }];
                 let mut table = TerminalTable::start(
-                    &[38, 43],
+                    &[38, 43, 14],
                     titles,
                     terminal_table_opts.clone(),
                     stdout().lock(),
@@ -359,6 +360,7 @@ fn main() -> Result<()> {
                     let key = entry.key()?;
                     let val = entry.get()?;
                     let commit_id = val.run_parameters.commit_id.to_string();
+                    let custom_parameters = val.run_parameters.custom_parameters.to_string();
                     let locking = if schedule_condition.is_grave_yard() {
                         ""
                     } else {
@@ -373,6 +375,7 @@ fn main() -> Result<()> {
                             &*format!("{file_name} ({key})"),
                             &*commit_id,
                             locking,
+                            &*custom_parameters,
                         ])?;
                         table.print(&format!("{val:#?}\n"))?;
                     } else {
@@ -380,6 +383,7 @@ fn main() -> Result<()> {
                             &*key.datetime().to_rfc3339(),
                             &*commit_id,
                             locking,
+                            &*custom_parameters,
                         ])?;
                     }
                 }
