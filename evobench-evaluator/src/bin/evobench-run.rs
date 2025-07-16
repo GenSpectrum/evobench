@@ -354,10 +354,10 @@ fn main() -> Result<()> {
                 let title_row = format!("{i}: queue {file_name} ({schedule_condition}):");
                 let titles = &[TerminalTableTitle {
                     text: Cow::Borrowed(&*title_row),
-                    span: 4,
+                    span: 5,
                 }];
                 let mut table = TerminalTable::start(
-                    &[38, 43, 14],
+                    &[38, 43, 15, 14],
                     titles,
                     terminal_table_opts.clone(),
                     stdout().lock(),
@@ -368,8 +368,13 @@ fn main() -> Result<()> {
                     let file_name = get_filename(&entry)?;
                     let key = entry.key()?;
                     let val = entry.get()?;
-                    let commit_id = val.run_parameters.commit_id.to_string();
-                    let custom_parameters = val.run_parameters.custom_parameters.to_string();
+                    let commit_id = &*val.run_parameters.commit_id.to_string();
+                    let reason = if let Some(reason) = &val.reason {
+                        reason.as_ref()
+                    } else {
+                        ""
+                    };
+                    let custom_parameters = &*val.run_parameters.custom_parameters.to_string();
                     let locking = if schedule_condition.is_grave_yard() {
                         ""
                     } else {
@@ -382,17 +387,19 @@ fn main() -> Result<()> {
                     if verbose {
                         table.write_data_row(&[
                             &*format!("{file_name} ({key})"),
-                            &*commit_id,
+                            commit_id,
+                            reason,
                             locking,
-                            &*custom_parameters,
+                            custom_parameters,
                         ])?;
                         table.print(&format!("{val:#?}\n"))?;
                     } else {
                         table.write_data_row(&[
                             &*key.datetime().to_rfc3339(),
-                            &*commit_id,
+                            commit_id,
+                            reason,
                             locking,
-                            &*custom_parameters,
+                            custom_parameters,
                         ])?;
                     }
                 }
