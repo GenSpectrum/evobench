@@ -77,18 +77,16 @@ impl PollingPool {
     }
 
     /// Returns the resolved commit ids for the requested names, and
-    /// additionally returns a single string with error messages about
-    /// those names that failed to resolve, if any.
+    /// any names that failed to resolve.
     pub fn resolve_branch_names(
         &mut self,
         working_directory_id: WorkingDirectoryId,
         branch_names: &[GitBranchName],
-    ) -> Result<(Vec<GitHash>, Option<String>)> {
-        let git_url = self.pool.git_url().clone();
+    ) -> Result<(Vec<GitHash>, Vec<String>)> {
         self.pool.process_working_directory(
             working_directory_id,
             |working_directory, _timestamp| {
-                let mut errors = Vec::new();
+                let mut non_resolving = Vec::new();
                 let git_working_dir = &working_directory.git_working_dir;
                 let mut ids = Vec::new();
                 for name in branch_names {
@@ -96,21 +94,10 @@ impl PollingPool {
                     if let Some(id) = git_working_dir.git_rev_parse(&ref_string, true)? {
                         ids.push(GitHash::from_str(&id)?)
                     } else {
-                        errors.push(format!(
-                            "could not resolve ref string {ref_string:?} in {:?} from {:?}",
-                            working_directory.git_working_dir.working_dir_path_ref(),
-                            git_url.as_str()
-                        ));
+                        non_resolving.push(ref_string);
                     }
                 }
-                Ok((
-                    ids,
-                    if errors.is_empty() {
-                        None
-                    } else {
-                        Some(errors.join(", "))
-                    },
-                ))
+                Ok((ids, non_resolving))
             },
             None,
             &format!("resolving branch names {branch_names:?}"),

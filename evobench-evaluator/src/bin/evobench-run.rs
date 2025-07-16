@@ -132,6 +132,11 @@ enum SubCommand {
         /// 0, i.e. always be quiet.
         #[clap(long)]
         quiet: bool,
+
+        /// Do not report an error if any of the given (branch or
+        /// other) names do not resolve.
+        #[clap(long)]
+        no_fail: bool,
     },
 
     /// Run the existing jobs
@@ -463,8 +468,12 @@ fn main() -> Result<()> {
             )?;
         }
 
-        SubCommand::Poll { force, quiet } => {
-            let (commits, maybe_errors) = {
+        SubCommand::Poll {
+            force,
+            quiet,
+            no_fail,
+        } => {
+            let (commits, non_resolving) = {
                 let mut polling_pool = PollingPool::open(
                     &conf.remote_repository.url,
                     &global_app_state_dir.working_directory_for_polling_pool_base()?,
@@ -504,20 +513,17 @@ fn main() -> Result<()> {
                 &queues,
             )?;
 
-            if let Some(errors) = maybe_errors {
-                bail!(
-                    "inserted {n}/{n_original} jobs (for {num_commits} commits), \
-                     but also got git reference resolution errors: {errors}"
-                )
-            } else {
+            if non_resolving.is_empty() || no_fail {
                 if !quiet {
                     if n > 0 {
-                        println!(
-                            "inserted {n}/{n_original} jobs \
-                                  (for {num_commits} commits)"
-                        );
+                        println!("inserted {n}/{n_original} jobs (for {num_commits} commits)");
                     }
                 }
+            } else {
+                bail!(
+                    "inserted {n}/{n_original} jobs (for {num_commits} commits), \
+                     but the following names did not resolve: {non_resolving:?}"
+                )
             }
         }
 
