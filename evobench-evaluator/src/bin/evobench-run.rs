@@ -357,7 +357,7 @@ fn main() -> Result<()> {
                     span: 5,
                 }];
                 let mut table = TerminalTable::start(
-                    &[38, 43, 15, 14],
+                    &[38, 14, 15, 43],
                     titles,
                     terminal_table_opts.clone(),
                     stdout().lock(),
@@ -387,18 +387,18 @@ fn main() -> Result<()> {
                     if verbose {
                         table.write_data_row(&[
                             &*format!("{file_name} ({key})"),
-                            commit_id,
-                            reason,
                             locking,
+                            reason,
+                            commit_id,
                             custom_parameters,
                         ])?;
                         table.print(&format!("{val:#?}\n"))?;
                     } else {
                         table.write_data_row(&[
                             &*key.datetime().to_rfc3339(),
-                            commit_id,
-                            reason,
                             locking,
+                            reason,
+                            commit_id,
                             custom_parameters,
                         ])?;
                     }
