@@ -98,11 +98,12 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
         item: &QueueItem<BenchmarkingJob>,
         job: BenchmarkingJob,
         erroneous_jobs_queue: Option<&RunQueue>,
-        mut execute: impl FnMut(RunParameters, &RunQueue) -> Result<()>,
+        mut execute: impl FnMut(&Option<String>, RunParameters, &RunQueue) -> Result<()>,
     ) -> Result<()> {
         let _lock = item.lock_exclusive()?;
 
         let BenchmarkingJob {
+            reason,
             run_parameters,
             remaining_count,
             mut remaining_error_budget,
@@ -110,12 +111,13 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
         } = job;
         if remaining_error_budget > 0 {
             if remaining_count > 0 {
-                if let Err(error) = execute(run_parameters.clone(), self.current) {
+                if let Err(error) = execute(&reason, run_parameters.clone(), self.current) {
                     remaining_error_budget = remaining_error_budget - 1;
                     // XX this should use more important error
                     // logging than info!; (XX also, repetitive
                     // BenchmarkingJob recreation and cloning.)
                     let job = BenchmarkingJob {
+                        reason: reason.clone(),
                         run_parameters: run_parameters.clone(),
                         remaining_count,
                         remaining_error_budget,
@@ -164,6 +166,7 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
                         }
 
                         let job = BenchmarkingJob {
+                            reason: reason.clone(),
                             run_parameters: run_parameters.clone(),
                             remaining_count,
                             remaining_error_budget,
@@ -181,6 +184,7 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
         }
         if remaining_error_budget == 0 {
             let job = BenchmarkingJob {
+                reason,
                 run_parameters,
                 remaining_count,
                 remaining_error_budget,

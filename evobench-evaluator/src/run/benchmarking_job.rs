@@ -69,7 +69,19 @@ impl BenchmarkingJobSettingsOpts {
 }
 
 #[derive(Debug, PartialEq, Clone, clap::Args)]
+pub struct BenchmarkingJobReasonOpt {
+    /// An optional short context string (should be <= 15 characters)
+    /// describing the reason for or context of the job (e.g. used to
+    /// report which git branch the commit was found on).
+    #[clap(long)]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, PartialEq, Clone, clap::Args)]
 pub struct BenchmarkingJobOpts {
+    #[clap(flatten)]
+    pub reason: BenchmarkingJobReasonOpt,
+
     #[clap(flatten)]
     pub benchmarking_job_settings: BenchmarkingJobSettingsOpts,
 
@@ -80,6 +92,7 @@ pub struct BenchmarkingJobOpts {
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BenchmarkingJob {
+    pub reason: Option<String>,
     pub run_parameters: RunParameters,
     pub priority: Priority,
     pub remaining_count: u8,
@@ -93,6 +106,7 @@ impl BenchmarkingJobOpts {
         custom_parameters_set: &CustomParametersSet,
     ) -> Vec<BenchmarkingJob> {
         let Self {
+            reason,
             benchmarking_job_settings,
             run_parameters,
         } = self;
@@ -105,6 +119,7 @@ impl BenchmarkingJobOpts {
         custom_parameters_set
             .iter()
             .map(|custom_parameters| BenchmarkingJob {
+                reason: reason.reason.clone(),
                 run_parameters: run_parameters.complete(custom_parameters),
                 remaining_count: count,
                 remaining_error_budget: error_budget,

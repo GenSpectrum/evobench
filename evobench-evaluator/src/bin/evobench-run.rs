@@ -15,7 +15,9 @@ use evobench_evaluator::{
     key::{RunParameters, RunParametersOpts},
     key_val_fs::key_val::Entry,
     run::{
-        benchmarking_job::{BenchmarkingJobOpts, BenchmarkingJobSettingsOpts},
+        benchmarking_job::{
+            BenchmarkingJobOpts, BenchmarkingJobReasonOpt, BenchmarkingJobSettingsOpts,
+        },
         config::RunConfig,
         global_app_state_dir::GlobalAppStateDir,
         insert_jobs::{insert_jobs, open_already_inserted, ForceOpt, QuietOpt},
@@ -97,7 +99,8 @@ enum SubCommand {
 
         #[clap(flatten)]
         benchmarking_job_settings: BenchmarkingJobSettingsOpts,
-
+        #[clap(flatten)]
+        reason: BenchmarkingJobReasonOpt,
         #[clap(flatten)]
         force_opt: ForceOpt,
         #[clap(flatten)]
@@ -194,9 +197,10 @@ fn run_queues(
         // XX handle errors without exiting? Or do that above
 
         let ran = queues.run_next_job(
-            |run_parameters, queue| {
+            |reason, run_parameters, queue| {
                 run_job(
                     &mut working_directory_pool,
+                    reason,
                     run_parameters,
                     &queue.schedule_condition,
                     dry_run,
@@ -420,6 +424,7 @@ fn main() -> Result<()> {
         }
 
         SubCommand::InsertLocal {
+            reason,
             reference,
             dir,
             benchmarking_job_settings,
@@ -433,6 +438,7 @@ fn main() -> Result<()> {
             let commit_id = GitHash::from_str(&commit_id_str)?;
 
             let benchmarking_job_opts = BenchmarkingJobOpts {
+                reason,
                 benchmarking_job_settings,
                 run_parameters: RunParametersOpts { commit_id },
             };
@@ -488,8 +494,11 @@ fn main() -> Result<()> {
             let num_commits = commits.len();
 
             let mut benchmarking_jobs = Vec::new();
-            for commit_id in commits {
+            for (branch_name, commit_id) in commits {
                 let opts = BenchmarkingJobOpts {
+                    reason: BenchmarkingJobReasonOpt {
+                        reason: branch_name.as_str().to_owned().into(),
+                    },
                     benchmarking_job_settings: conf.benchmarking_job_settings.clone(),
                     run_parameters: RunParametersOpts { commit_id },
                 };

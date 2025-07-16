@@ -166,7 +166,7 @@ impl RunQueues {
     /// before calling this method.
     pub fn run_next_job<'s, 'conf, 'r, 'rc>(
         &'s self,
-        execute: impl FnMut(RunParameters, &RunQueue) -> Result<()>,
+        execute: impl FnMut(&Option<String>, RunParameters, &RunQueue) -> Result<()>,
         run_context: &mut RunContext,
         now: DateTime<Local>,
     ) -> Result<bool> {

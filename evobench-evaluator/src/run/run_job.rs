@@ -107,6 +107,7 @@ fn evobench_evaluator(args: &[OsString]) -> Result<()> {
 
 pub fn run_job(
     working_directory_pool: &mut WorkingDirectoryPool,
+    reason: &Option<String>,
     checked_run_parameters: RunParameters,
     schedule_condition: &ScheduleCondition,
     dry_run: DryRun,
@@ -269,6 +270,13 @@ pub fn run_job(
                     let schedule_condition_str = ron_to_string_pretty(&schedule_condition)?;
                     std::fs::write(&target, &schedule_condition_str)
                         .map_err(ctx!("saving to {target:?}"))?
+                }
+
+                {
+                    let target = (&result_dir).append("reason.ron");
+                    info!("saving context to {target:?}");
+                    let s = ron_to_string_pretty(&reason)?;
+                    std::fs::write(&target, &s).map_err(ctx!("saving to {target:?}"))?
                 }
 
                 info!("(re-)evaluating the summary file across all results for this key");

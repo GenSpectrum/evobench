@@ -78,11 +78,11 @@ impl PollingPool {
 
     /// Returns the resolved commit ids for the requested names, and
     /// any names that failed to resolve.
-    pub fn resolve_branch_names(
+    pub fn resolve_branch_names<'b>(
         &mut self,
         working_directory_id: WorkingDirectoryId,
-        branch_names: &[GitBranchName],
-    ) -> Result<(Vec<GitHash>, Vec<String>)> {
+        branch_names: &'b [GitBranchName],
+    ) -> Result<(Vec<(&'b GitBranchName, GitHash)>, Vec<String>)> {
         self.pool.process_working_directory(
             working_directory_id,
             |working_directory, _timestamp| {
@@ -92,7 +92,7 @@ impl PollingPool {
                 for name in branch_names {
                     let ref_string = name.to_ref_string_in_remote("origin");
                     if let Some(id) = git_working_dir.git_rev_parse(&ref_string, true)? {
-                        ids.push(GitHash::from_str(&id)?)
+                        ids.push((name, GitHash::from_str(&id)?))
                     } else {
                         non_resolving.push(ref_string);
                     }
