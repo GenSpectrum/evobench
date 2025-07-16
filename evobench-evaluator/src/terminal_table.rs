@@ -187,6 +187,11 @@ impl<O: Write + IsTerminal> TerminalTable<O> {
         Self::write_row(&self.opts, &self.settings, &mut self.out, data, None)
     }
 
+    pub fn print(&mut self, s: &str) -> Result<()> {
+        self.out.write_all(s.as_bytes())?;
+        Ok(())
+    }
+
     pub fn finish(self) -> Result<O> {
         self.out
             .into_inner()

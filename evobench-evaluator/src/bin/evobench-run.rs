@@ -73,6 +73,9 @@ enum SubCommand {
 
     /// List the currently scheduled and running jobs
     List {
+        #[clap(flatten)]
+        terminal_table_opts: TerminalTableOpts,
+
         /// Show details, not just one item per line
         #[clap(short, long)]
         verbose: bool,
@@ -310,7 +313,10 @@ fn main() -> Result<()> {
             drop(table.finish()?);
         }
 
-        SubCommand::List { verbose } => {
+        SubCommand::List {
+            verbose,
+            terminal_table_opts,
+        } => {
             let show_queue = |i: &str, run_queue: &RunQueue| -> Result<()> {
                 let RunQueue {
                     file_name,
@@ -318,12 +324,29 @@ fn main() -> Result<()> {
                     queue,
                 } = run_queue;
 
-                println!("{i}: queue {file_name} ({schedule_condition}):");
+                let title_row = format!("{i}: queue {file_name} ({schedule_condition}):");
+                let mut table = TerminalTable::start(
+                    &[38, 43],
+                    &[
+                        // "Insertion time"
+                        &*title_row,
+                        // "Commit id"
+                        "",
+                        // "locked"
+                        "",
+                        // "Custom parameters"
+                        // "",
+                    ],
+                    terminal_table_opts.clone(),
+                    stdout().lock(),
+                )?;
+
                 for entry in queue.sorted_entries(false, None) {
                     let mut entry = entry?;
                     let file_name = get_filename(&entry)?;
                     let key = entry.key()?;
                     let val = entry.get()?;
+                    let commit_id = val.run_parameters.commit_id.to_string();
                     let locking = if schedule_condition.is_grave_yard() {
                         ""
                     } else {
@@ -334,11 +357,21 @@ fn main() -> Result<()> {
                             .as_str()
                     };
                     if verbose {
-                        println!("\n{file_name} ({key})\t{locking}\n{val:#?}");
+                        table.write_data_row(&[
+                            &*format!("{file_name} ({key})"),
+                            &*commit_id,
+                            locking,
+                        ])?;
+                        table.print(&format!("{val:#?}\n"))?;
                     } else {
-                        println!("{key}\t{locking}");
+                        table.write_data_row(&[
+                            &*key.datetime().to_rfc3339(),
+                            &*commit_id,
+                            locking,
+                        ])?;
                     }
                 }
+                drop(table.finish()?);
                 Ok(())
             };
 
@@ -351,7 +384,7 @@ fn main() -> Result<()> {
 
             for (i, run_queue) in queues.pipeline().iter().enumerate() {
                 println!("{thin_bar}");
-                show_queue(&i.to_string(), run_queue)?;
+                show_queue(&(i + 1).to_string(), run_queue)?;
             }
             println!("{thick_bar}");
             if let Some(run_queue) = queues.erroneous_jobs_queue() {

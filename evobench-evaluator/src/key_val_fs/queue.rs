@@ -66,6 +66,15 @@ impl TimeKey {
         let id = next_id();
         Self { nanos, pid, id }
     }
+
+    pub fn datetime(&self) -> DateTime<Local> {
+        let Self {
+            nanos,
+            pid: _,
+            id: _,
+        } = self;
+        datetime_from_nanoseconds(*nanos)
+    }
 }
 
 impl AsKey for TimeKey {
