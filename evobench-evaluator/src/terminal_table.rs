@@ -212,15 +212,15 @@ impl<'v, 's, O: Write + IsTerminal> TerminalTable<'v, 's, O> {
                 out.write_all("\t".as_bytes())?;
             }
             let mut text = text.to_string();
-            text.push_str(" ");
-            let text_len = text.len();
             if let Some(style) = line_style {
+                text.push_str(" ");
                 let s = text.as_str().paint(*style);
                 let s = s.to_string();
                 out.write_all(s.as_bytes())?;
             } else {
                 out.write_all(text.as_bytes())?;
             }
+            let text_len = text.len();
 
             if let Some(width) = width_opt {
                 if !opts.tsv {
