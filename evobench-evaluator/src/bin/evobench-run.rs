@@ -4,7 +4,8 @@ use itertools::Itertools;
 use run_git::git::GitWorkingDir;
 
 use std::{
-    fmt::Display, io::stdout, path::PathBuf, process::exit, str::FromStr, thread, time::Duration,
+    borrow::Cow, fmt::Display, io::stdout, path::PathBuf, process::exit, str::FromStr, thread,
+    time::Duration,
 };
 
 use evobench_evaluator::{
@@ -26,7 +27,7 @@ use evobench_evaluator::{
         working_directory_pool::WorkingDirectoryPool,
     },
     serde::{date_and_time::system_time_to_rfc3339, git_branch_name::GitBranchName},
-    terminal_table::{TerminalTable, TerminalTableOpts},
+    terminal_table::{TerminalTable, TerminalTableOpts, TerminalTableTitle},
     utillib::{
         logging::{set_log_level, LogLevelOpt},
         path_resolve_home::path_resolve_home,
@@ -297,7 +298,20 @@ fn main() -> Result<()> {
             flat_jobs.sort_by_key(|v| v.1);
             let mut table = TerminalTable::start(
                 &[38, 43],
-                &["Insertion time", "Commit id", "Custom parameters"],
+                &[
+                    TerminalTableTitle {
+                        text: Cow::Borrowed("Insertion time"),
+                        span: 1,
+                    },
+                    TerminalTableTitle {
+                        text: Cow::Borrowed("Commit id"),
+                        span: 1,
+                    },
+                    TerminalTableTitle {
+                        text: Cow::Borrowed("Custom parameters"),
+                        span: 1,
+                    },
+                ],
                 terminal_table_opts,
                 stdout().lock(),
             )?;
@@ -324,19 +338,17 @@ fn main() -> Result<()> {
                     queue,
                 } = run_queue;
 
+                // "Insertion time"
+                // "Commit id"
+                // "locked"
                 let title_row = format!("{i}: queue {file_name} ({schedule_condition}):");
+                let titles = &[TerminalTableTitle {
+                    text: Cow::Borrowed(&*title_row),
+                    span: 3,
+                }];
                 let mut table = TerminalTable::start(
                     &[38, 43],
-                    &[
-                        // "Insertion time"
-                        &*title_row,
-                        // "Commit id"
-                        "",
-                        // "locked"
-                        "",
-                        // "Custom parameters"
-                        // "",
-                    ],
+                    titles,
                     terminal_table_opts.clone(),
                     stdout().lock(),
                 )?;

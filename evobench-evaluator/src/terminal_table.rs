@@ -9,12 +9,13 @@
 //! make it ambiguous).
 
 use std::{
+    borrow::Cow,
     fmt::Display,
     io::{BufWriter, IsTerminal, Write},
 };
 
 use anyhow::{anyhow, bail, Result};
-use itertools::Itertools;
+use itertools::{EitherOrBoth, Itertools};
 use strum_macros::EnumString;
 use yansi::{Paint, Style};
 
@@ -60,9 +61,84 @@ impl TerminalTableOpts {
     }
 }
 
-struct TerminalTableSettings {
+pub struct TerminalTableTitle<'s> {
+    pub text: Cow<'s, str>,
+    /// How many columns this should span across; should normally be
+    /// `1`
+    pub span: usize,
+}
+
+enum Row<'r, 's, V: Display> {
+    WithSpans(&'r [TerminalTableTitle<'s>]),
+    PlainStrings(&'r [V]),
+}
+
+impl<'r, 's, V: Display> Row<'r, 's, V> {
+    /// How many columns this Row covers (if it has entries that span
+    /// multiple columns, all of those are added)
+    fn logical_len(&self) -> usize {
+        match self {
+            Row::WithSpans(terminal_table_titles) => {
+                let mut cols = 0;
+                for TerminalTableTitle { text: _, span } in *terminal_table_titles {
+                    cols += span;
+                }
+                cols
+            }
+            Row::PlainStrings(items) => items.len(),
+        }
+    }
+
+    /// Adds widths together for spanned columns. The width for the
+    /// last column is None.
+    fn string_and_widths(&self, widths: &[usize]) -> Vec<(Cow<str>, Option<usize>)> {
+        match self {
+            Row::WithSpans(terminal_table_titles) => {
+                let mut v: Vec<(Cow<str>, Option<usize>)> = Vec::new();
+                let mut widths = widths.into_iter();
+                for TerminalTableTitle { text, span } in *terminal_table_titles {
+                    match *span {
+                        0 => (),
+                        n => {
+                            let width = (|| {
+                                let mut tot_width = 0;
+                                for _ in 0..n {
+                                    if let Some(width) = widths.next() {
+                                        tot_width += width;
+                                    } else {
+                                        return None;
+                                    }
+                                }
+                                Some(tot_width)
+                            })();
+                            v.push((text.as_ref().into(), width));
+                        }
+                    }
+                }
+                v
+            }
+            Row::PlainStrings(items) => {
+                let mut v: Vec<(Cow<str>, Option<usize>)> = Vec::new();
+                for either_or_both in items.iter().zip_longest(widths) {
+                    match either_or_both {
+                        EitherOrBoth::Both(val, width) => {
+                            v.push((val.to_string().into(), Some(*width)))
+                        }
+                        EitherOrBoth::Left(val) => v.push((val.to_string().into(), None)),
+                        EitherOrBoth::Right(_) => {
+                            unreachable!("given row len has been checked against widths len")
+                        }
+                    }
+                }
+                v
+            }
+        }
+    }
+}
+
+struct TerminalTableSettings<'v, 's> {
     widths: Vec<usize>,
-    titles: Vec<String>,
+    titles: &'v [TerminalTableTitle<'s>],
     padding: String,
     is_terminal: bool,
 }
@@ -72,13 +148,13 @@ struct TerminalTableSettings {
 /// that value, a single space is still printed between the value and
 /// the next. The last column does not need a width, and no padding is
 /// printed.
-pub struct TerminalTable<O: Write + IsTerminal> {
+pub struct TerminalTable<'v, 's, O: Write + IsTerminal> {
     pub opts: TerminalTableOpts,
-    settings: TerminalTableSettings,
+    settings: TerminalTableSettings<'v, 's>,
     out: BufWriter<O>,
 }
 
-impl<O: Write + IsTerminal> TerminalTable<O> {
+impl<'v, 's, O: Write + IsTerminal> TerminalTable<'v, 's, O> {
     /// How many spaces to put between columns in human-readable
     /// format at minimum, even if a value is longer than anticipated.
     const MINIMAL_PADDING_LEN: usize = 2;
@@ -88,13 +164,12 @@ impl<O: Write + IsTerminal> TerminalTable<O> {
     /// each title, to make sure italic text is not clipped on
     /// terminals. That will be fine as you'll want your widths to be
     /// at least 2 longer than the text itself, anyway.
-    pub fn start<S: Display>(
+    pub fn start(
         widths: &[usize],
-        titles: &[S],
+        titles: &'v [TerminalTableTitle<'s>],
         opts: TerminalTableOpts,
         out: O,
     ) -> Result<Self> {
-        let titles = titles.iter().map(|title| format!("{title} ")).collect();
         let max_width = widths.iter().max().copied().unwrap_or(0);
         let padding = " ".repeat(max_width);
         let is_terminal = out.is_terminal();
@@ -118,10 +193,10 @@ impl<O: Write + IsTerminal> TerminalTable<O> {
         opts: &TerminalTableOpts,
         settings: &TerminalTableSettings,
         out: &mut BufWriter<O>,
-        row: &[V],
+        row: Row<V>,
         line_style: Option<&Style>,
     ) -> Result<()> {
-        let lens = (settings.widths.len(), row.len());
+        let lens = (settings.widths.len(), row.logical_len());
         let (l1, l2) = lens;
         if l1
             != l2
@@ -132,30 +207,24 @@ impl<O: Write + IsTerminal> TerminalTable<O> {
         }
 
         let mut is_first = true;
-        for either_or_both in settings.widths.iter().zip_longest(row) {
+        for (text, width_opt) in row.string_and_widths(&settings.widths) {
             if opts.tsv && !is_first {
                 out.write_all("\t".as_bytes())?;
             }
-
-            let val = either_or_both
-                .as_ref()
-                .right()
-                .expect("value there because row len checked above");
-            let s = val.to_string();
-            let s_len = s.len();
-            {
-                let s: String = if let Some(style) = line_style {
-                    let s = s.paint(*style);
-                    s.to_string()
-                } else {
-                    s
-                };
+            let mut text = text.to_string();
+            text.push_str(" ");
+            let text_len = text.len();
+            if let Some(style) = line_style {
+                let s = text.as_str().paint(*style);
+                let s = s.to_string();
                 out.write_all(s.as_bytes())?;
+            } else {
+                out.write_all(text.as_bytes())?;
             }
 
-            if let Some(width) = either_or_both.left() {
+            if let Some(width) = width_opt {
                 if !opts.tsv {
-                    let missing_padding_len = width.checked_sub(s_len).unwrap_or(0);
+                    let missing_padding_len = width.checked_sub(text_len).unwrap_or(0);
                     let wanted_padding_len = missing_padding_len.max(Self::MINIMAL_PADDING_LEN);
                     let padding = &settings.padding[0..wanted_padding_len];
                     out.write_all(padding.as_bytes())?;
@@ -174,7 +243,7 @@ impl<O: Write + IsTerminal> TerminalTable<O> {
             &self.opts,
             &self.settings,
             &mut self.out,
-            &self.settings.titles,
+            Row::<&str>::WithSpans(self.settings.titles),
             if self.opts.want_color(self.settings.is_terminal) {
                 Some(&STYLE)
             } else {
@@ -184,7 +253,13 @@ impl<O: Write + IsTerminal> TerminalTable<O> {
     }
 
     pub fn write_data_row<V: Display>(&mut self, data: &[V]) -> Result<()> {
-        Self::write_row(&self.opts, &self.settings, &mut self.out, data, None)
+        Self::write_row(
+            &self.opts,
+            &self.settings,
+            &mut self.out,
+            Row::PlainStrings(data),
+            None,
+        )
     }
 
     pub fn print(&mut self, s: &str) -> Result<()> {
