@@ -357,7 +357,7 @@ fn main() -> Result<()> {
                     span: 5,
                 }];
                 let mut table = TerminalTable::start(
-                    &[38, 14, 15, 43],
+                    &[38, 16, 17, 43],
                     titles,
                     terminal_table_opts.clone(),
                     stdout().lock(),

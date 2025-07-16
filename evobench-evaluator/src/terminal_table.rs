@@ -163,7 +163,9 @@ impl<'v, 's, O: Write + IsTerminal> TerminalTable<'v, 's, O> {
     /// (the last column does not need a width).  Appends a space to
     /// each title, to make sure italic text is not clipped on
     /// terminals. That will be fine as you'll want your widths to be
-    /// at least 2 longer than the text itself, anyway.
+    /// at least 2 longer than the text itself, anyway. `widths` must
+    /// include the spacing between the columns--i.e. make it 2-3
+    /// larger than the max. expected width of the data.
     pub fn start(
         widths: &[usize],
         titles: &'v [TerminalTableTitle<'s>],
