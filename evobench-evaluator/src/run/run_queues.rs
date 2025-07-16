@@ -17,7 +17,7 @@ use crate::{
         queue::{Queue, QueueGetItemOpts, QueueItem, TimeKey},
     },
     path_util::AppendToPath,
-    serde::proper_filename::ProperFilename,
+    serde::{priority::Priority, proper_filename::ProperFilename},
     utillib::logging::{log_level, LogLevel},
 };
 
@@ -51,6 +51,8 @@ pub struct RunQueues {
 }
 
 impl RunQueues {
+    pub const TIMED_QUEUE_DEFAULT_PRIORITY: Priority = Priority::new_unchecked(1.5);
+
     pub fn pipeline(&self) -> &[RunQueue] {
         self.borrow_pipeline()
     }
@@ -114,6 +116,7 @@ impl RunQueues {
             .filter_map(move |rq| match rq.schedule_condition {
                 ScheduleCondition::Immediately { situation: _ } => Some((rq, None)),
                 ScheduleCondition::LocalNaiveTimeWindow {
+                    priority: _,
                     situation: _,
                     stop_start: _,
                     repeatedly: _,
@@ -217,8 +220,19 @@ impl RunQueues {
                 .filter_map(|r| r.transpose())
                 .collect::<Result<_>>()?;
 
-            // And then get the most prioritized job of all
-            jobs.sort_by_key(|(_, _, _, job)| job.priority.neg());
+            // And then get the most prioritized job of all, adjusted
+            // for the queue it is in.
+            jobs.sort_by_key(|(rq, _, _, job)| {
+                (rq.schedule_condition
+                    .priority()
+                    .expect("no graveyards here")
+                    + job.priority)
+                    .expect(
+                        "no priorities configured that are so close to \
+                         the end of the range that this addition overflows",
+                    )
+                    .neg()
+            });
             jobs.into_iter().next()
         };
 
@@ -260,6 +274,7 @@ impl RunQueues {
             match run_queue.schedule_condition {
                 ScheduleCondition::Immediately { situation: _ } => (),
                 ScheduleCondition::LocalNaiveTimeWindow {
+                    priority: _,
                     situation: _,
                     stop_start,
                     repeatedly: _,

@@ -13,13 +13,13 @@ use crate::{
     key::CustomParametersSetOpts,
     serde::{
         date_and_time::LocalNaiveTime, git_branch_name::GitBranchName, git_url::GitUrl,
-        proper_filename::ProperFilename,
+        priority::Priority, proper_filename::ProperFilename,
     },
 };
 
 use super::{
     benchmarking_job::BenchmarkingJobSettingsOpts, global_app_state_dir::GlobalAppStateDir,
-    working_directory_pool::WorkingDirectoryPoolOpts,
+    run_queues::RunQueues, working_directory_pool::WorkingDirectoryPoolOpts,
 };
 
 #[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -41,6 +41,9 @@ pub enum ScheduleCondition {
     /// given day due to DST changes). Jobs started before the end of
     /// the window are finished, though.
     LocalNaiveTimeWindow {
+        /// The priority of this queue--it is added to the priority of
+        /// jobs in this queue. By default, 1.5 is used.
+        priority: Option<Priority>,
         /// A description of the situation during which jobs in this
         /// queue are executed; all jobs of the same context (and same
         /// key) are grouped together and evaluated to "summary-" file
@@ -81,6 +84,7 @@ impl Display for ScheduleCondition {
                 write!(f, "Immediately {:?}", situation.as_str())
             }
             ScheduleCondition::LocalNaiveTimeWindow {
+                priority: _,
                 situation,
                 stop_start,
                 repeatedly,
@@ -99,9 +103,13 @@ impl Display for ScheduleCondition {
                 } else {
                     "-".into()
                 };
+                let pri: f64 = self
+                    .priority()
+                    .expect("LocalNaiveTimeWindow *does* have priority field")
+                    .into();
                 write!(
                     f,
-                    "LocalNaiveTimeWindow {:?} {from} - {to}: {rep}, {mov}, \"{cmd}\"",
+                    "LocalNaiveTimeWindow {:?} {from} - {to} pri={pri}: {rep}, {mov}, \"{cmd}\"",
                     situation.as_str()
                 )
             }
@@ -123,6 +131,7 @@ impl ScheduleCondition {
         match self {
             ScheduleCondition::Immediately { situation: _ } => None,
             ScheduleCondition::LocalNaiveTimeWindow {
+                priority: _,
                 situation: _,
                 stop_start: _,
                 repeatedly: _,
@@ -138,6 +147,7 @@ impl ScheduleCondition {
         match self {
             ScheduleCondition::Immediately { situation: _ } => None,
             ScheduleCondition::LocalNaiveTimeWindow {
+                priority: _,
                 situation: _,
                 stop_start,
                 repeatedly: _,
@@ -154,6 +164,7 @@ impl ScheduleCondition {
         match self {
             ScheduleCondition::Immediately { situation: _ } => false,
             ScheduleCondition::LocalNaiveTimeWindow {
+                priority: _,
                 situation: _,
                 stop_start: _,
                 repeatedly: _,
@@ -169,6 +180,7 @@ impl ScheduleCondition {
         match self {
             ScheduleCondition::Immediately { situation } => Some(situation),
             ScheduleCondition::LocalNaiveTimeWindow {
+                priority: _,
                 situation,
                 stop_start: _,
                 repeatedly: _,
@@ -176,6 +188,22 @@ impl ScheduleCondition {
                 from: _,
                 to: _,
             } => Some(situation),
+            ScheduleCondition::GraveYard => None,
+        }
+    }
+
+    pub fn priority(&self) -> Option<Priority> {
+        match self {
+            ScheduleCondition::Immediately { situation: _ } => Some(Priority::default()),
+            ScheduleCondition::LocalNaiveTimeWindow {
+                priority,
+                situation: _,
+                stop_start: _,
+                repeatedly: _,
+                move_when_time_window_ends: _,
+                from: _,
+                to: _,
+            } => Some(priority.unwrap_or(RunQueues::TIMED_QUEUE_DEFAULT_PRIORITY)),
             ScheduleCondition::GraveYard => None,
         }
     }

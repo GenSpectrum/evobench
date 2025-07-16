@@ -3,7 +3,11 @@
 // TryFrom to construct floats, instead ordering NaN at the end. This
 // doesn't seem right for priority use, thus making our own.
 
-use std::{fmt::Display, ops::Neg, str::FromStr};
+use std::{
+    fmt::Display,
+    ops::{Add, Neg},
+    str::FromStr,
+};
 
 use serde::de::Visitor;
 
@@ -26,6 +30,13 @@ impl Ord for Priority {
 pub struct NonComparableNumber(f64);
 
 impl Priority {
+    /// This does not verify that `value` is comparable. Expect panics
+    /// and other problems if it isn't! This function only exists for
+    /// `const` purposes.
+    pub const fn new_unchecked(value: f64) -> Self {
+        Self(value)
+    }
+
     pub fn new(value: f64) -> Result<Self, NonComparableNumber> {
         match value.partial_cmp(&1.23) {
             Some(_) => Ok(Self(value)),
@@ -50,11 +61,31 @@ impl Neg for Priority {
     }
 }
 
+impl Add for Priority {
+    type Output = Result<Priority, NonComparableNumber>;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self::new(self.0 + rhs.0)
+    }
+}
+
+impl Default for Priority {
+    fn default() -> Self {
+        Self::new_unchecked(0.)
+    }
+}
+
 impl TryFrom<f64> for Priority {
     type Error = NonComparableNumber;
 
     fn try_from(value: f64) -> Result<Self, Self::Error> {
         Self::new(value)
+    }
+}
+
+impl From<Priority> for f64 {
+    fn from(value: Priority) -> Self {
+        value.0
     }
 }
 

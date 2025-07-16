@@ -136,6 +136,7 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
                                 maybe_queue = self.next;
                             }
                             ScheduleCondition::LocalNaiveTimeWindow {
+                                priority: _,
                                 situation: _,
                                 stop_start: _,
                                 repeatedly,
