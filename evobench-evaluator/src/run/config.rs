@@ -36,10 +36,10 @@ pub enum ScheduleCondition {
         situation: ProperFilename,
     },
 
-    /// Run jobs in this queue between the given times on every
-    /// day. After the time window runs out, remaining jobs in the
-    /// queue are moved to the next queue (or are dropped if there is
-    /// none).
+    /// Run jobs in this queue between the given times on every day
+    /// (except when one of the times is not valid or ambiguous on a
+    /// given day due to DST changes). Jobs started before the end of
+    /// the window are finished, though.
     LocalNaiveTimeWindow {
         /// A description of the situation during which jobs in this
         /// queue are executed; all jobs of the same context (and same
@@ -61,10 +61,9 @@ pub enum ScheduleCondition {
         /// the next queue; if false, the jobs remain and are
         /// scheduled again in the same time window on the next day.
         move_when_time_window_ends: bool,
-        /// Times in the local time zone, scheduled to run every
-        /// day--except if one of the two times is not unambiguous on
-        /// a given day (e.g. due to DST changes), the whole queue is
-        /// not scheduled on that day.
+        /// Times in the time zone that the daemon is running with (to
+        /// change that, set `TZ` env var to area/city, or the default
+        /// time zone via dpkg-reconfigure).
         from: LocalNaiveTime,
         to: LocalNaiveTime,
     },
