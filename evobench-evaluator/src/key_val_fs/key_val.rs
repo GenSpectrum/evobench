@@ -529,6 +529,7 @@ impl<K: AsKey, V: DeserializeOwned + Serialize> KeyVal<K, V> {
         &self,
         wait_for_entries: bool,
         stop_at: Option<SystemTime>,
+        reverse: bool,
     ) -> Result<Vec<K>, KeyValError>
     where
         K: Ord,
@@ -536,7 +537,11 @@ impl<K: AsKey, V: DeserializeOwned + Serialize> KeyVal<K, V> {
         let mut keys: Vec<_> = self
             .keys(wait_for_entries, stop_at)?
             .collect::<Result<_, _>>()?;
+        // No way to sort in reverse from the get go?
         keys.sort();
+        if reverse {
+            keys.reverse();
+        }
         Ok(keys)
     }
 }

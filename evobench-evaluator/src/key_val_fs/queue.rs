@@ -114,6 +114,8 @@ pub struct QueueIterationOpts {
     /// Stop at this time if given. Unblocks "wait" (waiting for new
     /// messages), but not currently blocking on locks of entries!
     pub stop_at: Option<SystemTime>,
+    /// Sort in reverse
+    pub reverse: bool,
 
     pub get_item_opts: QueueGetItemOpts,
 }
@@ -336,9 +338,10 @@ impl<V: DeserializeOwned + Serialize + 'static> Queue<V> {
         &'s self,
         wait_for_entries: bool,
         stop_at: Option<SystemTime>,
+        reverse: bool,
     ) -> impl Iterator<Item = Result<Entry<'s, TimeKey, V>, KeyValError>> + use<'s, V> {
         Gen::new(|co| async move {
-            match self.0.sorted_keys(wait_for_entries, stop_at) {
+            match self.0.sorted_keys(wait_for_entries, stop_at, reverse) {
                 Ok(keys) => {
                     for key in keys {
                         if let Some(res) = self.0.entry_opt(&key).transpose() {
@@ -369,12 +372,13 @@ impl<V: DeserializeOwned + Serialize + 'static> Queue<V> {
                 wait,
                 stop_at,
                 get_item_opts,
+                reverse,
             } = opts;
 
             let mut entries = None;
             loop {
                 if entries.is_none() {
-                    entries = Some(self.sorted_entries(wait, stop_at));
+                    entries = Some(self.sorted_entries(wait, stop_at, reverse));
                 }
                 if let Some(entry) = entries.as_mut().expect("set 2 lines above").next() {
                     match entry {

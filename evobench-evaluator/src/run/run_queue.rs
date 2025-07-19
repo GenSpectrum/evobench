@@ -68,6 +68,7 @@ impl<'conf> RunQueue<'conf> {
             },
             wait: false,
             stop_at: None,
+            reverse: false,
         };
         self.queue.items(opts)
     }
@@ -233,7 +234,7 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
         info!("ran out of time in queue {}", self.file_name);
         if self.schedule_condition.move_when_time_window_ends() {
             let mut count = 0;
-            for entry in self.current.queue.sorted_entries(false, None) {
+            for entry in self.current.queue.sorted_entries(false, None, false) {
                 // XX continue in the face of
                 // errors? Just globally in
                 // the queue?

@@ -172,7 +172,7 @@ fn main() -> Result<()> {
         }
         SubCommand::List => {
             let queue = open_queue(false)?;
-            for entry in queue.sorted_entries(false, None) {
+            for entry in queue.sorted_entries(false, None, false) {
                 let mut entry = entry?;
                 let file_name = get_filename(&entry)?;
                 let key = entry.key()?;
@@ -202,6 +202,7 @@ fn main() -> Result<()> {
             let opts = QueueIterationOpts {
                 wait,
                 stop_at: None,
+                reverse: false,
                 get_item_opts: QueueGetItemOpts {
                     no_lock,
                     error_when_locked,

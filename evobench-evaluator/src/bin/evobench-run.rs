@@ -373,27 +373,46 @@ fn main() -> Result<()> {
                     stdout().lock(),
                 )?;
 
-                let mut all_entries: Vec<_> = queue
-                    .sorted_entries(false, None)
-                    .collect::<Result<_, _>>()?;
-                let entries: &mut [_] = if is_extra_queue && !all {
-                    let max_len = conf.queues.view_jobs_max_len;
-                    if all_entries.len() > max_len {
-                        let skip = all_entries.len() - max_len;
-                        if skip > 1 {
-                            table.print(&format!("... ({skip} entries skipped)\n"))?;
-                            &mut all_entries[skip..]
-                        } else {
-                            // skipping only 1 does not make sense thus show them all
-                            &mut all_entries
-                        }
-                    } else {
-                        &mut all_entries
-                    }
+                // Only retain as many items in memory as will be
+                // displayed, to avoid keeping too many file handles
+                // open. Thus decide on the limit beforehand, then
+                // retrieve that many from the bottom (in reverse
+                // order), the rest is only counted.
+                let limit = if is_extra_queue && !all {
+                    // Get 1 more since showing "skipped 1 entry" is
+                    // not economic.
+                    conf.queues.view_jobs_max_len + 1
                 } else {
-                    &mut all_entries
+                    usize::MAX
                 };
-                for entry in entries {
+                let mut all_entries_iter = queue.sorted_entries(false, None, true);
+                let mut entries = Vec::new();
+                // Can't use `(&mut
+                // all_entries_iter).take(limit).collect::<Result<_,
+                // _>>()?` as we also need the count of the rest
+                // afterwards and that continues to fetch and
+                // genawaiter panics when doing that.
+                let mut num_skipped = 0;
+                {
+                    let mut limit = limit;
+                    while let Some(entry) = all_entries_iter.next() {
+                        let entry = entry?;
+                        entries.push(entry);
+                        limit -= 1;
+                        if limit == 0 {
+                            num_skipped = all_entries_iter.count();
+                            break;
+                        }
+                    }
+                }
+
+                if num_skipped > 0 {
+                    entries.pop();
+                    num_skipped += 1;
+                    table.print(&format!("... ({num_skipped} entries skipped)\n"))?;
+                }
+                entries.reverse();
+                for mut entry in entries {
                     let file_name = get_filename(&entry)?;
                     let key = entry.key()?;
                     let job = entry.get()?;
