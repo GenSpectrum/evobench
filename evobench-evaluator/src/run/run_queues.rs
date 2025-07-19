@@ -48,6 +48,10 @@ pub struct RunQueues {
     #[borrows(config)]
     #[covariant]
     erroneous_jobs_queue: Option<RunQueue<'this>>,
+
+    #[borrows(config)]
+    #[covariant]
+    done_jobs_queue: Option<RunQueue<'this>>,
 }
 
 impl RunQueues {
@@ -66,6 +70,10 @@ impl RunQueues {
 
     pub fn erroneous_jobs_queue(&self) -> Option<&RunQueue> {
         self.borrow_erroneous_jobs_queue().as_ref()
+    }
+
+    pub fn done_jobs_queue(&self) -> Option<&RunQueue> {
+        self.borrow_done_jobs_queue().as_ref()
     }
 
     pub fn first(&self) -> &RunQueue {
@@ -242,7 +250,13 @@ impl RunQueues {
                 run_context.running_job_in_windowed_queue(&*rqwn, dtr);
             }
 
-            rqwn.run_job(&item, job, self.erroneous_jobs_queue(), execute)?;
+            rqwn.run_job(
+                &item,
+                job,
+                self.erroneous_jobs_queue(),
+                self.done_jobs_queue(),
+                execute,
+            )?;
 
             true
         } else {
@@ -256,21 +270,30 @@ impl RunQueues {
 
     /// Verify that the queue configuration is valid
     fn check_run_queues(&self) -> Result<()> {
-        let (pipeline, erroneous_jobs_queue) = (self.pipeline(), self.erroneous_jobs_queue());
+        let pipeline = self.pipeline();
+        let erroneous_jobs_queue = self.erroneous_jobs_queue();
+        let done_jobs_queue = self.done_jobs_queue();
         if pipeline.is_empty() {
             bail!(
                 "no queues defined -- need at least one, also \
                  suggested is to add a `GraveYard` as the last"
             )
         }
-        let mut grave_yard_count = 0;
-        let mut seen = BTreeSet::new();
-        for run_queue in pipeline {
-            let file_name = &run_queue.file_name;
-            if seen.contains(file_name) {
-                bail!("duplicate queue name {file_name:?}")
+
+        let mut check_seen = {
+            let mut seen = BTreeSet::new();
+            move |file_name: &ProperFilename| -> Result<()> {
+                if seen.contains(file_name) {
+                    bail!("duplicate queue name {file_name:?}")
+                }
+                seen.insert(file_name.clone());
+                Ok(())
             }
-            seen.insert(file_name.clone());
+        };
+
+        let mut grave_yard_count = 0;
+        for run_queue in pipeline {
+            check_seen(&run_queue.file_name)?;
             match run_queue.schedule_condition {
                 ScheduleCondition::Immediately { situation: _ } => (),
                 ScheduleCondition::LocalNaiveTimeWindow {
@@ -294,18 +317,6 @@ impl RunQueues {
                 ScheduleCondition::GraveYard => grave_yard_count += 1,
             }
         }
-        if let Some(run_queue) = erroneous_jobs_queue.as_ref() {
-            let file_name = &run_queue.file_name;
-            if seen.contains(file_name) {
-                bail!(
-                    "duplicate queue name {file_name:?}: `erroneous_jobs_queue` \
-                     uses a name also used in the pipeline"
-                )
-            }
-            if !run_queue.schedule_condition.is_grave_yard() {
-                bail!("the `erroneous_jobs_queue` must be of kind `GraveYard`")
-            }
-        }
         if grave_yard_count > 1 {
             bail!("can have at most one `GraveYard` queue");
         }
@@ -319,6 +330,18 @@ impl RunQueues {
                 bail!("`GraveYard` queue must be the last in the pipeline")
             }
         }
+
+        let mut check_extra_queue = |name: &str, run_queue: Option<&RunQueue>| -> Result<()> {
+            if let Some(run_queue) = run_queue {
+                check_seen(&run_queue.file_name)?;
+                if !run_queue.schedule_condition.is_grave_yard() {
+                    bail!("the `{name}` must be of kind `GraveYard`")
+                }
+            }
+            Ok(())
+        };
+        check_extra_queue("erroneous_jobs_queue", erroneous_jobs_queue)?;
+        check_extra_queue("done_jobs_queue", done_jobs_queue)?;
 
         Ok(())
     }
@@ -364,6 +387,18 @@ impl RunQueues {
             // erroneous_jobs_queue:
             |config| {
                 if let Some(cfg) = config.erroneous_jobs_queue.as_ref() {
+                    Ok(Some(make_run_queue(
+                        cfg,
+                        &run_queues_basedir,
+                        create_dirs_if_not_exist,
+                    )?))
+                } else {
+                    Ok(None)
+                }
+            },
+            // done_jobs_queue:
+            |config| {
+                if let Some(cfg) = config.done_jobs_queue.as_ref() {
                     Ok(Some(make_run_queue(
                         cfg,
                         &run_queues_basedir,

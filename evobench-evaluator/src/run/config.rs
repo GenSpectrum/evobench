@@ -226,8 +226,14 @@ pub struct QueuesConfig {
     /// The queue where to put jobs when they run out of
     /// `error_budget` (if `None` is given, the jobs will be dropped--
     /// silently unless verbose flag is given). Should be of
-    /// scheduling type GraveYard.
+    /// scheduling type GraveYard (or perhaps a future messaging
+    /// queue).
     pub erroneous_jobs_queue: Option<(ProperFilename, ScheduleCondition)>,
+
+    /// The queue where to put jobs when they are finished
+    /// successfully (if `None` is given, the jobs will be dropped--
+    /// silently unless verbose flag is given).
+    pub done_jobs_queue: Option<(ProperFilename, ScheduleCondition)>,
 }
 
 impl QueuesConfig {

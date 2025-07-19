@@ -98,6 +98,7 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
         item: &QueueItem<BenchmarkingJob>,
         job: BenchmarkingJob,
         erroneous_jobs_queue: Option<&RunQueue>,
+        done_jobs_queue: Option<&RunQueue>,
         mut execute: impl FnMut(&Option<String>, RunParameters, &RunQueue) -> Result<()>,
     ) -> Result<()> {
         let _lock = item.lock_exclusive()?;
@@ -109,6 +110,22 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
             mut remaining_error_budget,
             priority,
         } = job;
+
+        let job_completed = |remaining_count| -> Result<()> {
+            let job = BenchmarkingJob {
+                reason: reason.clone(),
+                run_parameters: run_parameters.clone(),
+                remaining_count,
+                remaining_error_budget,
+                priority,
+            };
+            info!("job completed: {job:?}");
+            if let Some(done_jobs_queue) = done_jobs_queue {
+                done_jobs_queue.push_front(&job)?;
+            }
+            Ok(())
+        };
+
         if remaining_error_budget > 0 {
             if remaining_count > 0 {
                 if let Err(error) = execute(&reason, run_parameters.clone(), self.current) {
@@ -178,8 +195,16 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
                         } else {
                             info!("job dropping off the pipeline: {job:?}");
                         }
+                    } else {
+                        job_completed(remaining_count)?;
                     }
                 }
+            } else {
+                info!(
+                    "should never get here normally: job stored in normal queue \
+                     with remaining_count 0"
+                );
+                job_completed(remaining_count)?;
             }
         }
         if remaining_error_budget == 0 {

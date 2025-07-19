@@ -428,14 +428,22 @@ fn main() -> Result<()> {
                 show_queue(&(i + 1).to_string(), run_queue)?;
             }
             println!("{thick_bar}");
-            if let Some(run_queue) = queues.erroneous_jobs_queue() {
-                show_queue("failures", run_queue)?;
-            } else {
-                println!(
-                    "No erroneous_jobs_queue is configured (it would collect \
-                     failing jobs"
-                )
-            }
+            let perhaps_show_extra_queue =
+                |queue_name: &str, queue_field: &str, run_queue: Option<&RunQueue>| -> Result<()> {
+                    if let Some(run_queue) = run_queue {
+                        show_queue(queue_name, run_queue)?;
+                    } else {
+                        println!("No {queue_field} is configured")
+                    }
+                    Ok(())
+                };
+            perhaps_show_extra_queue("done", "done_jobs_queue", queues.done_jobs_queue())?;
+            println!("{thin_bar}");
+            perhaps_show_extra_queue(
+                "failures",
+                "erroneous_jobs_queue",
+                queues.erroneous_jobs_queue(),
+            )?;
             println!("{thin_bar}");
         }
 
