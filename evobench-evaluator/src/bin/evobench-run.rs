@@ -14,6 +14,7 @@ use evobench_evaluator::{
     git::GitHash,
     key::{RunParameters, RunParametersOpts},
     key_val_fs::key_val::Entry,
+    lockable_file::LockStatus,
     run::{
         benchmarking_job::{
             BenchmarkingJobOpts, BenchmarkingJobReasonOpt, BenchmarkingJobSettingsOpts,
@@ -348,8 +349,9 @@ fn main() -> Result<()> {
                 } = run_queue;
 
                 // "Insertion time"
+                // "locked" -- now just "R" or ""
+                // reason
                 // "Commit id"
-                // "locked"
                 // "Custom parameters"
                 let title_row = format!("{i}: queue {file_name} ({schedule_condition}):");
                 let titles = &[TerminalTableTitle {
@@ -357,7 +359,8 @@ fn main() -> Result<()> {
                     span: 5,
                 }];
                 let mut table = TerminalTable::start(
-                    &[38, 16, 17, 43],
+                    // t  R reas commit
+                    &[37, 3, 17, 42],
                     titles,
                     terminal_table_opts.clone(),
                     stdout().lock(),
@@ -378,11 +381,15 @@ fn main() -> Result<()> {
                     let locking = if schedule_condition.is_grave_yard() {
                         ""
                     } else {
-                        entry
+                        let lock_status = entry
                             .take_lockable_file()
                             .expect("not taken before")
-                            .lock_status()?
-                            .as_str()
+                            .lock_status()?;
+                        if lock_status == LockStatus::ExclusiveLock {
+                            "R"
+                        } else {
+                            ""
+                        }
                     };
                     if verbose {
                         table.write_data_row(&[
