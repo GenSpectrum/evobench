@@ -83,6 +83,12 @@ enum SubCommand {
         /// Show details, not just one item per line
         #[clap(short, long)]
         verbose: bool,
+
+        /// Show all jobs in the extra queues (done and failures); by
+        /// default, only the last `the lis` jobs are shown as stated
+        /// in the QueuesConfig.
+        #[clap(short, long)]
+        all: bool,
     },
 
     /// Insert a job into the benchmarking queue. The given reference
@@ -340,8 +346,9 @@ fn main() -> Result<()> {
         SubCommand::List {
             verbose,
             terminal_table_opts,
+            all,
         } => {
-            let show_queue = |i: &str, run_queue: &RunQueue| -> Result<()> {
+            let show_queue = |i: &str, run_queue: &RunQueue, is_extra_queue: bool| -> Result<()> {
                 let RunQueue {
                     file_name,
                     schedule_condition,
@@ -366,8 +373,27 @@ fn main() -> Result<()> {
                     stdout().lock(),
                 )?;
 
-                for entry in queue.sorted_entries(false, None) {
-                    let mut entry = entry?;
+                let mut all_entries: Vec<_> = queue
+                    .sorted_entries(false, None)
+                    .collect::<Result<_, _>>()?;
+                let entries: &mut [_] = if is_extra_queue && !all {
+                    let max_len = conf.queues.view_jobs_max_len;
+                    if all_entries.len() > max_len {
+                        let skip = all_entries.len() - max_len;
+                        if skip > 1 {
+                            table.print(&format!("... ({skip} entries skipped)\n"))?;
+                            &mut all_entries[skip..]
+                        } else {
+                            // skipping only 1 does not make sense thus show them all
+                            &mut all_entries
+                        }
+                    } else {
+                        &mut all_entries
+                    }
+                } else {
+                    &mut all_entries
+                };
+                for entry in entries {
                     let file_name = get_filename(&entry)?;
                     let key = entry.key()?;
                     let job = entry.get()?;
@@ -425,13 +451,13 @@ fn main() -> Result<()> {
 
             for (i, run_queue) in queues.pipeline().iter().enumerate() {
                 println!("{thin_bar}");
-                show_queue(&(i + 1).to_string(), run_queue)?;
+                show_queue(&(i + 1).to_string(), run_queue, false)?;
             }
             println!("{thick_bar}");
             let perhaps_show_extra_queue =
                 |queue_name: &str, queue_field: &str, run_queue: Option<&RunQueue>| -> Result<()> {
                     if let Some(run_queue) = run_queue {
-                        show_queue(queue_name, run_queue)?;
+                        show_queue(queue_name, run_queue, true)?;
                     } else {
                         println!("No {queue_field} is configured")
                     }

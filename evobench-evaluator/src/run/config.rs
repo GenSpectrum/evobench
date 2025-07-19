@@ -234,6 +234,11 @@ pub struct QueuesConfig {
     /// successfully (if `None` is given, the jobs will be dropped--
     /// silently unless verbose flag is given).
     pub done_jobs_queue: Option<(ProperFilename, ScheduleCondition)>,
+
+    /// How many jobs to show in the extra queues
+    /// (`erroneous_jobs_queue` and `done_jobs_queue`) when no `--all`
+    /// option is given
+    pub view_jobs_max_len: usize,
 }
 
 impl QueuesConfig {
