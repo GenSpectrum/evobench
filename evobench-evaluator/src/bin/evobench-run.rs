@@ -354,9 +354,8 @@ fn main() -> Result<()> {
                 // reason
                 // "Commit id"
                 // "Custom parameters"
-                let title_row = format!("{i}: queue {file_name} ({schedule_condition}):");
                 let titles = &[TerminalTableTitle {
-                    text: Cow::Borrowed(&*title_row),
+                    text: format!("{i}: queue {file_name} ({schedule_condition}):").into(),
                     span: 6,
                 }];
                 let mut table = TerminalTable::start(
@@ -420,9 +419,7 @@ fn main() -> Result<()> {
             };
 
             let width = get_terminal_width();
-            let bar_of = |c: u8| -> String {
-                String::try_from([c].repeat(width)).expect("ascii char given")
-            };
+            let bar_of = |c: u8| String::try_from([c].repeat(width)).expect("ascii char given");
             let thin_bar = bar_of(b'-');
             let thick_bar = bar_of(b'=');
 
