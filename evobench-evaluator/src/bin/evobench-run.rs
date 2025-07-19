@@ -350,17 +350,18 @@ fn main() -> Result<()> {
 
                 // "Insertion time"
                 // "locked" -- now just "R" or ""
+                // priority
                 // reason
                 // "Commit id"
                 // "Custom parameters"
                 let title_row = format!("{i}: queue {file_name} ({schedule_condition}):");
                 let titles = &[TerminalTableTitle {
                     text: Cow::Borrowed(&*title_row),
-                    span: 5,
+                    span: 6,
                 }];
                 let mut table = TerminalTable::start(
-                    // t  R reas commit
-                    &[37, 3, 17, 42],
+                    // t  R  pr rsn commit
+                    &[37, 3, 4, 17, 42],
                     titles,
                     terminal_table_opts.clone(),
                     stdout().lock(),
@@ -370,14 +371,14 @@ fn main() -> Result<()> {
                     let mut entry = entry?;
                     let file_name = get_filename(&entry)?;
                     let key = entry.key()?;
-                    let val = entry.get()?;
-                    let commit_id = &*val.run_parameters.commit_id.to_string();
-                    let reason = if let Some(reason) = &val.reason {
+                    let job = entry.get()?;
+                    let commit_id = &*job.run_parameters.commit_id.to_string();
+                    let reason = if let Some(reason) = &job.reason {
                         reason.as_ref()
                     } else {
                         ""
                     };
-                    let custom_parameters = &*val.run_parameters.custom_parameters.to_string();
+                    let custom_parameters = &*job.run_parameters.custom_parameters.to_string();
                     let locking = if schedule_condition.is_grave_yard() {
                         ""
                     } else {
@@ -391,19 +392,23 @@ fn main() -> Result<()> {
                             ""
                         }
                     };
+                    let priority = &*job.priority.to_string();
+
                     if verbose {
                         table.write_data_row(&[
                             &*format!("{file_name} ({key})"),
                             locking,
+                            priority,
                             reason,
                             commit_id,
                             custom_parameters,
                         ])?;
-                        table.print(&format!("{val:#?}\n"))?;
+                        table.print(&format!("{job:#?}\n"))?;
                     } else {
                         table.write_data_row(&[
                             &*key.datetime().to_rfc3339(),
                             locking,
+                            priority,
                             reason,
                             commit_id,
                             custom_parameters,
