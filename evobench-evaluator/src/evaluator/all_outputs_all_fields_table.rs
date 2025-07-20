@@ -293,6 +293,18 @@ impl<Kind: AllFieldsTableKind> AllOutputsAllFieldsTable<Kind> {
 
                             // dbg!((table.table_name(), &lines));
 
+                            // inferno is really fussy, apparently it
+                            // gives a "No stack counts found" error
+                            // whenever it's missing any line with a
+                            // ";" in it, thus check:
+                            if !lines.iter().any(|s| s.contains(';')) {
+                                eprintln!(
+                                    "note: there are no lines with ';' to be fed to inferno, \
+                                     thus do not attempt to generate flame graph"
+                                );
+                                return Ok(());
+                            }
+
                             let mut options = inferno::flamegraph::Options::default();
                             options.count_name = table.resolution_unit();
                             options.title = table.table_name().into();
