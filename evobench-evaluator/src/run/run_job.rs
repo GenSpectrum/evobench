@@ -212,6 +212,8 @@ pub fn run_job(
             )?;
 
             if status.success() {
+                info!("running {cmd_in_dir} succeeded");
+
                 // The directory holding the full key information
                 let key_dir = checked_run_parameters.extend_path(output_base_dir.to_owned());
                 // Below that, we make a dir for this particular run
@@ -219,7 +221,27 @@ pub fn run_job(
                 std::fs::create_dir_all(&result_dir)
                     .map_err(ctx!("create_dir_all {result_dir:?}"))?;
 
-                info!("running {cmd_in_dir} succeeded; evaluating benchmark file.");
+                info!("moving files to {result_dir:?}");
+
+                let compress_file_as =
+                    |source_file: &TemporaryFile, target_filename: &str| -> Result<()> {
+                        let target_filename =
+                            add_extension(target_filename, "zstd").expect("got filename");
+                        let target = (&result_dir).append(target_filename);
+                        compress_file(
+                            source_file.path(),
+                            &target,
+                            // be quiet when:
+                            log_level() < LogLevel::Info,
+                        )?;
+                        // Do *not* remove the source file here as
+                        // TemporaryFile::drop will do it.
+                        Ok(())
+                    };
+                compress_file_as(&evobench_log, "evobench.log")?;
+                compress_file_as(&bench_output_log, "bench_output.log")?;
+
+                info!("evaluating benchmark file");
 
                 // Doing this *before* moving the files, as a way to
                 // ensure that no invalid files end up in the results
@@ -244,25 +266,8 @@ pub fn run_job(
                     (&result_dir).append("single").into(),
                 ])?;
 
-                info!("evaluating the benchmark file succeeded; moving files to {result_dir:?}.");
+                info!("evaluating the benchmark file succeeded");
 
-                let compress_file_as =
-                    |source_file: TemporaryFile, target_filename: &str| -> Result<()> {
-                        let target_filename =
-                            add_extension(target_filename, "zstd").expect("got filename");
-                        let target = (&result_dir).append(target_filename);
-                        compress_file(
-                            source_file.path(),
-                            &target,
-                            // be quiet when:
-                            log_level() < LogLevel::Info,
-                        )?;
-                        // Do *not* remove the source file here as
-                        // TemporaryFile::drop will do it.
-                        Ok(())
-                    };
-                compress_file_as(evobench_log, "evobench.log")?;
-                compress_file_as(bench_output_log, "bench_output.log")?;
                 {
                     // HACK to allow for the SILO
                     // benchmarking/Makefile to move away the
@@ -274,6 +279,11 @@ pub fn run_job(
                         (&bench_tmp_dir).append(format!("evobench-{pid}.log-preprocessing.log")),
                     );
                     if evobench_log_preprocessing.path().exists() {
+                        compress_file_as(
+                            &evobench_log_preprocessing,
+                            "evobench-preprocessing.log",
+                        )?;
+
                         evobench_evaluator(&vec![
                             "single".into(),
                             evobench_log_preprocessing.path().into(),
@@ -287,8 +297,6 @@ pub fn run_job(
                             "--flame".into(),
                             (&result_dir).append("single-preprocessing").into(),
                         ])?;
-
-                        compress_file_as(evobench_log_preprocessing, "evobench-preprocessing.log")?;
                     }
                 }
 
