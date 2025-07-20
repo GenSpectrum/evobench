@@ -383,16 +383,17 @@ fn main() -> Result<()> {
                 // can vanish between getting sorted_keys and
                 // resolve_entries. But that is really no big deal.
                 let limit = if is_extra_queue && !all {
-                    // Get 1 more since showing "skipped 1 entry" is
-                    // not economic.
+                    // Get 2 more since showing "skipped 1 entry" is
+                    // not economic, and we just look at number 0
+                    // after subtracting, i.e. include the equal case.
                     conf.queues.view_jobs_max_len + 2
                 } else {
                     usize::MAX
                 };
                 let all_sorted_keys = queue.sorted_keys(false, None, false)?;
                 let shown_sorted_keys;
-                if let Some(num_skipped_1) = all_sorted_keys.len().checked_sub(limit) {
-                    let num_skipped = num_skipped_1 + 2;
+                if let Some(num_skipped_2) = all_sorted_keys.len().checked_sub(limit) {
+                    let num_skipped = num_skipped_2 + 2;
                     table.print(&format!("... ({num_skipped} entries skipped)\n"))?;
                     shown_sorted_keys = &all_sorted_keys[num_skipped..];
                 } else {
