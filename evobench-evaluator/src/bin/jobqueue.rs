@@ -172,7 +172,7 @@ fn main() -> Result<()> {
         }
         SubCommand::List => {
             let queue = open_queue(false)?;
-            for entry in queue.sorted_entries(false, None, false) {
+            for entry in queue.sorted_entries(false, None, false)? {
                 let mut entry = entry?;
                 let file_name = get_filename(&entry)?;
                 let key = entry.key()?;

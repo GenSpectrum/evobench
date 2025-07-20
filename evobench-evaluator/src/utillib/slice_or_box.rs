@@ -9,6 +9,8 @@
 
 use std::ops::Deref;
 
+use super::ref_or_owned::RefOrOwned;
+
 #[derive(Clone, Debug)]
 pub enum SliceOrBox<'t, T> {
     Slice(&'t [T]),
@@ -94,5 +96,37 @@ impl<'t, T: PartialOrd> PartialOrd for SliceOrBox<'t, T> {
 impl<'t, T: Ord> Ord for SliceOrBox<'t, T> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.as_ref().cmp(other.as_ref())
+    }
+}
+
+pub enum SliceOrBoxIterator<'t, T> {
+    Slice(std::slice::Iter<'t, T>),
+    Box(std::vec::IntoIter<T>),
+}
+
+impl<'t, T> Iterator for SliceOrBoxIterator<'t, T> {
+    type Item = RefOrOwned<'t, T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            SliceOrBoxIterator::Slice(it) => it.next().map(RefOrOwned::Ref),
+            SliceOrBoxIterator::Box(it) => it.next().map(RefOrOwned::Owned),
+        }
+    }
+}
+
+impl<'t, T> IntoIterator for SliceOrBox<'t, T> {
+    type Item = RefOrOwned<'t, T>;
+
+    type IntoIter = SliceOrBoxIterator<'t, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        match self {
+            SliceOrBox::Slice(items) => SliceOrBoxIterator::Slice(items.into_iter()),
+            // IntoIterator for Box somehow only has a borrowing
+            // implementation in std, thus convert to a Vec first
+            // (that should be cheap?)
+            SliceOrBox::Box(items) => SliceOrBoxIterator::Box(Vec::from(items).into_iter()),
+        }
     }
 }

@@ -15,6 +15,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use crate::{
     info_if,
     lockable_file::{ExclusiveFileLock, LockableFile, SharedFileLock},
+    utillib::slice_or_box::SliceOrBox,
 };
 
 use super::{
@@ -324,6 +325,25 @@ impl<V: DeserializeOwned + Serialize + 'static> Queue<V> {
         self.0.insert(&key, val, true)
     }
 
+    pub fn resolve_entries<'s>(
+        &'s self,
+        keys: SliceOrBox<'s, TimeKey>,
+    ) -> impl Iterator<Item = Result<Entry<'s, TimeKey, V>, KeyValError>> + use<'s, V> {
+        keys.into_iter()
+            .filter_map(|key| -> Option<Result<_, KeyValError>> {
+                self.0.entry_opt(key.as_ref()).transpose()
+            })
+    }
+
+    pub fn sorted_keys(
+        &self,
+        wait_for_entries: bool,
+        stop_at: Option<SystemTime>,
+        reverse: bool,
+    ) -> Result<Vec<TimeKey>, KeyValError> {
+        self.0.sorted_keys(wait_for_entries, stop_at, reverse)
+    }
+
     /// Get all entries in order of insertion according to hires
     /// system time (assumes correct clocks!). The entries are
     /// collected at the time of this method call; entries
@@ -339,22 +359,11 @@ impl<V: DeserializeOwned + Serialize + 'static> Queue<V> {
         wait_for_entries: bool,
         stop_at: Option<SystemTime>,
         reverse: bool,
-    ) -> impl Iterator<Item = Result<Entry<'s, TimeKey, V>, KeyValError>> + use<'s, V> {
-        Gen::new(|co| async move {
-            match self.0.sorted_keys(wait_for_entries, stop_at, reverse) {
-                Ok(keys) => {
-                    for key in keys {
-                        if let Some(res) = self.0.entry_opt(&key).transpose() {
-                            co.yield_(res).await;
-                        }
-                    }
-                }
-                Err(error) => {
-                    co.yield_(Err(error)).await;
-                }
-            }
-        })
-        .into_iter()
+    ) -> Result<
+        impl Iterator<Item = Result<Entry<'s, TimeKey, V>, KeyValError>> + use<'s, V>,
+        KeyValError,
+    > {
+        Ok(self.resolve_entries(self.sorted_keys(wait_for_entries, stop_at, reverse)?.into()))
     }
 
     /// Like `sorted_entries`, but (1) allows to lock entries and in
@@ -378,7 +387,13 @@ impl<V: DeserializeOwned + Serialize + 'static> Queue<V> {
             let mut entries = None;
             loop {
                 if entries.is_none() {
-                    entries = Some(self.sorted_entries(wait, stop_at, reverse));
+                    match self.sorted_entries(wait, stop_at, reverse) {
+                        Ok(v) => entries = Some(v),
+                        Err(e) => {
+                            co.yield_(Err(e)).await;
+                            return;
+                        }
+                    }
                 }
                 if let Some(entry) = entries.as_mut().expect("set 2 lines above").next() {
                     match entry {
@@ -393,10 +408,16 @@ impl<V: DeserializeOwned + Serialize + 'static> Queue<V> {
                                         co.yield_(Ok((item, value))).await;
                                     }
                                 }
-                                Err(e) => co.yield_(Err(e)).await,
+                                Err(e) => {
+                                    co.yield_(Err(e)).await;
+                                    return;
+                                }
                             }
                         }
-                        Err(e) => co.yield_(Err(e)).await,
+                        Err(e) => {
+                            co.yield_(Err(e)).await;
+                            return;
+                        }
                     }
                 } else {
                     entries = None;

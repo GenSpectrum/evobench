@@ -377,42 +377,29 @@ fn main() -> Result<()> {
                 // displayed, to avoid keeping too many file handles
                 // open. Thus decide on the limit beforehand, then
                 // retrieve that many from the bottom (in reverse
-                // order), the rest is only counted.
+                // order); use cheap total count to know how many are
+                // skipped. Note: this could show fewer than limit
+                // items even after showing "skipped", because items
+                // can vanish between getting sorted_keys and
+                // resolve_entries. But that is really no big deal.
                 let limit = if is_extra_queue && !all {
                     // Get 1 more since showing "skipped 1 entry" is
                     // not economic.
-                    conf.queues.view_jobs_max_len + 1
+                    conf.queues.view_jobs_max_len + 2
                 } else {
                     usize::MAX
                 };
-                let mut all_entries_iter = queue.sorted_entries(false, None, true);
-                let mut entries = Vec::new();
-                // Can't use `(&mut
-                // all_entries_iter).take(limit).collect::<Result<_,
-                // _>>()?` as we also need the count of the rest
-                // afterwards and that continues to fetch and
-                // genawaiter panics when doing that.
-                let mut num_skipped = 0;
-                {
-                    let mut limit = limit;
-                    while let Some(entry) = all_entries_iter.next() {
-                        let entry = entry?;
-                        entries.push(entry);
-                        limit -= 1;
-                        if limit == 0 {
-                            num_skipped = all_entries_iter.count();
-                            break;
-                        }
-                    }
-                }
-
-                if num_skipped > 0 {
-                    entries.pop();
-                    num_skipped += 1;
+                let all_sorted_keys = queue.sorted_keys(false, None, false)?;
+                let shown_sorted_keys;
+                if let Some(num_skipped_1) = all_sorted_keys.len().checked_sub(limit) {
+                    let num_skipped = num_skipped_1 + 2;
                     table.print(&format!("... ({num_skipped} entries skipped)\n"))?;
+                    shown_sorted_keys = &all_sorted_keys[num_skipped..];
+                } else {
+                    shown_sorted_keys = &all_sorted_keys;
                 }
-                entries.reverse();
-                for mut entry in entries {
+                for entry in queue.resolve_entries(shown_sorted_keys.into()) {
+                    let mut entry = entry?;
                     let file_name = get_filename(&entry)?;
                     let key = entry.key()?;
                     let job = entry.get()?;
