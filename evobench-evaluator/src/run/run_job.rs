@@ -263,6 +263,34 @@ pub fn run_job(
                     };
                 compress_file_as(evobench_log, "evobench.log")?;
                 compress_file_as(bench_output_log, "bench_output.log")?;
+                {
+                    // HACK to allow for the SILO
+                    // benchmarking/Makefile to move away the
+                    // EVOBENCH_LOG file after preprocessing, and have
+                    // that archived here. For summaries, have to run
+                    // the evobench-evaluator on those manually,
+                    // though.
+                    let evobench_log_preprocessing = TemporaryFile::from(
+                        (&bench_tmp_dir).append(format!("evobench-{pid}.log-preprocessing.log")),
+                    );
+                    if evobench_log_preprocessing.path().exists() {
+                        evobench_evaluator(&vec![
+                            "single".into(),
+                            evobench_log_preprocessing.path().into(),
+                            "--show-thread-number".into(),
+                            "--excel".into(),
+                            (&result_dir).append("single-preprocessing.xlsx").into(),
+                        ])?;
+                        evobench_evaluator(&vec![
+                            "single".into(),
+                            evobench_log_preprocessing.path().into(),
+                            "--flame".into(),
+                            (&result_dir).append("single-preprocessing").into(),
+                        ])?;
+
+                        compress_file_as(evobench_log_preprocessing, "evobench-preprocessing.log")?;
+                    }
+                }
 
                 {
                     let target = (&result_dir).append("schedule_condition.ron");
