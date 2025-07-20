@@ -330,9 +330,7 @@ impl<V: DeserializeOwned + Serialize + 'static> Queue<V> {
         keys: SliceOrBox<'s, TimeKey>,
     ) -> impl Iterator<Item = Result<Entry<'s, TimeKey, V>, KeyValError>> + use<'s, V> {
         keys.into_iter()
-            .filter_map(|key| -> Option<Result<_, KeyValError>> {
-                self.0.entry_opt(key.as_ref()).transpose()
-            })
+            .filter_map(|key| self.0.entry_opt(key.as_ref()).transpose())
     }
 
     pub fn sorted_keys(
