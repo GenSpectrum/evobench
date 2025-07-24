@@ -9,6 +9,7 @@ use std::{
     str::FromStr,
 };
 
+use anyhow::anyhow;
 use serde::de::Visitor;
 
 /// A priority level. The level is any orderable instance of a `f64`
@@ -109,7 +110,9 @@ impl FromStr for Priority {
             "high" => Ok(Priority::HIGH),
             "normal" => Ok(Priority::NORMAL),
             "low" => Ok(Priority::LOW),
-            _ => Ok(Priority::new(s.parse()?)?),
+            _ => Ok(Priority::new(s.parse().map_err(|e| {
+                anyhow!("parsing the string {s:?} as Priority: {e}")
+            })?)?),
         }
     }
 }
@@ -126,14 +129,15 @@ impl<'de> Visitor<'de> for OurVisitor {
     type Value = Priority;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str("a floating point number")
+        formatter
+            .write_str("a floating point number or one of the strings 'high', 'normal', or 'low")
     }
 
     fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
     where
         E: serde::de::Error,
     {
-        Priority::new(v.parse().map_err(E::custom)?).map_err(E::custom)
+        Priority::from_str(v).map_err(E::custom)
     }
 }
 
