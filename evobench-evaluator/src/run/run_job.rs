@@ -108,7 +108,7 @@ fn evobench_evaluator(args: &[OsString]) -> Result<()> {
 pub fn run_job(
     working_directory_pool: &mut WorkingDirectoryPool,
     reason: &Option<String>,
-    checked_run_parameters: RunParameters,
+    checked_run_parameters: &RunParameters,
     schedule_condition: &ScheduleCondition,
     dry_run: DryRun,
     benchmarking_command: &BenchmarkingCommand,
@@ -121,7 +121,7 @@ pub fn run_job(
     let RunParameters {
         commit_id,
         custom_parameters,
-    } = &checked_run_parameters;
+    } = checked_run_parameters;
 
     let working_directory_id =
         working_directory_pool.get_a_working_directory_for_commit(&commit_id)?;
@@ -191,7 +191,7 @@ pub fn run_job(
             let command_output_file = OutFile::create(&command_output_file_path)?;
             {
                 // Add info header
-                command_output_file.write_str(&serde_yml::to_string(&checked_run_parameters)?)?;
+                command_output_file.write_str(&serde_yml::to_string(checked_run_parameters)?)?;
             }
 
             let mut other_files: Vec<Box<dyn Write + Send + 'static>> = vec![];
@@ -432,7 +432,7 @@ pub fn run_job(
                 )
             }
         },
-        Some(&checked_run_parameters),
+        Some(checked_run_parameters),
         "run_job",
     )?;
 

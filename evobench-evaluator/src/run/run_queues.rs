@@ -13,7 +13,7 @@ use crate::{
     info,
     key::RunParameters,
     key_val_fs::{
-        key_val::{KeyValConfig, KeyValError, KeyValSync},
+        key_val::{KeyValConfig, KeyValSync},
         queue::{Queue, QueueGetItemOpts, QueueItem, TimeKey},
     },
     path_util::AppendToPath,
@@ -23,7 +23,7 @@ use crate::{
 
 use super::{
     benchmarking_job::BenchmarkingJob,
-    config::{QueuesConfig, ScheduleCondition},
+    config::{BenchmarkingCommand, QueuesConfig, ScheduleCondition},
     global_app_state_dir::GlobalAppStateDir,
     run_context::RunContext,
     run_queue::{RunQueue, RunQueueWithNext},
@@ -174,7 +174,12 @@ impl RunQueues {
     /// before calling this method.
     pub fn run_next_job<'s, 'conf, 'r, 'rc>(
         &'s self,
-        execute: impl FnMut(&Option<String>, RunParameters, &RunQueue) -> Result<()>,
+        execute: impl FnMut(
+            &Option<String>,
+            Arc<BenchmarkingCommand>,
+            Arc<RunParameters>,
+            &RunQueue,
+        ) -> Result<()>,
         run_context: &mut RunContext,
         now: DateTime<Local>,
     ) -> Result<bool> {
@@ -190,23 +195,26 @@ impl RunQueues {
                 Option<DateTimeRange<Local>>,
                 QueueItem<BenchmarkingJob>,
                 BenchmarkingJob,
+                Priority,
             )> = active_queues
                 .iter()
                 .map(|(rq, dtr)| -> Result<Option<_>> {
-                    let mut jobs: Vec<(TimeKey, BenchmarkingJob)> = rq
+                    let mut jobs: Vec<(TimeKey, BenchmarkingJob, Priority)> = rq
                         .jobs()
-                        .map(|r| {
+                        .map(|r| -> Result<_> {
                             let (item, job) = r?;
                             // Get key and drop item to avoid keeping
                             // open a file handle for every entry in
-                            // the queue
-                            Ok((item.key()?, job))
+                            // the queue. Also, pre-calculate
+                            // priorities since that can fail.
+                            let job_priority = job.priority()?;
+                            Ok((item.key()?, job, job_priority))
                         })
-                        .collect::<Result<_, KeyValError>>()
+                        .collect::<Result<_>>()
                         .map_err(ctx!("reading entries from queue {:?}", *rq))?;
-                    jobs.sort_by_key(|(_, job)| job.priority.neg());
+                    jobs.sort_by_key(|(_, _, job_priority)| job_priority.neg());
 
-                    if let Some((key, job)) = jobs.into_iter().next() {
+                    if let Some((key, job, job_priority)) = jobs.into_iter().next() {
                         if let Some(item) = rq.queue.get_item(
                             &key,
                             QueueGetItemOpts {
@@ -216,7 +224,11 @@ impl RunQueues {
                                 delete_first: false,
                             },
                         )? {
-                            Ok(Some((rq, (*dtr).clone(), item, job)))
+                            let priority = (job_priority
+                                + rq.schedule_condition
+                                    .priority()
+                                    .expect("no graveyards here"))?;
+                            Ok(Some((rq, (*dtr).clone(), item, job, priority)))
                         } else {
                             info!("entry {key} has disappeared in the mean time, skipping it");
                             Ok(None)
@@ -230,21 +242,11 @@ impl RunQueues {
 
             // And then get the most prioritized job of all, adjusted
             // for the queue it is in.
-            jobs.sort_by_key(|(rq, _, _, job)| {
-                (rq.schedule_condition
-                    .priority()
-                    .expect("no graveyards here")
-                    + job.priority)
-                    .expect(
-                        "no priorities configured that are so close to \
-                         the end of the range that this addition overflows",
-                    )
-                    .neg()
-            });
+            jobs.sort_by_key(|(_, _, _, _, priority)| priority.neg());
             jobs.into_iter().next()
         };
 
-        let ran_job = if let Some((rqwn, dtr, item, job)) = job {
+        let ran_job = if let Some((rqwn, dtr, item, job, _)) = job {
             run_context.stop_start_be(rqwn.schedule_condition.stop_start())?;
             if let Some(dtr) = dtr {
                 run_context.running_job_in_windowed_queue(&*rqwn, dtr);

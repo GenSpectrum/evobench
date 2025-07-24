@@ -1,18 +1,21 @@
 //! Handle polling the upstream project repository for changes, and
 //! also check commit ids for insertions for validity
 
-use std::{path::Path, str::FromStr, sync::Arc};
+use std::{collections::BTreeMap, path::Path, str::FromStr, sync::Arc};
 
 use anyhow::Result;
+use itertools::Itertools;
 use run_git::git::GitWorkingDir;
 
 use crate::{
     git::GitHash,
     serde::{git_branch_name::GitBranchName, git_url::GitUrl},
+    utillib::arc::CloneArc,
 };
 
-use super::working_directory_pool::{
-    WorkingDirectoryId, WorkingDirectoryPool, WorkingDirectoryPoolOpts,
+use super::{
+    config::JobTemplate,
+    working_directory_pool::{WorkingDirectoryId, WorkingDirectoryPool, WorkingDirectoryPoolOpts},
 };
 
 fn check_exists(git_working_dir: &GitWorkingDir, commit: &GitHash) -> Result<bool> {
@@ -81,18 +84,21 @@ impl PollingPool {
     pub fn resolve_branch_names<'b>(
         &mut self,
         working_directory_id: WorkingDirectoryId,
-        branch_names: &'b [GitBranchName],
-    ) -> Result<(Vec<(&'b GitBranchName, GitHash)>, Vec<String>)> {
+        branch_names: &'b BTreeMap<GitBranchName, Arc<[JobTemplate]>>,
+    ) -> Result<(
+        Vec<(&'b GitBranchName, GitHash, Arc<[JobTemplate]>)>,
+        Vec<String>,
+    )> {
         self.pool.process_working_directory(
             working_directory_id,
             |working_directory, _timestamp| {
                 let mut non_resolving = Vec::new();
                 let git_working_dir = &working_directory.git_working_dir;
                 let mut ids = Vec::new();
-                for name in branch_names {
+                for (name, job_templates) in branch_names {
                     let ref_string = name.to_ref_string_in_remote("origin");
                     if let Some(id) = git_working_dir.git_rev_parse(&ref_string, true)? {
-                        ids.push((name, GitHash::from_str(&id)?))
+                        ids.push((name, GitHash::from_str(&id)?, job_templates.clone_arc()))
                     } else {
                         non_resolving.push(ref_string);
                     }
@@ -100,7 +106,7 @@ impl PollingPool {
                 Ok((ids, non_resolving))
             },
             None,
-            &format!("resolving branch names {branch_names:?}"),
+            &format!("resolving branch names {}", branch_names.keys().join(", ")),
         )
     }
 }

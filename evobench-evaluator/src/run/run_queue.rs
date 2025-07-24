@@ -1,4 +1,4 @@
-use std::{ops::Deref, process::Command};
+use std::{ops::Deref, process::Command, sync::Arc};
 
 use anyhow::{bail, Result};
 
@@ -10,10 +10,16 @@ use crate::{
         queue::{Queue, QueueGetItemOpts, QueueItem, QueueIterationOpts},
     },
     serde::proper_filename::ProperFilename,
-    utillib::logging::{log_level, LogLevel},
+    utillib::{
+        arc::CloneArc,
+        logging::{log_level, LogLevel},
+    },
 };
 
-use super::{benchmarking_job::BenchmarkingJob, config::ScheduleCondition};
+use super::{
+    benchmarking_job::{BenchmarkingJob, BenchmarkingJobPublic},
+    config::{BenchmarkingCommand, ScheduleCondition},
+};
 
 // Move, where?
 pub fn run_command(cmd: &[String], start_stop: &str) -> Result<()> {
@@ -100,26 +106,28 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
         job: BenchmarkingJob,
         erroneous_jobs_queue: Option<&RunQueue>,
         done_jobs_queue: Option<&RunQueue>,
-        mut execute: impl FnMut(&Option<String>, RunParameters, &RunQueue) -> Result<()>,
+        mut execute: impl FnMut(
+            &Option<String>,
+            Arc<BenchmarkingCommand>,
+            Arc<RunParameters>,
+            &RunQueue,
+        ) -> Result<()>,
     ) -> Result<()> {
         let _lock = item.lock_exclusive()?;
 
-        let BenchmarkingJob {
-            reason,
-            run_parameters,
+        let BenchmarkingJobPublic {
             remaining_count,
             mut remaining_error_budget,
-            priority,
-        } = job;
+            reason,
+            run_parameters,
+            command,
+        } = job.benchmarking_job_public.clone();
 
         let job_completed = |remaining_count| -> Result<()> {
-            let job = BenchmarkingJob {
-                reason: reason.clone(),
-                run_parameters: run_parameters.clone(),
-                remaining_count,
-                remaining_error_budget,
-                priority,
-            };
+            let mut job = job.clone_for_queue_reinsertion();
+            job.benchmarking_job_public.remaining_count = remaining_count;
+            job.benchmarking_job_public.remaining_error_budget = remaining_error_budget;
+
             info!("job completed: {job:?}");
             if let Some(done_jobs_queue) = done_jobs_queue {
                 done_jobs_queue.push_front(&job)?;
@@ -129,18 +137,21 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
 
         if remaining_error_budget > 0 {
             if remaining_count > 0 {
-                if let Err(error) = execute(&reason, run_parameters.clone(), self.current) {
+                if let Err(error) = execute(
+                    &reason,
+                    command.clone_arc(),
+                    run_parameters.clone_arc(),
+                    self.current,
+                ) {
                     remaining_error_budget = remaining_error_budget - 1;
+
+                    let mut job = job.clone_for_queue_reinsertion();
+                    job.benchmarking_job_public.remaining_count = remaining_count;
+                    job.benchmarking_job_public.remaining_error_budget = remaining_error_budget;
+
                     // XX this should use more important error
                     // logging than info!; (XX also, repetitive
                     // BenchmarkingJob recreation and cloning.)
-                    let job = BenchmarkingJob {
-                        reason: reason.clone(),
-                        run_parameters: run_parameters.clone(),
-                        remaining_count,
-                        remaining_error_budget,
-                        priority,
-                    };
                     info!("job gave error: {job:?}: {error:#?}");
                     if remaining_error_budget > 0 {
                         // Re-schedule
@@ -183,13 +194,9 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
                             }
                         }
 
-                        let job = BenchmarkingJob {
-                            reason: reason.clone(),
-                            run_parameters: run_parameters.clone(),
-                            remaining_count,
-                            remaining_error_budget,
-                            priority,
-                        };
+                        let mut job = job.clone_for_queue_reinsertion();
+                        job.benchmarking_job_public.remaining_count = remaining_count;
+                        job.benchmarking_job_public.remaining_error_budget = remaining_error_budget;
 
                         if let Some(queue) = maybe_queue {
                             queue.push_front(&job)?;
@@ -209,13 +216,9 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
             }
         }
         if remaining_error_budget == 0 {
-            let job = BenchmarkingJob {
-                reason,
-                run_parameters,
-                remaining_count,
-                remaining_error_budget,
-                priority,
-            };
+            let mut job = job.clone_for_queue_reinsertion();
+            job.benchmarking_job_public.remaining_count = remaining_count;
+            job.benchmarking_job_public.remaining_error_budget = remaining_error_budget;
 
             if let Some(queue) = &erroneous_jobs_queue {
                 queue.push_front(&job)?;

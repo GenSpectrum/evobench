@@ -1,25 +1,33 @@
 use std::{
+    borrow::Cow,
     collections::BTreeMap,
     fmt::{Debug, Display},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Arc,
 };
 
 use anyhow::{anyhow, Result};
+use kstring::KString;
 
 use crate::{
-    config_file::DefaultConfigPath,
+    config_file::{ConfigFile, DefaultConfigPath},
     io_utils::{bash::cmd_as_bash_string, div::create_dir_if_not_exists},
-    key::CustomParametersSetOpts,
+    key::CustomParameters,
     serde::{
-        date_and_time::LocalNaiveTime, git_branch_name::GitBranchName, git_url::GitUrl,
-        priority::Priority, proper_filename::ProperFilename,
+        date_and_time::LocalNaiveTime,
+        git_branch_name::GitBranchName,
+        git_url::GitUrl,
+        priority::Priority,
+        proper_filename::ProperFilename,
+        value_or_ref::{ValueOrRef, ValueOrRefTarget},
     },
+    utillib::arc::CloneArc,
 };
 
 use super::{
-    benchmarking_job::BenchmarkingJobSettingsOpts, global_app_state_dir::GlobalAppStateDir,
-    run_queues::RunQueues, working_directory_pool::WorkingDirectoryPoolOpts,
+    benchmarking_job::BenchmarkingJobSettingsOpts, custom_parameter::AllowedCustomParameter,
+    global_app_state_dir::GlobalAppStateDir, run_queues::RunQueues,
+    working_directory_pool::WorkingDirectoryPoolOpts,
 };
 
 #[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -258,17 +266,61 @@ impl QueuesConfig {
     }
 }
 
+// XX: Clone is quite expensive on this type! Where is it used? Use
+// Arc? XXX
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
-pub struct RemoteRepository {
+#[serde(rename = "RemoteRepository")]
+pub struct RemoteRepositoryOpts {
     /// The Git repository to clone the target project from
     pub url: GitUrl,
 
     /// The remote branches to track
-    pub remote_branch_names: Vec<GitBranchName>,
+    pub remote_branch_names_for_poll:
+        BTreeMap<GitBranchName, ValueOrRef<JobTemplateListsField, Vec<JobTemplateOpts>>>,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct RemoteRepository {
+    pub url: GitUrl,
+    pub remote_branch_names_for_poll: BTreeMap<GitBranchName, Arc<[JobTemplate]>>,
+}
+
+impl RemoteRepositoryOpts {
+    fn check(
+        &self,
+        job_template_lists: &BTreeMap<KString, Arc<[JobTemplate]>>,
+        targets: &BTreeMap<KString, Arc<BenchmarkingTarget>>,
+    ) -> Result<RemoteRepository> {
+        let Self {
+            url,
+            remote_branch_names_for_poll,
+        } = self;
+
+        let remote_branch_names_for_poll = remote_branch_names_for_poll
+            .iter()
+            .map(|(branch_name, job_template_optss)| -> Result<_> {
+                let job_templates: ValueOrRef<JobTemplateListsField, Arc<[JobTemplate]>> =
+                    job_template_optss.try_map(
+                        |job_template_optss: &Vec<JobTemplateOpts>| -> Result<Arc<[JobTemplate]>> {
+                            job_template_optss
+                                .iter()
+                                .map(|job_template_opts| job_template_opts.check(targets))
+                                .collect()
+                        },
+                    )?;
+                let job_templates = job_templates.value_with_backing(job_template_lists)?;
+                Ok((branch_name.clone(), job_templates.clone_arc()))
+            })
+            .collect::<Result<_>>()?;
+
+        Ok(RemoteRepository {
+            url: url.clone(),
+            remote_branch_names_for_poll,
+        })
+    }
+}
+
+#[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 /// What command to run on the target project to execute a
 /// benchmarking run; the env variables configured in CustomParameters
@@ -285,42 +337,229 @@ pub struct BenchmarkingCommand {
     pub arguments: Vec<String>,
 }
 
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BenchmarkingTarget {
+    pub benchmarking_command: Arc<BenchmarkingCommand>,
+
+    /// Which custom environment variables are allowed, required, and
+    /// of what type (format) they must be.
+    pub allowed_custom_parameters: BTreeMap<KString, AllowedCustomParameter>,
+}
+
+// XX: Clone is a bit expensive on this type! Where is it used? Use
+// Arc?
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "JobTemplate")]
+pub struct JobTemplateOpts {
+    priority: Priority,
+    initial_boost: Priority,
+    target_name: KString,
+    // Using `String` for values--type checking is done in conversion
+    // to `JobTemplate` (don't want to use another enum here that
+    // would be required, and `allowed_custom_parameters` already have
+    // the type, no *need* to specify it again, OK?)
+    custom_parameters: BTreeMap<KString, KString>,
+}
+
+pub struct JobTemplate {
+    pub priority: Priority,
+    pub initial_boost: Priority,
+    pub command: Arc<BenchmarkingCommand>,
+    pub custom_parameters: CustomParameters,
+}
+
+impl JobTemplateOpts {
+    pub fn check(
+        &self,
+        targets: &BTreeMap<KString, Arc<BenchmarkingTarget>>,
+    ) -> Result<JobTemplate> {
+        let Self {
+            priority,
+            initial_boost,
+            target_name,
+            custom_parameters,
+        } = self;
+
+        let target = targets
+            .get(target_name)
+            .ok_or_else(|| anyhow!("unknown target name {target_name:?}"))?;
+
+        let custom_parameters =
+            CustomParameters::checked_from(custom_parameters, &target.allowed_custom_parameters)?;
+
+        Ok(JobTemplate {
+            priority: *priority,
+            initial_boost: *initial_boost,
+            command: target.benchmarking_command.clone_arc(),
+            custom_parameters,
+        })
+    }
+}
+
 /// Direct representation of the evobench-run config file
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct RunConfig {
+#[serde(rename = "RunConfig")]
+pub struct RunConfigOpts {
     // Usage for reloads dictate the Arc (with the current approaches,
     // which needs to leave the config intact while taking a shared
     // reference to the QueuesConfig because both parts are moved, in
-    // evobench-run).
+    // evobench-run). -- XXX this may be different now with the new
+    // config_file API and RunConfigWithReload wrapper? -- probably not
     pub queues: Arc<QueuesConfig>,
 
     // same as above re Arc use
+    // XXX why Arc if it's ..Opts here?
     pub working_directory_pool: Arc<WorkingDirectoryPoolOpts>,
 
+    // What command to run on the target project to execute a
+    // benchmarking run; the env variables configured in
+    // CustomParameters are set when running this command.
+    pub targets: BTreeMap<KString, Arc<BenchmarkingTarget>>,
+
+    // A set of named job template lists, referred to by name from
+    // `job_templates_for_insert` and `remote_branch_names_for_poll`.
+    // Each job template in a list generates a separate benchmark run
+    // for each commit that is inserted. The order defines in which
+    // order the jobs are inserted (which means the job generated from
+    // the first template is scheduled first, at least if priorities
+    // are the same). `priority` is added to whatever priority the
+    // inserter asks for, and `initial_boost` is added to the job for
+    // its first run only.
+    pub job_template_lists: BTreeMap<KString, Vec<JobTemplateOpts>>,
+
+    // Job templates for using the "evobench-run insert" (or currently
+    // also "insert-local", but this sub-command is planned to be
+    // removed) sub-command. Reference into `job_template_lists` via
+    // `Ref()`, or provide a list of JobTemplate entries directly via
+    // `List()`.
+    pub job_templates_for_insert: ValueOrRef<JobTemplateListsField, Vec<JobTemplateOpts>>,
+
+    // Each job receives a copy of these settings after expansion
+    pub benchmarking_job_settings: Arc<BenchmarkingJobSettingsOpts>,
+
     /// Information on the remote repository of the target project
-    pub remote_repository: RemoteRepository,
-
-    /// The key names (environment variable names) that are allowed
-    /// (value `false`) or required (value `true`) for benchmarking
-    /// the given project
-    pub custom_parameters_required: BTreeMap<String, bool>,
-
-    /// The set of key/value pairs (which must conform to
-    /// `custom_parameters_required`) that should be tested.
-    pub custom_parameters_set: CustomParametersSetOpts,
-
-    pub benchmarking_job_settings: BenchmarkingJobSettingsOpts,
-
-    pub benchmarking_command: BenchmarkingCommand,
+    pub remote_repository: RemoteRepositoryOpts,
 
     /// The base of the directory hierarchy where the output files
     /// should be placed
-    pub output_base_dir: PathBuf,
+    pub output_base_dir: Arc<Path>,
 }
 
-impl DefaultConfigPath for RunConfig {
+#[derive(Debug)]
+pub struct JobTemplateListsField;
+impl ValueOrRefTarget for JobTemplateListsField {
+    fn target_desc() -> Cow<'static, str> {
+        "`RunConfig.job_template_lists` field".into()
+    }
+}
+
+impl DefaultConfigPath for RunConfigOpts {
     fn default_config_file_name_without_suffix() -> Result<Option<ProperFilename>> {
         Ok(Some("evobench-run".parse().map_err(|e| anyhow!("{e}"))?))
+    }
+}
+
+/// Checked, produced from `RunConfigOpts`, for docs see there.
+pub struct RunConfig {
+    pub queues: Arc<QueuesConfig>,
+    pub working_directory_pool: Arc<WorkingDirectoryPoolOpts>,
+    // pub targets: BTreeMap<String, BenchmarkingCommand>,
+    pub job_template_lists: BTreeMap<KString, Arc<[JobTemplate]>>,
+    pub job_templates_for_insert: Arc<[JobTemplate]>,
+    pub benchmarking_job_settings: Arc<BenchmarkingJobSettingsOpts>,
+    pub remote_repository: RemoteRepository,
+    pub output_base_dir: Arc<Path>,
+}
+
+impl RunConfigOpts {
+    pub fn check(&self) -> Result<RunConfig> {
+        let RunConfigOpts {
+            queues,
+            working_directory_pool,
+            targets,
+            job_template_lists,
+            job_templates_for_insert,
+            benchmarking_job_settings,
+            remote_repository,
+            output_base_dir,
+        } = self;
+
+        let job_template_lists: BTreeMap<KString, Arc<[JobTemplate]>> = job_template_lists
+            .iter()
+            .map(
+                |(template_list_name, template_list)| -> Result<(KString, Arc<[JobTemplate]>)> {
+                    Ok((
+                        template_list_name.clone(),
+                        template_list
+                            .iter()
+                            .map(|job_template_opts| job_template_opts.check(targets))
+                            .collect::<Result<_>>()?,
+                    ))
+                },
+            )
+            .collect::<Result<_>>()?;
+
+        let job_templates_for_insert = job_templates_for_insert
+            // first, make sure owned values are converted, too
+            .try_map(|job_template_optss| {
+                job_template_optss
+                    .iter()
+                    .map(|job_template_opts| job_template_opts.check(targets))
+                    .collect::<Result<_>>()
+            })?
+            // then retrieve the value, either the owned or from the
+            // collection
+            .value_with_backing(&job_template_lists)?
+            // Clone the Arc while it is still alive as a temporary
+            .clone_arc();
+
+        let remote_repository = remote_repository.check(&job_template_lists, targets)?;
+
+        Ok(RunConfig {
+            queues: queues.clone_arc(),
+            working_directory_pool: working_directory_pool.clone_arc(),
+            job_template_lists,
+            job_templates_for_insert,
+            benchmarking_job_settings: benchmarking_job_settings.clone_arc(),
+            remote_repository,
+            output_base_dir: output_base_dir.clone_arc(),
+        })
+    }
+}
+
+pub struct RunConfigWithReload {
+    pub config_file: ConfigFile<RunConfigOpts>,
+    pub run_config: RunConfig,
+}
+
+impl RunConfigWithReload {
+    pub fn load(
+        provided_path: Option<impl AsRef<Path>>,
+        or_else: impl FnOnce(String) -> Result<RunConfigOpts>,
+    ) -> Result<Self> {
+        let config_file = ConfigFile::<RunConfigOpts>::load_config(provided_path, or_else)?;
+        let run_config = config_file.check()?;
+        Ok(Self {
+            config_file,
+            run_config,
+        })
+    }
+
+    pub fn perhaps_reload_config(
+        &self,
+        provided_path: Option<impl AsRef<Path>>,
+    ) -> Result<Option<Self>> {
+        if let Some(config_file) = self.config_file.perhaps_reload_config(provided_path)? {
+            let run_config = config_file.check()?;
+            Ok(Some(Self {
+                config_file,
+                run_config,
+            }))
+        } else {
+            Ok(None)
+        }
     }
 }

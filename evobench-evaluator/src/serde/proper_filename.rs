@@ -35,6 +35,16 @@ impl Display for ProperFilename {
     }
 }
 
+pub fn is_proper_filename(v: &str) -> bool {
+    !(v == ""
+        || v == "."
+        || v == ".."
+        || v.contains('/')
+        || v.contains('\n')
+        || v.contains('\0')
+        || v.as_bytes().len() > 255)
+}
+
 const ERR_MSG: &str = "a file name (not path), must not contain '/', '\\n', '\\0', \
      and must not be \".\", \"..\", the empty string, or longer than 255 bytes";
 // XX Windows will be different than "bytes" and 255.
@@ -43,14 +53,7 @@ impl FromStr for ProperFilename {
     type Err = &'static str;
 
     fn from_str(v: &str) -> Result<Self, Self::Err> {
-        if v == ""
-            || v == "."
-            || v == ".."
-            || v.contains('/')
-            || v.contains('\n')
-            || v.contains('\0')
-            || v.as_bytes().len() > 255
-        {
+        if !is_proper_filename(v) {
             return Err(ERR_MSG);
         }
         Ok(ProperFilename(v.to_owned()))

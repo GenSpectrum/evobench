@@ -1,4 +1,4 @@
-use std::time::SystemTime;
+use std::{sync::Arc, time::SystemTime};
 
 use anyhow::{bail, Result};
 use itertools::Itertools;
@@ -7,6 +7,7 @@ use crate::{
     key::{RunParameters, RunParametersHash},
     key_val_fs::key_val::{KeyVal, KeyValSync},
     serde::{date_and_time::system_time_to_rfc3339, git_url::GitUrl},
+    utillib::arc::CloneArc,
 };
 
 use super::{
@@ -16,7 +17,7 @@ use super::{
 
 pub fn open_already_inserted(
     global_app_state_dir: &GlobalAppStateDir,
-) -> Result<KeyVal<RunParametersHash, (RunParameters, Vec<SystemTime>)>> {
+) -> Result<KeyVal<RunParametersHash, (Arc<RunParameters>, Vec<SystemTime>)>> {
     Ok(KeyVal::open(
         global_app_state_dir.already_inserted_base()?,
         crate::key_val_fs::key_val::KeyValConfig {
@@ -67,7 +68,8 @@ pub fn insert_jobs(
     let mut num_inserted = 0;
 
     for benchmarking_job in benchmarking_jobs {
-        let run_parameters_hash = RunParametersHash::from(&benchmarking_job.run_parameters);
+        let run_parameters_hash =
+            RunParametersHash::from(&*benchmarking_job.benchmarking_job_public.run_parameters);
 
         // All insertion times, for adding the new ones below
         let insertion_times;
@@ -100,7 +102,10 @@ pub fn insert_jobs(
         }
 
         {
-            let commit = &benchmarking_job.run_parameters.commit_id;
+            let commit = &benchmarking_job
+                .benchmarking_job_public
+                .run_parameters
+                .commit_id;
             if !polling_pool.commit_is_valid(commit)? {
                 bail!(
                     "commit {commit} does not exist in the repository at {:?}",
@@ -121,7 +126,13 @@ pub fn insert_jobs(
         insertion_times.push(SystemTime::now());
         already_inserted.insert(
             &run_parameters_hash,
-            &(benchmarking_job.run_parameters.clone(), insertion_times),
+            &(
+                benchmarking_job
+                    .benchmarking_job_public
+                    .run_parameters
+                    .clone_arc(),
+                insertion_times,
+            ),
             true,
         )?;
     }

@@ -9,9 +9,10 @@ use std::{
 };
 
 use evobench_evaluator::{
-    config_file::{self, save_config_file, ConfigFile},
+    config_file::{self, save_config_file},
     get_terminal_width::get_terminal_width,
     git::GitHash,
+    info,
     key::{RunParameters, RunParametersOpts},
     key_val_fs::key_val::Entry,
     lockable_file::LockStatus,
@@ -19,7 +20,7 @@ use evobench_evaluator::{
         benchmarking_job::{
             BenchmarkingJobOpts, BenchmarkingJobReasonOpt, BenchmarkingJobSettingsOpts,
         },
-        config::RunConfig,
+        config::RunConfigWithReload,
         global_app_state_dir::GlobalAppStateDir,
         insert_jobs::{insert_jobs, open_already_inserted, ForceOpt, QuietOpt},
         polling_pool::PollingPool,
@@ -32,6 +33,7 @@ use evobench_evaluator::{
     serde::{date_and_time::system_time_to_rfc3339, git_branch_name::GitBranchName},
     terminal_table::{TerminalTable, TerminalTableOpts, TerminalTableTitle},
     utillib::{
+        arc::CloneArc,
         logging::{set_log_level, LogLevelOpt},
         path_resolve_home::path_resolve_home,
     },
@@ -192,7 +194,7 @@ pub enum RunMode {
 /// case it returns true if a job was run), but pick up config changes
 fn run_queues(
     config_path: Option<PathBuf>,
-    mut conf: ConfigFile<RunConfig>,
+    mut config_with_reload: RunConfigWithReload,
     mut queues: RunQueues,
     mut working_directory_pool: WorkingDirectoryPool,
     dry_run: DryRun,
@@ -200,18 +202,21 @@ fn run_queues(
     once: bool,
 ) -> Result<bool> {
     let mut run_context = RunContext::default();
+    let mut last_config_reload_error = None;
     loop {
         // XX handle errors without exiting? Or do that above
 
+        let conf = &config_with_reload.run_config;
+
         let ran = queues.run_next_job(
-            |reason, run_parameters, queue| {
+            |reason, benchmarking_command, run_parameters, queue| {
                 run_job(
                     &mut working_directory_pool,
                     reason,
-                    run_parameters,
+                    &run_parameters,
                     &queue.schedule_condition,
                     dry_run,
-                    &conf.benchmarking_command,
+                    &benchmarking_command,
                     &path_resolve_home(&conf.output_base_dir)?,
                 )
             },
@@ -225,19 +230,36 @@ fn run_queues(
 
         thread::sleep(Duration::from_secs(5));
 
-        if conf.perhaps_reload_config(config_path.as_ref()) {
-            // XX only if changed
-            eprintln!("reloaded configuration, re-initializing");
-            drop(queues);
-            drop(working_directory_pool);
-            // XX handle errors without exiting? Or do that above
-            queues = RunQueues::open(conf.queues.clone(), true, &global_app_state_dir)?;
-            working_directory_pool = WorkingDirectoryPool::open(
-                conf.working_directory_pool.clone(),
-                conf.remote_repository.url.clone(),
-                true,
-                &|| global_app_state_dir.working_directory_pool_base(),
-            )?;
+        match config_with_reload.perhaps_reload_config(config_path.as_ref()) {
+            Ok(Some(new_config_with_reload)) => {
+                last_config_reload_error = None;
+                // XX only if changed
+                info!("reloaded configuration, re-initializing");
+                drop(queues);
+                drop(working_directory_pool);
+                config_with_reload = new_config_with_reload;
+                let conf = &config_with_reload.run_config;
+                // XX handle errors without exiting? Or do that above
+                queues = RunQueues::open(conf.queues.clone_arc(), true, &global_app_state_dir)?;
+                working_directory_pool = WorkingDirectoryPool::open(
+                    conf.working_directory_pool.clone_arc(),
+                    conf.remote_repository.url.clone(),
+                    true,
+                    &|| global_app_state_dir.working_directory_pool_base(),
+                )?;
+            }
+            Ok(None) => {
+                last_config_reload_error = None;
+            }
+            Err(e) => {
+                let e_str = format!("{e:#?}");
+                if let Some(last_e_str) = &last_config_reload_error {
+                    if *last_e_str != e_str {
+                        info!("note: attempting to reload configuration yielded error: {e_str}");
+                        last_config_reload_error = Some(e_str);
+                    }
+                }
+            }
         }
     }
 }
@@ -273,23 +295,20 @@ fn main() -> Result<()> {
         _ => (),
     }
 
-    let conf = ConfigFile::<RunConfig>::load_config(config.as_ref(), |msg| {
-        bail!("need a config file, {msg}")
-    })?;
+    let config_with_reload =
+        RunConfigWithReload::load(config.as_ref(), |msg| bail!("need a config file, {msg}"))?;
 
-    let custom_parameters_set = conf
-        .custom_parameters_set
-        .checked(&conf.custom_parameters_required)?;
+    let conf = &config_with_reload.run_config;
 
     let global_app_state_dir = GlobalAppStateDir::new()?;
 
-    let queues = RunQueues::open(conf.queues.clone(), true, &global_app_state_dir)?;
+    let queues = RunQueues::open(conf.queues.clone_arc(), true, &global_app_state_dir)?;
 
     match subcommand {
         SubCommand::ConfigFormats => unreachable!("already dispatched above"),
 
         SubCommand::ConfigSave { output_path } => {
-            save_config_file(&output_path, &*conf)?;
+            save_config_file(&output_path, &*config_with_reload.config_file)?;
         }
 
         SubCommand::ListAll {
@@ -336,7 +355,7 @@ fn main() -> Result<()> {
                 let RunParameters {
                     commit_id,
                     custom_parameters,
-                } = params;
+                } = &*params;
                 let values: &[&dyn Display] = &[&t, &commit_id, &custom_parameters];
                 table.write_data_row(values)?;
             }
@@ -404,13 +423,21 @@ fn main() -> Result<()> {
                     let file_name = get_filename(&entry)?;
                     let key = entry.key()?;
                     let job = entry.get()?;
-                    let commit_id = &*job.run_parameters.commit_id.to_string();
-                    let reason = if let Some(reason) = &job.reason {
+                    let commit_id = &*job
+                        .benchmarking_job_public
+                        .run_parameters
+                        .commit_id
+                        .to_string();
+                    let reason = if let Some(reason) = &job.benchmarking_job_public.reason {
                         reason.as_ref()
                     } else {
                         ""
                     };
-                    let custom_parameters = &*job.run_parameters.custom_parameters.to_string();
+                    let custom_parameters = &*job
+                        .benchmarking_job_public
+                        .run_parameters
+                        .custom_parameters
+                        .to_string();
                     let locking = if schedule_condition.is_grave_yard() {
                         ""
                     } else {
@@ -424,7 +451,7 @@ fn main() -> Result<()> {
                             ""
                         }
                     };
-                    let priority = &*job.priority.to_string();
+                    let priority = &*job.priority()?.to_string();
 
                     if verbose {
                         table.write_data_row(&[
@@ -503,8 +530,8 @@ fn main() -> Result<()> {
             insert_jobs(
                 benchmarking_job_opts.complete_jobs(
                     Some(&conf.benchmarking_job_settings),
-                    &custom_parameters_set,
-                ),
+                    &conf.job_templates_for_insert,
+                )?,
                 &global_app_state_dir,
                 &conf.remote_repository.url,
                 force_opt,
@@ -521,8 +548,8 @@ fn main() -> Result<()> {
             insert_jobs(
                 benchmarking_job_opts.complete_jobs(
                     Some(&conf.benchmarking_job_settings),
-                    &custom_parameters_set,
-                ),
+                    &conf.job_templates_for_insert,
+                )?,
                 &global_app_state_dir,
                 &conf.remote_repository.url,
                 force_opt,
@@ -545,25 +572,25 @@ fn main() -> Result<()> {
                 let working_directory_id = polling_pool.updated_working_dir()?;
                 polling_pool.resolve_branch_names(
                     working_directory_id,
-                    &conf.remote_repository.remote_branch_names,
+                    &conf.remote_repository.remote_branch_names_for_poll,
                 )?
             };
             let num_commits = commits.len();
 
             let mut benchmarking_jobs = Vec::new();
-            for (branch_name, commit_id) in commits {
+            for (branch_name, commit_id, job_templates) in commits {
                 let opts = BenchmarkingJobOpts {
                     reason: BenchmarkingJobReasonOpt {
                         reason: branch_name.as_str().to_owned().into(),
                     },
-                    benchmarking_job_settings: conf.benchmarking_job_settings.clone(),
+                    benchmarking_job_settings: (*conf.benchmarking_job_settings).clone(),
                     run_parameters: RunParametersOpts { commit_id },
                 };
                 benchmarking_jobs.append(&mut opts.complete_jobs(
                     // already using conf.benchmarking_job_settings from above
                     None,
-                    &custom_parameters_set,
-                ));
+                    &job_templates,
+                )?);
             }
 
             let n_original = benchmarking_jobs.len();
@@ -605,7 +632,7 @@ fn main() -> Result<()> {
                 RunMode::One { false_if_none } => {
                     let ran = run_queues(
                         config,
-                        conf,
+                        config_with_reload,
                         queues,
                         working_directory_pool,
                         dry_run,
@@ -623,7 +650,7 @@ fn main() -> Result<()> {
                     } else {
                         run_queues(
                             config,
-                            conf,
+                            config_with_reload,
                             queues,
                             working_directory_pool,
                             dry_run,

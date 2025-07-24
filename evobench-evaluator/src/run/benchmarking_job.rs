@@ -1,7 +1,15 @@
+use std::sync::Arc;
+
+use anyhow::Result;
+
 use crate::{
-    key::{CustomParametersSet, RunParameters, RunParametersOpts},
-    serde::priority::Priority,
+    ctx,
+    key::{RunParameters, RunParametersOpts},
+    serde::priority::{NonComparableNumber, Priority},
+    utillib::arc::CloneArc,
 };
+
+use super::config::{BenchmarkingCommand, JobTemplate};
 
 #[derive(Debug, PartialEq, Clone, clap::Args, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -89,22 +97,56 @@ pub struct BenchmarkingJobOpts {
     pub run_parameters: RunParametersOpts,
 }
 
+/// Just the public parts of a BenchmarkingJob
+#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BenchmarkingJobPublic {
+    pub reason: Option<String>,
+    pub run_parameters: Arc<RunParameters>,
+    pub remaining_count: u8,
+    pub remaining_error_budget: u8,
+    pub command: Arc<BenchmarkingCommand>,
+}
+
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BenchmarkingJob {
-    pub reason: Option<String>,
-    pub run_parameters: RunParameters,
-    pub priority: Priority,
-    pub remaining_count: u8,
-    pub remaining_error_budget: u8,
+    #[serde(flatten)]
+    pub benchmarking_job_public: BenchmarkingJobPublic,
+    priority: Priority,
+    current_boost: Priority,
+}
+
+impl BenchmarkingJob {
+    pub fn priority(&self) -> Result<Priority, NonComparableNumber> {
+        self.priority + self.current_boost
+    }
+
+    /// Clones everything except `current_boost` is set to 0. You can
+    /// change the public fields afterwards.
+    pub fn clone_for_queue_reinsertion(&self) -> Self {
+        let Self {
+            benchmarking_job_public,
+            priority,
+            current_boost: _,
+        } = self;
+        Self {
+            benchmarking_job_public: benchmarking_job_public.clone(),
+            priority: *priority,
+            current_boost: Priority::NORMAL,
+        }
+    }
 }
 
 impl BenchmarkingJobOpts {
+    /// Adds priorities from config/defaults and those from job
+    /// templates. Returns failure when priorities can't be added
+    /// (+inf + -inf).
     pub fn complete_jobs(
         &self,
         benchmarking_job_settings_fallback: Option<&BenchmarkingJobSettingsOpts>,
-        custom_parameters_set: &CustomParametersSet,
-    ) -> Vec<BenchmarkingJob> {
+        job_template_list: &[JobTemplate],
+    ) -> Result<Vec<BenchmarkingJob>> {
         let Self {
             reason,
             benchmarking_job_settings,
@@ -113,17 +155,36 @@ impl BenchmarkingJobOpts {
         let BenchmarkingJobSettings {
             count,
             error_budget,
-            priority,
+            priority: priority_from_config_or_defaults,
         } = benchmarking_job_settings.complete(benchmarking_job_settings_fallback);
 
-        custom_parameters_set
+        job_template_list
             .iter()
-            .map(|custom_parameters| BenchmarkingJob {
-                reason: reason.reason.clone(),
-                run_parameters: run_parameters.complete(custom_parameters),
-                remaining_count: count,
-                remaining_error_budget: error_budget,
-                priority,
+            .map(|job_template| -> Result<_> {
+                let JobTemplate {
+                    priority: priority_from_job_template,
+                    initial_boost,
+                    command,
+                    custom_parameters,
+                } = job_template;
+
+                let priority = (priority_from_config_or_defaults + *priority_from_job_template)
+                    .map_err(ctx!(
+                    "can't add priority from config/defaults {priority_from_config_or_defaults} \
+                     and priority from job template {priority_from_job_template}"
+                ))?;
+
+                Ok(BenchmarkingJob {
+                    benchmarking_job_public: BenchmarkingJobPublic {
+                        reason: reason.reason.clone(),
+                        run_parameters: run_parameters.complete(custom_parameters).into(),
+                        remaining_count: count,
+                        remaining_error_budget: error_budget,
+                        command: command.clone_arc(),
+                    },
+                    priority,
+                    current_boost: *initial_boost,
+                })
             })
             .collect()
     }

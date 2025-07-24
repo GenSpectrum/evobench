@@ -20,13 +20,17 @@
 //! Custom parameters can be given and be relevant, e.g. whether
 //! providing input data to an application sorted or not.
 
-use std::{collections::BTreeMap, fmt::Display, num::NonZeroU32, ops::Deref, path::PathBuf};
+use std::{collections::BTreeMap, fmt::Display, num::NonZeroU32, path::PathBuf};
 
 use anyhow::{bail, Result};
 use itertools::Itertools;
+use kstring::KString;
 
 use crate::{
-    crypto_hash::crypto_hash, git::GitHash, key_val_fs::as_key::AsKey,
+    crypto_hash::crypto_hash,
+    git::GitHash,
+    key_val_fs::as_key::AsKey,
+    run::custom_parameter::{AllowedCustomParameter, CustomParameterValue},
     serde::date_and_time::DateTimeWithOffset,
 };
 
@@ -73,43 +77,32 @@ pub struct EarlyContext {
     pub start_datetime: DateTimeWithOffset,
 }
 
-#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
 /// Custom key/value pairings, passed on as environment variables when
-/// executing the benchmarking runner of the target project. (These
-/// are not checked against `custom_parameters_required` yet!)
-#[serde(rename = "CustomParameters")]
-pub struct CustomParametersOpts(BTreeMap<String, String>);
-
+/// executing the benchmarking runner of the target project. These
+/// are checked for allowed and required values.
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
-pub struct CustomParameters(BTreeMap<String, String>);
+pub struct CustomParameters(BTreeMap<KString, CustomParameterValue>);
 
 impl CustomParameters {
-    pub fn btree_map(&self) -> &BTreeMap<String, String> {
+    pub fn btree_map(&self) -> &BTreeMap<KString, CustomParameterValue> {
         &self.0
     }
-}
-
-impl Display for CustomParameters {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut is_first = true;
-        for (k, v) in self.btree_map().iter() {
-            write!(f, "{}{k}={v}", if is_first { "" } else { "," })?;
-            is_first = false;
-        }
-        Ok(())
-    }
-}
-
-impl CustomParametersOpts {
-    pub fn checked(
-        &self,
-        custom_parameters_required: &BTreeMap<String, bool>,
-    ) -> Result<CustomParameters> {
+    pub fn checked_from(
+        keyvals: &BTreeMap<KString, KString>,
+        custom_parameters_required: &BTreeMap<KString, AllowedCustomParameter>,
+    ) -> Result<Self> {
         let mut res = BTreeMap::new();
-        for kv in &self.0 {
-            let (key, val) = kv;
-            if !custom_parameters_required.contains_key(key) {
+        for kv in keyvals {
+            let (key, value) = kv;
+            if res.contains_key(key.as_str()) {
+                bail!("duplicated custom parameter with name {key:?}")
+            }
+            if let Some(allowed_custom_parameter) = custom_parameters_required.get(key) {
+                let val =
+                    CustomParameterValue::checked_from(allowed_custom_parameter.r#type, value)?;
+
+                res.insert(key.clone(), val);
+            } else {
                 let valid_params = custom_parameters_required
                     .keys()
                     .map(|key| format!("{key:?}"))
@@ -119,14 +112,10 @@ impl CustomParametersOpts {
                      (valid are: {valid_params})"
                 )
             }
-            if res.contains_key(key) {
-                bail!("duplicated custom parameter with name {key:?}")
-            }
-            res.insert(key.to_owned(), val.to_owned());
         }
-        for (key, required) in custom_parameters_required.iter() {
-            if *required {
-                if !res.contains_key(key) {
+        for (key, allowed_custom_parameter) in custom_parameters_required.iter() {
+            if allowed_custom_parameter.required {
+                if !res.contains_key(key.as_str()) {
                     bail!("missing custom parameter with name {key:?}")
                 }
             }
@@ -136,38 +125,15 @@ impl CustomParametersOpts {
     }
 }
 
-// Via config file only possible, due to multiple lists, except if
-// doing a custom cmdline parser.
-#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-/// Give at least one entry or no benchmarking will be done at all!
-/// (Note: these CustomParameters are not yet checked against
-/// allowed/required keys!)
-#[serde(rename = "CustomParametersSet")]
-pub struct CustomParametersSetOpts(pub Vec<CustomParametersOpts>);
-
-/// Checked parameters
-pub struct CustomParametersSet(Vec<CustomParameters>);
-
-impl Deref for CustomParametersSet {
-    type Target = [CustomParameters];
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl CustomParametersSetOpts {
-    pub fn checked(
-        &self,
-        custom_parameters_required: &BTreeMap<String, bool>,
-    ) -> Result<CustomParametersSet> {
-        let checked_custom_parameters_set = self
-            .0
-            .iter()
-            .map(|custom_parameters| custom_parameters.checked(custom_parameters_required))
-            .collect::<Result<Vec<_>>>()?;
-        Ok(CustomParametersSet(checked_custom_parameters_set))
+impl Display for CustomParameters {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut is_first = true;
+        for (k, custom_parameter_value) in self.btree_map().iter() {
+            let v = custom_parameter_value.as_str();
+            write!(f, "{}{k}={v}", if is_first { "" } else { "," })?;
+            is_first = false;
+        }
+        Ok(())
     }
 }
 
@@ -190,7 +156,8 @@ impl RunParameters {
     /// files for this run. TEMPORARY solution.
     pub fn extend_path(&self, mut path: PathBuf) -> PathBuf {
         for (key, val) in self.custom_parameters.0.iter() {
-            path.push(format!("{key}={val}"));
+            let v = val.as_str();
+            path.push(format!("{key}={v}"));
         }
         path.push(self.commit_id.to_string());
         path

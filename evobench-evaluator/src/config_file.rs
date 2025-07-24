@@ -218,33 +218,32 @@ impl<T> Deref for ConfigFile<T> {
 
 impl<T: DeserializeOwned + DefaultConfigPath> ConfigFile<T> {
     /// Check if the file that the config was loaded from has changed,
-    /// if so, attempt to load it, if successful, overwrite self with
-    /// the new value. Returns true if it did reload. Currently only
-    /// checks the file that it was loaded from for changes; if this
-    /// config was a default from `or_else`, no check is done at all.
-    pub fn perhaps_reload_config<P: AsRef<Path>>(&mut self, provided_path: Option<P>) -> bool {
+    /// if so, attempt to load it and if successful returns the new
+    /// instance. Currently only checks the file that it was loaded
+    /// from for changes; if this config was a default from `or_else`,
+    /// no check is done at all.  XX error concept how exactly?
+    pub fn perhaps_reload_config<P: AsRef<Path>>(
+        &self,
+        provided_path: Option<P>,
+    ) -> Result<Option<Self>> {
         if let Some(PathAndTrack { path, mtime }) = self.path_and_track.as_ref() {
             match std::fs::metadata(path) {
                 Ok(s) => match s.modified() {
                     Ok(m) => {
                         if m == *mtime {
-                            false
+                            Ok(None)
                         } else {
-                            match Self::load_config(provided_path, |_| bail!("config missing")) {
-                                Ok(val) => {
-                                    *self = val;
-                                    true
-                                }
-                                Err(_) => false,
-                            }
+                            let val =
+                                Self::load_config(provided_path, |_| bail!("config missing"))?;
+                            Ok(Some(val))
                         }
                     }
-                    Err(_) => false,
+                    Err(_) => Ok(None),
                 },
-                Err(_) => false,
+                Err(_) => Ok(None),
             }
         } else {
-            false
+            Ok(None)
         }
     }
 
