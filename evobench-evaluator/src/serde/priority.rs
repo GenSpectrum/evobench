@@ -30,6 +30,10 @@ impl Ord for Priority {
 pub struct NonComparableNumber(f64);
 
 impl Priority {
+    pub const HIGH: Priority = Priority::new_unchecked(1.);
+    pub const NORMAL: Priority = Priority::new_unchecked(0.);
+    pub const LOW: Priority = Priority::new_unchecked(-1.);
+
     /// This does not verify that `value` is comparable. Expect panics
     /// and other problems if it isn't! This function only exists for
     /// `const` purposes.
@@ -102,9 +106,9 @@ impl FromStr for Priority {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "high" => Ok(Priority::new(1.)?),
-            "normal" => Ok(Priority::new(0.)?),
-            "low" => Ok(Priority::new(-1.)?),
+            "high" => Ok(Priority::HIGH),
+            "normal" => Ok(Priority::NORMAL),
+            "low" => Ok(Priority::LOW),
             _ => Ok(Priority::new(s.parse()?)?),
         }
     }
