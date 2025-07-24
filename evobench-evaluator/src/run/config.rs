@@ -384,7 +384,7 @@ impl JobTemplateOpts {
 
         let target = targets
             .get(target_name)
-            .ok_or_else(|| anyhow!("unknown target name {target_name:?}"))?;
+            .ok_or_else(|| anyhow!("unknown target name {:?}", target_name.as_str()))?;
 
         let custom_parameters =
             CustomParameters::checked_from(custom_parameters, &target.allowed_custom_parameters)?;

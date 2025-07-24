@@ -55,7 +55,7 @@ impl<RefTarget: ValueOrRefTarget, T> ValueOrRef<RefTarget, T> {
             ValueOrRefInner::Value(v) => Ok(v),
             ValueOrRefInner::Ref(r) => map.get(r).ok_or_else(|| {
                 anyhow!(
-                    "unknown name {:?} in {}",
+                    "name {:?} is not present in {}",
                     r.as_str(),
                     RefTarget::target_desc()
                 )
