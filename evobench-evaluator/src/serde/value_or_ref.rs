@@ -21,6 +21,7 @@ enum ValueOrRefInner<T> {
 // accidental mis-use of the reference names.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ValueOrRef<RefTarget: ValueOrRefTarget, T> {
+    #[serde(flatten)]
     inner: ValueOrRefInner<T>,
     #[serde(skip)]
     source: PhantomData<fn() -> RefTarget>,
