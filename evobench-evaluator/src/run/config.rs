@@ -267,9 +267,7 @@ impl QueuesConfig {
     }
 }
 
-// XX: Clone is quite expensive on this type! Where is it used? Use
-// Arc? XXX
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
 #[serde(rename = "RemoteRepository")]
 pub struct RemoteRepositoryOpts {
