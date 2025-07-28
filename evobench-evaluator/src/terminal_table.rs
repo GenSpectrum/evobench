@@ -39,8 +39,8 @@ impl ColorOpt {
 
 #[derive(Debug, clap::Args, Clone)]
 pub struct TerminalTableOpts {
-    /// Whether to show the table as CSV (with '\t' as separator)
-    /// instead of human-readable
+    /// Show the table as CSV (with '\t' as separator) instead of
+    /// human-readable
     #[clap(long)]
     tsv: bool,
 
