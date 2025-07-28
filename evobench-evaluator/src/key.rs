@@ -117,11 +117,11 @@ impl CustomParameters {
             } else {
                 let valid_params = custom_parameters_required
                     .keys()
-                    .map(|key| format!("{key:?}"))
+                    .map(|key| format!("{:?}", key.as_str()))
                     .join(", ");
                 bail!(
-                    "invalid custom parameter name {key:?} \
-                     (valid are: {valid_params})"
+                    "invalid custom parameter name {:?} (valid are: {valid_params})",
+                    key.as_str()
                 )
             }
         }
