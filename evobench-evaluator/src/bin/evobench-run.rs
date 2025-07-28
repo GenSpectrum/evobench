@@ -87,8 +87,8 @@ enum SubCommand {
         verbose: bool,
 
         /// Show all jobs in the extra queues (done and failures); by
-        /// default, only the last `the lis` jobs are shown as stated
-        /// in the QueuesConfig.
+        /// default, only the last `view_jobs_max_len` jobs are shown
+        /// as stated in the QueuesConfig.
         #[clap(short, long)]
         all: bool,
     },
