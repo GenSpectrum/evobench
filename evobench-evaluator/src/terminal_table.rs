@@ -157,15 +157,16 @@ pub struct TerminalTable<'v, 's, O: Write + IsTerminal> {
 impl<'v, 's, O: Write + IsTerminal> TerminalTable<'v, 's, O> {
     /// How many spaces to put between columns in human-readable
     /// format at minimum, even if a value is longer than anticipated.
-    const MINIMAL_PADDING_LEN: usize = 2;
+    const MINIMAL_PADDING_LEN: usize = 1;
 
     /// The length of `widths` must be one less than that of `titles`
     /// (the last column does not need a width).  Appends a space to
-    /// each title, to make sure italic text is not clipped on
-    /// terminals. That will be fine as you'll want your widths to be
-    /// at least 2 longer than the text itself, anyway. `widths` must
-    /// include the spacing between the columns--i.e. make it 2-3
-    /// larger than the max. expected width of the data.
+    /// each title (or generally, formatted item), to make sure italic
+    /// text is not clipped on terminals. That will be fine as you'll
+    /// want your widths to be at least 1 longer than the text itself,
+    /// anyway. `widths` must include the spacing between the
+    /// columns--i.e. make it 2-3 larger than the max. expected width
+    /// of the data.
     pub fn start(
         widths: &[usize],
         titles: &'v [TerminalTableTitle<'s>],
@@ -215,6 +216,7 @@ impl<'v, 's, O: Write + IsTerminal> TerminalTable<'v, 's, O> {
             }
             let mut text = text.to_string();
             if let Some(style) = line_style {
+                // make sure italic text is not clipped on terminals
                 text.push_str(" ");
                 let s = text.as_str().paint(*style);
                 let s = s.to_string();
@@ -226,7 +228,7 @@ impl<'v, 's, O: Write + IsTerminal> TerminalTable<'v, 's, O> {
 
             if let Some(width) = width_opt {
                 if !opts.tsv {
-                    let missing_padding_len = width.checked_sub(text_len).unwrap_or(0);
+                    let missing_padding_len = width.saturating_sub(text_len);
                     let wanted_padding_len = missing_padding_len.max(Self::MINIMAL_PADDING_LEN);
                     let padding = &settings.padding[0..wanted_padding_len];
                     out.write_all(padding.as_bytes())?;

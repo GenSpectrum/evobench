@@ -386,7 +386,7 @@ fn main() -> Result<()> {
                 }];
                 let mut table = TerminalTable::start(
                     // t  R  pr rsn commit
-                    &[37, 3, 4, 17, 42],
+                    &[37, 3, 5, 17, 42],
                     titles,
                     terminal_table_opts.clone(),
                     stdout().lock(),
