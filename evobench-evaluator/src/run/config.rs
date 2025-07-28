@@ -399,45 +399,39 @@ impl JobTemplateOpts {
 }
 
 /// Direct representation of the evobench-run config file
+// For why `Arc` is used, see `docs/hacking.md`
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 #[serde(rename = "RunConfig")]
 pub struct RunConfigOpts {
-    // Usage for reloads dictate the Arc (with the current approaches,
-    // which needs to leave the config intact while taking a shared
-    // reference to the QueuesConfig because both parts are moved, in
-    // evobench-run). -- XXX this may be different now with the new
-    // config_file API and RunConfigWithReload wrapper? -- probably not
     pub queues: Arc<QueuesConfig>,
 
-    // same as above re Arc use
-    // XXX why Arc if it's ..Opts here?
     pub working_directory_pool: Arc<WorkingDirectoryPoolOpts>,
 
-    // What command to run on the target project to execute a
-    // benchmarking run; the env variables configured in
-    // CustomParameters are set when running this command.
+    /// What command to run on the target project to execute a
+    /// benchmarking run; the env variables configured in
+    /// CustomParameters are set when running this command.
     pub targets: BTreeMap<KString, Arc<BenchmarkingTarget>>,
 
-    // A set of named job template lists, referred to by name from
-    // `job_templates_for_insert` and `remote_branch_names_for_poll`.
-    // Each job template in a list generates a separate benchmark run
-    // for each commit that is inserted. The order defines in which
-    // order the jobs are inserted (which means the job generated from
-    // the first template is scheduled first, at least if priorities
-    // are the same). `priority` is added to whatever priority the
-    // inserter asks for, and `initial_boost` is added to the job for
-    // its first run only.
+    /// A set of named job template lists, referred to by name from
+    /// `job_templates_for_insert` and `remote_branch_names_for_poll`.
+    /// Each job template in a list generates a separate benchmark run
+    /// for each commit that is inserted. The order defines in which
+    /// order the jobs are inserted (which means the job generated from
+    /// the first template is scheduled first, at least if priorities
+    /// are the same). `priority` is added to whatever priority the
+    /// inserter asks for, and `initial_boost` is added to the job for
+    /// its first run only.
     pub job_template_lists: BTreeMap<KString, Vec<JobTemplateOpts>>,
 
-    // Job templates for using the "evobench-run insert" (or currently
-    // also "insert-local", but this sub-command is planned to be
-    // removed) sub-command. Reference into `job_template_lists` via
-    // `Ref()`, or provide a list of JobTemplate entries directly via
-    // `List()`.
+    /// Job templates for using the "evobench-run insert" (or currently
+    /// also "insert-local", but this sub-command is planned to be
+    /// removed) sub-command. Reference into `job_template_lists` via
+    /// `Ref()`, or provide a list of JobTemplate entries directly via
+    /// `List()`.
     pub job_templates_for_insert: ValueOrRef<JobTemplateListsField, Vec<JobTemplateOpts>>,
 
-    // Each job receives a copy of these settings after expansion
+    /// Each job receives a copy of these settings after expansion
     pub benchmarking_job_settings: Arc<BenchmarkingJobSettingsOpts>,
 
     /// Information on the remote repository of the target project
