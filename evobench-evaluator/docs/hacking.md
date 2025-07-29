@@ -1,5 +1,13 @@
+# Hacking guide
 
-* types with names ending in "Opts" (or also "Opt" XX) are generally (XX?) precursor types (at least if a sister type without the "Opts" suffix exists): used for configuration or command line options, but translated before use.
+Also see the [overview](overview.md).
+
+## Style / details
+
+* types with names ending in "Opts" (or also "Opt" XX) are generally
+  (XX?) precursor types (at least if a sister type without the "Opts"
+  suffix exists): used for configuration or command line options, but
+  translated before use.
 
 * Using `Arc` for the parts that come from the config or are derived
   from it during load time, as that process is quite a bit convoluted,
