@@ -55,7 +55,7 @@ TODO
   finished, and one to catch all jobs that error out. If either is
   `None`, jobs will be dropped instead in that case.
 
-* Whenever a job is finished, `evobench-run daemon` tries to select
+* Whenever a job is finished, `evobench-run run daemon` tries to select
   the next job to run, if any, by first filtering the queue pipeline
   for the queues that are runnable at the given time, then selecting
   the job(s) with the maximum total priority, where the total priority
