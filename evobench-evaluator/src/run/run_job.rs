@@ -196,7 +196,9 @@ pub fn run_job(
             let bench_output_log =
                 TemporaryFile::from((&bench_tmp_dir).append(format!("bench-output-{pid}.log")));
 
+            // Remove any stale files from previous runs
             let _ = std::fs::remove_file(evobench_log.path());
+            let _ = std::fs::remove_file(bench_output_log.path());
 
             // for debugging info only:
             let cmd_in_dir = {
