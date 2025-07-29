@@ -392,15 +392,24 @@ fn main() -> Result<()> {
                     stdout().lock(),
                 )?;
 
-                // Only retain as many items in memory as will be
-                // displayed, to avoid keeping too many file handles
-                // open. Thus decide on the limit beforehand, then
-                // retrieve that many from the bottom (in reverse
-                // order); use cheap total count to know how many are
-                // skipped. Note: this could show fewer than limit
-                // items even after showing "skipped", because items
-                // can vanish between getting sorted_keys and
-                // resolve_entries. But that is really no big deal.
+                // We want the last view_jobs_max_len items, one more
+                // if that's the complete list (the additional entry
+                // then occupying the "entries skipped" line). Don't
+                // want to collect the whole list first (leads to too
+                // many open filehandles), don't want to go through it
+                // twice (once for counting, once to skip); getting
+                // them in reverse, taking the first n, collecting,
+                // then reversing the list would be one way, but
+                // cleaner is to use a two step approach, first get
+                // the sorted collection of keys (cheap to hold in
+                // memory and needs to be retrieved underneath
+                // anyway), get the section we want, then use
+                // resolve_entries to load the items still in
+                // streaming fashion.  Note: this could show fewer
+                // than limit items even after showing "skipped",
+                // because items can vanish between getting
+                // sorted_keys and resolve_entries. But that is really
+                // no big deal.
                 let limit = if is_extra_queue && !all {
                     // Get 2 more since showing "skipped 1 entry" is
                     // not economic, and we just look at number 0
