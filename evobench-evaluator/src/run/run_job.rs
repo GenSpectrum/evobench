@@ -221,33 +221,35 @@ pub fn run_job(
                 .args(arguments)
                 .current_dir(&dir);
 
-            let command_output_file_path = add_extension(
-                working_directory.git_working_dir.working_dir_path_ref(),
-                format!("output_of_benchmarking_command_at_{timestamp}"),
-            )
-            .expect("has filename");
-            let command_output_file = OutFile::create(&command_output_file_path)?;
-            {
-                // Add info header
-                command_output_file.write_str(&serde_yml::to_string(checked_run_parameters)?)?;
-            }
-
-            let mut other_files: Vec<Box<dyn Write + Send + 'static>> = vec![];
-            // Is it evil to use log_level() for this and not a
-            // function argument?
-            if log_level() >= LogLevel::Info {
-                other_files.push(Box::new(stderr()));
-            }
-            let other_files = Arc::new(Mutex::new(other_files));
-
-            let status = command_output_file.run_with_capture(
-                command,
-                other_files,
-                CaptureOpts {
-                    add_source_indicator: true,
-                    add_timestamp: true,
-                },
+            let command_output_file = OutFile::create(
+                &add_extension(
+                    working_directory.git_working_dir.working_dir_path_ref(),
+                    format!("output_of_benchmarking_command_at_{timestamp}"),
+                )
+                .expect("has filename"),
             )?;
+
+            // Add info header
+            command_output_file.write_str(&serde_yml::to_string(checked_run_parameters)?)?;
+
+            let status = {
+                let mut other_files: Vec<Box<dyn Write + Send + 'static>> = vec![];
+                // Is it evil to use log_level() for this and not a
+                // function argument?
+                if log_level() >= LogLevel::Info {
+                    other_files.push(Box::new(stderr()));
+                }
+                let other_files = Arc::new(Mutex::new(other_files));
+
+                command_output_file.run_with_capture(
+                    command,
+                    other_files,
+                    CaptureOpts {
+                        add_source_indicator: true,
+                        add_timestamp: true,
+                    },
+                )?
+            };
 
             if status.success() {
                 info!("running {cmd_in_dir} succeeded");
