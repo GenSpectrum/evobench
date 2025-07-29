@@ -55,8 +55,6 @@ pub struct RunQueues {
 }
 
 impl RunQueues {
-    pub const TIMED_QUEUE_DEFAULT_PRIORITY: Priority = Priority::new_unchecked(1.5);
-
     pub fn pipeline(&self) -> &[RunQueue] {
         self.borrow_pipeline()
     }

@@ -27,8 +27,7 @@ use crate::{
 use super::{
     allowed_env_var::AllowedEnvVar, benchmarking_job::BenchmarkingJobSettingsOpts,
     custom_parameter::AllowedCustomParameter, global_app_state_dir::GlobalAppStateDir,
-    run_job::AllowableCustomEnvVar, run_queues::RunQueues,
-    working_directory_pool::WorkingDirectoryPoolOpts,
+    run_job::AllowableCustomEnvVar, working_directory_pool::WorkingDirectoryPoolOpts,
 };
 
 #[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -128,6 +127,8 @@ impl Display for ScheduleCondition {
 }
 
 impl ScheduleCondition {
+    pub const TIMED_QUEUE_DEFAULT_PRIORITY: Priority = Priority::new_unchecked(1.5);
+
     /// Whether this queue will never run its jobs
     pub fn is_grave_yard(&self) -> bool {
         match self {
@@ -212,7 +213,7 @@ impl ScheduleCondition {
                 move_when_time_window_ends: _,
                 from: _,
                 to: _,
-            } => Some(priority.unwrap_or(RunQueues::TIMED_QUEUE_DEFAULT_PRIORITY)),
+            } => Some(priority.unwrap_or(Self::TIMED_QUEUE_DEFAULT_PRIORITY)),
             ScheduleCondition::GraveYard => None,
         }
     }
