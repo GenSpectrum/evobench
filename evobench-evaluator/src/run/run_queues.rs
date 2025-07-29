@@ -1,7 +1,4 @@
-use std::{
-    collections::BTreeSet, convert::Infallible, ops::Neg, path::PathBuf, sync::Arc,
-    time::SystemTime,
-};
+use std::{collections::BTreeSet, ops::Neg, path::PathBuf, sync::Arc, time::SystemTime};
 
 use anyhow::{bail, Result};
 use chrono::{DateTime, Local};
@@ -33,8 +30,6 @@ use super::{
 pub fn get_now_chrono() -> DateTime<Local> {
     SystemTime::now().into()
 }
-
-pub type Never = Infallible;
 
 #[ouroboros::self_referencing]
 pub struct RunQueues {
