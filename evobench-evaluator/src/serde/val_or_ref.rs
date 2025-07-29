@@ -11,7 +11,7 @@ pub trait ValOrRefTarget {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-enum ValOrRefInner<T> {
+pub enum ValOrRefInner<T> {
     Val(T),
     Ref(KString),
 }
@@ -24,6 +24,15 @@ enum ValOrRefInner<T> {
 pub struct ValOrRef<RefTarget: ValOrRefTarget, T> {
     inner: ValOrRefInner<T>,
     source: PhantomData<fn() -> RefTarget>,
+}
+
+impl<RefTarget: ValOrRefTarget, T> From<ValOrRefInner<T>> for ValOrRef<RefTarget, T> {
+    fn from(inner: ValOrRefInner<T>) -> Self {
+        Self {
+            inner,
+            source: PhantomData,
+        }
+    }
 }
 
 impl<RefTarget: ValOrRefTarget, T: Clone> Clone for ValOrRef<RefTarget, T> {
