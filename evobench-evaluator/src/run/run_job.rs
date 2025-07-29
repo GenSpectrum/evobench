@@ -29,9 +29,45 @@ use crate::{
 };
 
 use super::{
+    allowed_env_var::AllowEnvVar,
     config::{BenchmarkingCommand, ScheduleCondition},
     working_directory_pool::WorkingDirectoryPool,
 };
+
+// ------------------------------------------------------------------
+pub const EVOBENCH_ENV_VARS: &[&str] = &["EVOBENCH_LOG", "BENCH_OUTPUT_LOG", "COMMIT_ID"];
+
+pub fn is_evobench_env_var(s: &str) -> bool {
+    EVOBENCH_ENV_VARS.contains(&s)
+}
+
+/// A parameter for `AllowedEnvVar` that checks that the variable is
+/// not going to conflict with one of the built-in evobench env vars
+/// (in the future perhaps also check for things like USER?)
+#[derive(Debug)]
+pub struct AllowableCustomEnvVar;
+impl AllowEnvVar for AllowableCustomEnvVar {
+    fn allow_env_var(s: &str) -> bool {
+        !is_evobench_env_var(s)
+    }
+    fn expecting() -> String {
+        format!(
+            "a variable name that is *not* any of {}",
+            EVOBENCH_ENV_VARS.join(", ")
+        )
+    }
+}
+
+// Can't make this const easily, but doesn't matter. It'll catch bugs
+// on the first job run.
+fn assert_evobench_env_var(s: &str) -> &str {
+    if is_evobench_env_var(s) {
+        s
+    } else {
+        panic!("Not a known EVOBENCH_ENV_VARS entry: {s:?}")
+    }
+}
+// ------------------------------------------------------------------
 
 #[derive(Debug, EnumString, PartialEq, Clone, Copy)]
 #[repr(u8)]
@@ -175,11 +211,12 @@ pub fn run_job(
             );
 
             let mut command = Command::new(command);
+            let check = assert_evobench_env_var;
             command
                 .envs(custom_parameters.btree_map())
-                .env("EVOBENCH_LOG", evobench_log.path())
-                .env("BENCH_OUTPUT_LOG", bench_output_log.path())
-                .env("COMMIT_ID", commit_id.to_string())
+                .env(check("EVOBENCH_LOG"), evobench_log.path())
+                .env(check("BENCH_OUTPUT_LOG"), bench_output_log.path())
+                .env(check("COMMIT_ID"), commit_id.to_string())
                 .args(arguments)
                 .current_dir(&dir);
 

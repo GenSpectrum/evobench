@@ -20,7 +20,9 @@
 //! Custom parameters can be given and be relevant, e.g. whether
 //! providing input data to an application sorted or not.
 
-use std::{collections::BTreeMap, fmt::Display, num::NonZeroU32, path::PathBuf};
+use std::{
+    collections::BTreeMap, fmt::Display, num::NonZeroU32, path::PathBuf, str::FromStr, sync::Arc,
+};
 
 use anyhow::{bail, Result};
 use itertools::Itertools;
@@ -30,7 +32,11 @@ use crate::{
     crypto_hash::crypto_hash,
     git::GitHash,
     key_val_fs::as_key::AsKey,
-    run::custom_parameter::{AllowedCustomParameter, CustomParameterValue},
+    run::{
+        allowed_env_var::AllowedEnvVar,
+        custom_parameter::{AllowedCustomParameter, CustomParameterValue},
+        run_job::AllowableCustomEnvVar,
+    },
     serde::date_and_time::DateTimeWithOffset,
 };
 
@@ -80,24 +86,30 @@ pub struct EarlyContext {
 /// Custom key/value pairings, passed on as environment variables when
 /// executing the benchmarking runner of the target project. These
 /// are checked for allowed and required values.
-#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
-pub struct CustomParameters(BTreeMap<KString, CustomParameterValue>);
+#[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CustomParameters(BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, CustomParameterValue>);
 
 impl CustomParameters {
-    pub fn btree_map(&self) -> &BTreeMap<KString, CustomParameterValue> {
+    pub fn btree_map(
+        &self,
+    ) -> &BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, CustomParameterValue> {
         &self.0
     }
     pub fn checked_from(
-        keyvals: &BTreeMap<KString, KString>,
-        custom_parameters_required: &BTreeMap<KString, AllowedCustomParameter>,
+        keyvals: &BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, KString>,
+        custom_parameters_required: &BTreeMap<
+            AllowedEnvVar<AllowableCustomEnvVar>,
+            AllowedCustomParameter,
+        >,
     ) -> Result<Self> {
         let mut res = BTreeMap::new();
         for kv in keyvals {
             let (key, value) = kv;
-            if res.contains_key(key.as_str()) {
-                bail!("duplicated custom parameter with name {key:?}")
+            if res.contains_key(key) {
+                bail!("duplicated custom parameter with name {:?}", key.as_str())
             }
-            if let Some(allowed_custom_parameter) = custom_parameters_required.get(key) {
+            let allowable_key: AllowedEnvVar<AllowableCustomEnvVar> = AllowedEnvVar::from_str(key)?;
+            if let Some(allowed_custom_parameter) = custom_parameters_required.get(&allowable_key) {
                 let val =
                     CustomParameterValue::checked_from(allowed_custom_parameter.r#type, value)?;
 
@@ -115,8 +127,8 @@ impl CustomParameters {
         }
         for (key, allowed_custom_parameter) in custom_parameters_required.iter() {
             if allowed_custom_parameter.required {
-                if !res.contains_key(key.as_str()) {
-                    bail!("missing custom parameter with name {key:?}")
+                if !res.contains_key(key) {
+                    bail!("missing custom parameter with name {:?}", key.as_str())
                 }
             }
         }
@@ -148,7 +160,7 @@ pub struct RunParametersOpts {
 #[serde(deny_unknown_fields)]
 pub struct RunParameters {
     pub commit_id: GitHash,
-    pub custom_parameters: CustomParameters,
+    pub custom_parameters: Arc<CustomParameters>,
 }
 
 impl RunParameters {
@@ -184,11 +196,11 @@ impl AsKey for RunParametersHash {
 }
 
 impl RunParametersOpts {
-    pub fn complete(&self, custom_parameters: &CustomParameters) -> RunParameters {
+    pub fn complete(&self, custom_parameters: Arc<CustomParameters>) -> RunParameters {
         let Self { commit_id } = self;
         RunParameters {
             commit_id: commit_id.clone(),
-            custom_parameters: custom_parameters.clone(),
+            custom_parameters,
         }
     }
 }

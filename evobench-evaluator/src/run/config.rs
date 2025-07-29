@@ -25,8 +25,9 @@ use crate::{
 };
 
 use super::{
-    benchmarking_job::BenchmarkingJobSettingsOpts, custom_parameter::AllowedCustomParameter,
-    global_app_state_dir::GlobalAppStateDir, run_queues::RunQueues,
+    allowed_env_var::AllowedEnvVar, benchmarking_job::BenchmarkingJobSettingsOpts,
+    custom_parameter::AllowedCustomParameter, global_app_state_dir::GlobalAppStateDir,
+    run_job::AllowableCustomEnvVar, run_queues::RunQueues,
     working_directory_pool::WorkingDirectoryPoolOpts,
 };
 
@@ -344,7 +345,8 @@ pub struct BenchmarkingTarget {
 
     /// Which custom environment variables are allowed, required, and
     /// of what type (format) they must be.
-    pub allowed_custom_parameters: BTreeMap<KString, AllowedCustomParameter>,
+    pub allowed_custom_parameters:
+        BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, AllowedCustomParameter>,
 }
 
 // XX: Clone is a bit expensive on this type! Where is it used? Use
@@ -360,14 +362,14 @@ pub struct JobTemplateOpts {
     // to `JobTemplate` (don't want to use another enum here that
     // would be required, and `allowed_custom_parameters` already have
     // the type, no *need* to specify it again, OK?)
-    custom_parameters: BTreeMap<KString, KString>,
+    custom_parameters: BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, KString>,
 }
 
 pub struct JobTemplate {
     pub priority: Priority,
     pub initial_boost: Priority,
     pub command: Arc<BenchmarkingCommand>,
-    pub custom_parameters: CustomParameters,
+    pub custom_parameters: Arc<CustomParameters>,
 }
 
 impl JobTemplateOpts {
@@ -393,7 +395,7 @@ impl JobTemplateOpts {
             priority: *priority,
             initial_boost: *initial_boost,
             command: target.benchmarking_command.clone_arc(),
-            custom_parameters,
+            custom_parameters: custom_parameters.into(),
         })
     }
 }

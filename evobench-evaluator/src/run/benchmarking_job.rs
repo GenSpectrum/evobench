@@ -177,7 +177,9 @@ impl BenchmarkingJobOpts {
                 Ok(BenchmarkingJob {
                     benchmarking_job_public: BenchmarkingJobPublic {
                         reason: reason.reason.clone(),
-                        run_parameters: run_parameters.complete(custom_parameters).into(),
+                        run_parameters: run_parameters
+                            .complete(custom_parameters.clone_arc())
+                            .into(),
                         remaining_count: count,
                         remaining_error_budget: error_budget,
                         command: command.clone_arc(),
