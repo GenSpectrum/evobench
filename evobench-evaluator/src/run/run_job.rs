@@ -355,6 +355,7 @@ pub fn run_job(
 
                 info!("(re-)evaluating the summary file across all results for this key");
 
+                // Capture errors, which we will report to `post_benchmark_error`
                 let res = (|| -> Result<()> {
                     fn generate_summary<P: AsRef<Path>>(
                         key_dir: &PathBuf,
