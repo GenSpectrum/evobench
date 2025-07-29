@@ -2,9 +2,16 @@ use anyhow::{anyhow, bail, Result};
 use clap::Parser;
 use itertools::Itertools;
 use run_git::git::GitWorkingDir;
+use yansi::Style;
 
 use std::{
-    borrow::Cow, fmt::Display, io::stdout, path::PathBuf, process::exit, str::FromStr, thread,
+    borrow::Cow,
+    fmt::Display,
+    io::{stdout, IsTerminal, Write},
+    path::PathBuf,
+    process::exit,
+    str::FromStr,
+    thread,
     time::Duration,
 };
 
@@ -347,6 +354,7 @@ fn main() -> Result<()> {
                         span: 1,
                     },
                 ],
+                None,
                 terminal_table_opts,
                 stdout().lock(),
             )?;
@@ -367,125 +375,163 @@ fn main() -> Result<()> {
             terminal_table_opts,
             all,
         } => {
-            let show_queue = |i: &str, run_queue: &RunQueue, is_extra_queue: bool| -> Result<()> {
-                let RunQueue {
-                    file_name,
-                    schedule_condition,
-                    queue,
-                } = run_queue;
-
-                // "Insertion time"
-                // "locked" -- now just "R" or ""
-                // priority
-                // reason
-                // "Commit id"
-                // "Custom parameters"
-                let titles = &[TerminalTableTitle {
-                    text: format!("{i}: queue {file_name} ({schedule_condition}):").into(),
-                    span: 6,
-                }];
-                let mut table = TerminalTable::start(
+            fn table_with_titles<'v, 's, O: Write + IsTerminal>(
+                titles: &'s [TerminalTableTitle],
+                style: Option<&Style>,
+                terminal_table_opts: &TerminalTableOpts,
+                out: O,
+            ) -> Result<TerminalTable<'v, 's, O>> {
+                TerminalTable::start(
                     // t  R  pr rsn commit
                     &[37, 3, 5, 17, 42],
                     titles,
+                    style,
                     terminal_table_opts.clone(),
-                    stdout().lock(),
-                )?;
+                    out,
+                )
+            }
 
-                // We want the last view_jobs_max_len items, one more
-                // if that's the complete list (the additional entry
-                // then occupying the "entries skipped" line). Don't
-                // want to collect the whole list first (leads to too
-                // many open filehandles), don't want to go through it
-                // twice (once for counting, once to skip); getting
-                // them in reverse, taking the first n, collecting,
-                // then reversing the list would be one way, but
-                // cleaner is to use a two step approach, first get
-                // the sorted collection of keys (cheap to hold in
-                // memory and needs to be retrieved underneath
-                // anyway), get the section we want, then use
-                // resolve_entries to load the items still in
-                // streaming fashion.  Note: this could show fewer
-                // than limit items even after showing "skipped",
-                // because items can vanish between getting
-                // sorted_keys and resolve_entries. But that is really
-                // no big deal.
-                let limit = if is_extra_queue && !all {
-                    // Get 2 more since showing "skipped 1 entry" is
-                    // not economic, and we just look at number 0
-                    // after subtracting, i.e. include the equal case.
-                    conf.queues.view_jobs_max_len + 2
-                } else {
-                    usize::MAX
-                };
-                let all_sorted_keys = queue.sorted_keys(false, None, false)?;
-                let shown_sorted_keys;
-                if let Some(num_skipped_2) = all_sorted_keys.len().checked_sub(limit) {
-                    let num_skipped = num_skipped_2 + 2;
-                    table.print(&format!("... ({num_skipped} entries skipped)\n"))?;
-                    shown_sorted_keys = &all_sorted_keys[num_skipped..];
-                } else {
-                    shown_sorted_keys = &all_sorted_keys;
-                }
-                for entry in queue.resolve_entries(shown_sorted_keys.into()) {
-                    let mut entry = entry?;
-                    let file_name = get_filename(&entry)?;
-                    let key = entry.key()?;
-                    let job = entry.get()?;
-                    let commit_id = &*job
-                        .benchmarking_job_public
-                        .run_parameters
-                        .commit_id
-                        .to_string();
-                    let reason = if let Some(reason) = &job.benchmarking_job_public.reason {
-                        reason.as_ref()
+            let mut out = stdout().lock();
+
+            {
+                // Show a table with no data rows, for main titles
+                let titles = &[
+                    "Insertion_time",
+                    "S", // Status
+                    "Prio",
+                    "Reason",
+                    "Commit_id",
+                    "Custom_parameters",
+                ]
+                .map(|s| TerminalTableTitle {
+                    text: Cow::Borrowed(s),
+                    span: 1,
+                });
+                // Somehow have to move `out` in and out, `&mut out`
+                // would not satisfy IsTerminal.
+                // rgb(10, 70, 140) looks perfect but `watch` turns it to black.
+                let table = table_with_titles(
+                    titles,
+                    Some(&Style::new().green().italic().bold()),
+                    &terminal_table_opts,
+                    out,
+                )?;
+                out = table.finish()?;
+            }
+
+            let show_queue =
+                |i: &str, run_queue: &RunQueue, is_extra_queue: bool, out| -> Result<_> {
+                    let RunQueue {
+                        file_name,
+                        schedule_condition,
+                        queue,
+                    } = run_queue;
+
+                    // "Insertion time"
+                    // "locked" -- now just "R" or ""
+                    // priority
+                    // reason
+                    // "Commit id"
+                    // "Custom parameters"
+                    let titles = &[TerminalTableTitle {
+                        text: format!("{i}: queue {file_name} ({schedule_condition}):").into(),
+                        span: 6,
+                    }];
+                    let mut table = table_with_titles(titles, None, &terminal_table_opts, out)?;
+
+                    // We want the last view_jobs_max_len items, one more
+                    // if that's the complete list (the additional entry
+                    // then occupying the "entries skipped" line). Don't
+                    // want to collect the whole list first (leads to too
+                    // many open filehandles), don't want to go through it
+                    // twice (once for counting, once to skip); getting
+                    // them in reverse, taking the first n, collecting,
+                    // then reversing the list would be one way, but
+                    // cleaner is to use a two step approach, first get
+                    // the sorted collection of keys (cheap to hold in
+                    // memory and needs to be retrieved underneath
+                    // anyway), get the section we want, then use
+                    // resolve_entries to load the items still in
+                    // streaming fashion.  Note: this could show fewer
+                    // than limit items even after showing "skipped",
+                    // because items can vanish between getting
+                    // sorted_keys and resolve_entries. But that is really
+                    // no big deal.
+                    let limit = if is_extra_queue && !all {
+                        // Get 2 more since showing "skipped 1 entry" is
+                        // not economic, and we just look at number 0
+                        // after subtracting, i.e. include the equal case.
+                        conf.queues.view_jobs_max_len + 2
                     } else {
-                        ""
+                        usize::MAX
                     };
-                    let custom_parameters = &*job
-                        .benchmarking_job_public
-                        .run_parameters
-                        .custom_parameters
-                        .to_string();
-                    let locking = if schedule_condition.is_grave_yard() {
-                        ""
+                    let all_sorted_keys = queue.sorted_keys(false, None, false)?;
+                    let shown_sorted_keys;
+                    if let Some(num_skipped_2) = all_sorted_keys.len().checked_sub(limit) {
+                        let num_skipped = num_skipped_2 + 2;
+                        table.print(&format!("... ({num_skipped} entries skipped)\n"))?;
+                        shown_sorted_keys = &all_sorted_keys[num_skipped..];
                     } else {
-                        let lock_status = entry
-                            .take_lockable_file()
-                            .expect("not taken before")
-                            .lock_status()?;
-                        if lock_status == LockStatus::ExclusiveLock {
-                            "R"
+                        shown_sorted_keys = &all_sorted_keys;
+                    }
+                    for entry in queue.resolve_entries(shown_sorted_keys.into()) {
+                        let mut entry = entry?;
+                        let file_name = get_filename(&entry)?;
+                        let key = entry.key()?;
+                        let job = entry.get()?;
+                        let commit_id = &*job
+                            .benchmarking_job_public
+                            .run_parameters
+                            .commit_id
+                            .to_string();
+                        let reason = if let Some(reason) = &job.benchmarking_job_public.reason {
+                            reason.as_ref()
                         } else {
                             ""
-                        }
-                    };
-                    let priority = &*job.priority()?.to_string();
+                        };
+                        let custom_parameters = &*job
+                            .benchmarking_job_public
+                            .run_parameters
+                            .custom_parameters
+                            .to_string();
+                        let locking = if schedule_condition.is_grave_yard() {
+                            ""
+                        } else {
+                            let lock_status = entry
+                                .take_lockable_file()
+                                .expect("not taken before")
+                                .lock_status()?;
+                            if lock_status == LockStatus::ExclusiveLock {
+                                "R"
+                            } else {
+                                ""
+                            }
+                        };
+                        let priority = &*job.priority()?.to_string();
 
-                    if verbose {
-                        table.write_data_row(&[
-                            &*format!("{file_name} ({key})"),
-                            locking,
-                            priority,
-                            reason,
-                            commit_id,
-                            custom_parameters,
-                        ])?;
-                        table.print(&format!("{job:#?}\n"))?;
-                    } else {
-                        table.write_data_row(&[
-                            &*key.datetime().to_rfc3339(),
-                            locking,
-                            priority,
-                            reason,
-                            commit_id,
-                            custom_parameters,
-                        ])?;
+                        if verbose {
+                            table.write_data_row(&[
+                                &*format!("{file_name} ({key})"),
+                                locking,
+                                priority,
+                                reason,
+                                commit_id,
+                                custom_parameters,
+                            ])?;
+                            table.print(&format!("{job:#?}\n"))?;
+                        } else {
+                            table.write_data_row(&[
+                                &*key.datetime().to_rfc3339(),
+                                locking,
+                                priority,
+                                reason,
+                                commit_id,
+                                custom_parameters,
+                            ])?;
+                        }
                     }
-                }
-                drop(table.finish()?);
-                Ok(())
-            };
+                    Ok(table.finish()?)
+                };
 
             let width = get_terminal_width();
             let bar_of = |c: u8| String::try_from([c].repeat(width)).expect("ascii char given");
@@ -494,24 +540,29 @@ fn main() -> Result<()> {
 
             for (i, run_queue) in queues.pipeline().iter().enumerate() {
                 println!("{thin_bar}");
-                show_queue(&(i + 1).to_string(), run_queue, false)?;
+                out = show_queue(&(i + 1).to_string(), run_queue, false, out)?;
             }
             println!("{thick_bar}");
-            let perhaps_show_extra_queue =
-                |queue_name: &str, queue_field: &str, run_queue: Option<&RunQueue>| -> Result<()> {
-                    if let Some(run_queue) = run_queue {
-                        show_queue(queue_name, run_queue, true)?;
-                    } else {
-                        println!("No {queue_field} is configured")
-                    }
-                    Ok(())
-                };
-            perhaps_show_extra_queue("done", "done_jobs_queue", queues.done_jobs_queue())?;
+            let perhaps_show_extra_queue = |queue_name: &str,
+                                            queue_field: &str,
+                                            run_queue: Option<&RunQueue>,
+                                            mut out|
+             -> Result<_> {
+                if let Some(run_queue) = run_queue {
+                    out = show_queue(queue_name, run_queue, true, out)?;
+                } else {
+                    println!("No {queue_field} is configured")
+                }
+                Ok(out)
+            };
+            out =
+                perhaps_show_extra_queue("done", "done_jobs_queue", queues.done_jobs_queue(), out)?;
             println!("{thin_bar}");
-            perhaps_show_extra_queue(
+            _ = perhaps_show_extra_queue(
                 "failures",
                 "erroneous_jobs_queue",
                 queues.erroneous_jobs_queue(),
+                out,
             )?;
             println!("{thin_bar}");
         }

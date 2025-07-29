@@ -170,6 +170,7 @@ impl<'v, 's, O: Write + IsTerminal> TerminalTable<'v, 's, O> {
     pub fn start(
         widths: &[usize],
         titles: &'v [TerminalTableTitle<'s>],
+        style: Option<&Style>,
         opts: TerminalTableOpts,
         out: O,
     ) -> Result<Self> {
@@ -186,7 +187,11 @@ impl<'v, 's, O: Write + IsTerminal> TerminalTable<'v, 's, O> {
             opts,
             out: BufWriter::new(out),
         };
-        slf.write_title_row()?;
+        if let Some(style) = style {
+            slf.write_title_row_with_style(style)?;
+        } else {
+            slf.write_title_row()?;
+        }
         Ok(slf)
     }
 
@@ -215,13 +220,16 @@ impl<'v, 's, O: Write + IsTerminal> TerminalTable<'v, 's, O> {
                 out.write_all("\t".as_bytes())?;
             }
             let mut text = text.to_string();
+            let minimal_pading_len;
             if let Some(style) = line_style {
                 // make sure italic text is not clipped on terminals
                 text.push_str(" ");
+                minimal_pading_len = Self::MINIMAL_PADDING_LEN.saturating_sub(1);
                 let s = text.as_str().paint(*style);
                 let s = s.to_string();
                 out.write_all(s.as_bytes())?;
             } else {
+                minimal_pading_len = Self::MINIMAL_PADDING_LEN;
                 out.write_all(text.as_bytes())?;
             }
             let text_len = text.len();
@@ -229,7 +237,7 @@ impl<'v, 's, O: Write + IsTerminal> TerminalTable<'v, 's, O> {
             if let Some(width) = width_opt {
                 if !opts.tsv {
                     let missing_padding_len = width.saturating_sub(text_len);
-                    let wanted_padding_len = missing_padding_len.max(Self::MINIMAL_PADDING_LEN);
+                    let wanted_padding_len = missing_padding_len.max(minimal_pading_len);
                     let padding = &settings.padding[0..wanted_padding_len];
                     out.write_all(padding.as_bytes())?;
                 }
@@ -241,19 +249,23 @@ impl<'v, 's, O: Write + IsTerminal> TerminalTable<'v, 's, O> {
         Ok(())
     }
 
-    pub fn write_title_row(&mut self) -> Result<()> {
-        const STYLE: Style = Style::new().bold().italic();
+    pub fn write_title_row_with_style(&mut self, style: &Style) -> Result<()> {
         Self::write_row(
             &self.opts,
             &self.settings,
             &mut self.out,
             Row::<&str>::WithSpans(self.settings.titles),
             if self.opts.want_color(self.settings.is_terminal) {
-                Some(&STYLE)
+                Some(style)
             } else {
                 None
             },
         )
+    }
+
+    pub fn write_title_row(&mut self) -> Result<()> {
+        const STYLE: Style = Style::new().bold().italic();
+        self.write_title_row_with_style(&STYLE)
     }
 
     pub fn write_data_row<V: Display>(&mut self, data: &[V]) -> Result<()> {
