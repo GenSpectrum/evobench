@@ -95,3 +95,26 @@ TODO
   than to queues, that contains the number of runs in the current
   queue.)
 
+#### Working directories
+
+When a job is executed, that is of course done inside a clone of the
+target project repository (a working directory, in Git parlance).
+
+To avoid the overhead of cloning that repository and rebuilding it,
+and for the targetted program to allow caching cachable data across
+runs, those working directories are kept around. Also, since the
+queues can contain jobs for multiple commit ids, and with different
+parameters, but those jobs need multiple executions, evobench-run is
+keeping a pool of working directories around (configurable in
+`capacity` under `working_directory_pool`), and tracks which directory
+has which commit id checked out (and perhaps more data soon), to then
+try and allocate job runs to the working directory that is closest to
+the job for minimizing the overhead.
+
+The default location for this pool is at
+`~/.evobench-run/working_directory_pool/`. The same directory also
+contains the log files from running benchmarking jobs; they start with
+`$n.output_of_benchmarking_command*`, where $n is the number of the
+working directory. There are also `$n.error*` files in case a job
+failed, and soon `$n.status` files to store the status of a working
+directory.
