@@ -701,8 +701,7 @@ fn main() -> Result<()> {
                         true,
                     )?;
                     if false_if_none {
-                        let code = if ran { 0 } else { 1 };
-                        exit(code)
+                        exit(if ran { 0 } else { 1 })
                     }
                 }
                 RunMode::Daemon { action } => {
