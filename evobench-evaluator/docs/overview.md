@@ -8,6 +8,8 @@ TODO
 
 ### Working principles
 
+#### Jobs
+
 * A benchmarking "job" is about executing a particular benchmark with
   given parameters on a given commit (i.e. should always yield the
   same timings on the same machine/OS/configuration), and is run a
@@ -19,7 +21,8 @@ TODO
   with every run (a configurable `remaining_count`,
   `remaining_error_budget` and `current_boost` which can temporarily
   increase the priority, currently just for the initial run which then
-  sets it back to zero).
+  sets it back to zero). (You can see the full information on jobs via
+  `evobench-run list -v`.)
 
 * One commit leads to the insertion of any number of jobs as
   statically determined in the configuration, with different
@@ -41,6 +44,15 @@ TODO
   have first (first in, first out), except job priorities dictate that
   higher-priority jobs are worked on first (`GraveYard` queues do not
   work on their jobs).
+
+#### Queues and pipelines
+
+* Queues are (currently) stored as files in a directory. By default
+  each queue has a subdirectory under
+  `~/.evobench-run/queues/`. Entries are inserted with the current
+  hi-res time stamp (plus process id and a process-local counter to
+  disambiguate) as the file name, and are serialized `BenchmarkingJob`
+  structs.
 
 * Queues are lined up in a pipeline: a job enters the first queue of a
   pipeline, then when the queue holding it decides to move it on (for
@@ -68,4 +80,18 @@ TODO
   jobs with the same maximum priority, the oldest in the earliest
   queue (i.e. the one appearing closest to the top in the
   `evobench-run list` view) is chosen.
+
+* Queues have (at least currently, and it seems useful to keep it that
+  way) no state other than the jobs that they contain. (Jobs however
+  have, as mentioned above, changing state over their life time.)
+  This is why queues can't offer e.g. a parameter to specify that they
+  should process a job 5 times; the only thing they can do is either
+  process a job once or infinitely, or, if that really seems useful,
+  have a condition like "process jobs until their `remaining_count` is
+  <= 5". But it seemed more direct (easier to understand and see via
+  `evobench-run list`) to just have e.g. 5 `Immediately` queues in a
+  row in the pipeline to run a job 5 times. (If really needed, my
+  suggestion would be to add another stateful field to *jobs*, rather
+  than to queues, that contains the number of runs in the current
+  queue.)
 
