@@ -347,9 +347,7 @@ pub struct BenchmarkingTarget {
         BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, AllowedCustomParameter>,
 }
 
-// XX: Clone is a bit expensive on this type! Where is it used? Use
-// Arc?
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 #[serde(rename = "JobTemplate")]
 pub struct JobTemplateOpts {
