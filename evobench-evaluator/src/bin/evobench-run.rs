@@ -16,7 +16,7 @@ use std::{
 };
 
 use evobench_evaluator::{
-    config_file::{self, save_config_file},
+    config_file::{self, ron_to_string_pretty, save_config_file},
     get_terminal_width::get_terminal_width,
     git::GitHash,
     info,
@@ -518,7 +518,8 @@ fn main() -> Result<()> {
                                 commit_id,
                                 custom_parameters,
                             ])?;
-                            table.print(&format!("{job:#?}\n"))?;
+                            let s = ron_to_string_pretty(&job)?;
+                            table.print(&format!("{s}\n\n"))?;
                         } else {
                             table.write_data_row(&[
                                 &*key.datetime().to_rfc3339(),

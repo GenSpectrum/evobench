@@ -27,7 +27,8 @@ use crate::{
 };
 
 pub fn ron_to_string_pretty<V: serde::Serialize>(value: &V) -> Result<String, ron::Error> {
-    ron::Options::default().to_string_pretty(value, ron::ser::PrettyConfig::default())
+    ron::Options::default()
+        .to_string_pretty(value, ron::ser::PrettyConfig::default().struct_names(true))
 }
 
 #[derive(Debug, Clone, Copy)]
