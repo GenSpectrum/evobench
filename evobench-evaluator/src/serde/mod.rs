@@ -8,4 +8,4 @@ pub mod map;
 pub mod priority;
 pub mod proper_dirname;
 pub mod proper_filename;
-pub mod value_or_ref;
+pub mod val_or_ref;

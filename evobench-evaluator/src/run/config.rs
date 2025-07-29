@@ -20,7 +20,7 @@ use crate::{
         git_url::GitUrl,
         priority::Priority,
         proper_filename::ProperFilename,
-        value_or_ref::{ValueOrRef, ValueOrRefTarget},
+        val_or_ref::{ValOrRef, ValOrRefTarget},
     },
     utillib::arc::CloneArc,
 };
@@ -278,7 +278,7 @@ pub struct RemoteRepositoryOpts {
 
     /// The remote branches to track
     pub remote_branch_names_for_poll:
-        BTreeMap<GitBranchName, ValueOrRef<JobTemplateListsField, Vec<JobTemplateOpts>>>,
+        BTreeMap<GitBranchName, ValOrRef<JobTemplateListsField, Vec<JobTemplateOpts>>>,
 }
 
 pub struct RemoteRepository {
@@ -300,7 +300,7 @@ impl RemoteRepositoryOpts {
         let remote_branch_names_for_poll = remote_branch_names_for_poll
             .iter()
             .map(|(branch_name, job_template_optss)| -> Result<_> {
-                let job_templates: ValueOrRef<JobTemplateListsField, Arc<[JobTemplate]>> =
+                let job_templates: ValOrRef<JobTemplateListsField, Arc<[JobTemplate]>> =
                     job_template_optss.try_map(
                         |job_template_optss: &Vec<JobTemplateOpts>| -> Result<Arc<[JobTemplate]>> {
                             job_template_optss
@@ -429,7 +429,7 @@ pub struct RunConfigOpts {
     /// removed) sub-command. Reference into `job_template_lists` via
     /// `Ref()`, or provide a list of JobTemplate entries directly via
     /// `List()`.
-    pub job_templates_for_insert: ValueOrRef<JobTemplateListsField, Vec<JobTemplateOpts>>,
+    pub job_templates_for_insert: ValOrRef<JobTemplateListsField, Vec<JobTemplateOpts>>,
 
     /// Each job receives a copy of these settings after expansion
     pub benchmarking_job_settings: Arc<BenchmarkingJobSettingsOpts>,
@@ -444,7 +444,7 @@ pub struct RunConfigOpts {
 
 #[derive(Debug)]
 pub struct JobTemplateListsField;
-impl ValueOrRefTarget for JobTemplateListsField {
+impl ValOrRefTarget for JobTemplateListsField {
     fn target_desc() -> Cow<'static, str> {
         "`RunConfig.job_template_lists` field".into()
     }
