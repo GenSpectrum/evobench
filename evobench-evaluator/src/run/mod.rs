@@ -1,4 +1,3 @@
-pub mod allowed_env_var;
 pub mod benchmarking_job;
 pub mod config;
 pub mod custom_parameter;

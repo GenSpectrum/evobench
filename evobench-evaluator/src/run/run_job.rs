@@ -23,13 +23,12 @@ use crate::{
         temporary_file::TemporaryFile,
     },
     key::RunParameters,
-    serde::proper_filename::ProperFilename,
+    serde::{allowed_env_var::AllowEnvVar, proper_filename::ProperFilename},
     utillib::logging::{log_level, LogLevel},
     zstd_file::compress_file,
 };
 
 use super::{
-    allowed_env_var::AllowEnvVar,
     config::{BenchmarkingCommand, ScheduleCondition},
     working_directory_pool::WorkingDirectoryPool,
 };
