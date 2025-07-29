@@ -279,84 +279,85 @@ pub fn run_job(
                 compress_file_as(&evobench_log, "evobench.log")?;
                 compress_file_as(&bench_output_log, "bench_output.log")?;
 
-                info!("evaluating benchmark file");
-
-                // Doing this *before* moving the files, as a way to
-                // ensure that no invalid files end up in the results
-                // pool!
-
-                evobench_evaluator(&vec![
-                    "single".into(),
-                    evobench_log.path().into(),
-                    "--show-thread-number".into(),
-                    "--excel".into(),
-                    (&result_dir).append("single.xlsx").into(),
-                ])?;
-
-                // It's a bit inefficient to read the $EVOBENCH_LOG
-                // twice, but currently can't change the options
-                // (--show-thread-number) without a separate run, also
-                // the cost is just a second or so.
-                evobench_evaluator(&vec![
-                    "single".into(),
-                    evobench_log.path().into(),
-                    "--flame".into(),
-                    (&result_dir).append("single").into(),
-                ])?;
-
-                info!("evaluating the benchmark file succeeded");
-
-                {
-                    // HACK to allow for the SILO
-                    // benchmarking/Makefile to move away the
-                    // EVOBENCH_LOG file after preprocessing, and have
-                    // that archived here. For summaries, have to run
-                    // the evobench-evaluator on those manually,
-                    // though.
-                    let evobench_log_preprocessing = TemporaryFile::from(
-                        (&bench_tmp_dir).append(format!("evobench-{pid}.log-preprocessing.log")),
-                    );
-                    if evobench_log_preprocessing.path().exists() {
-                        compress_file_as(
-                            &evobench_log_preprocessing,
-                            "evobench-preprocessing.log",
-                        )?;
-
-                        evobench_evaluator(&vec![
-                            "single".into(),
-                            evobench_log_preprocessing.path().into(),
-                            "--show-thread-number".into(),
-                            "--excel".into(),
-                            (&result_dir).append("single-preprocessing.xlsx").into(),
-                        ])?;
-                        evobench_evaluator(&vec![
-                            "single".into(),
-                            evobench_log_preprocessing.path().into(),
-                            "--flame".into(),
-                            (&result_dir).append("single-preprocessing").into(),
-                        ])?;
-                    }
-                }
-
-                {
-                    let target = (&result_dir).append("schedule_condition.ron");
-                    info!("saving context to {target:?}");
-                    let schedule_condition_str = ron_to_string_pretty(&schedule_condition)?;
-                    std::fs::write(&target, &schedule_condition_str)
-                        .map_err(ctx!("saving to {target:?}"))?
-                }
-
-                {
-                    let target = (&result_dir).append("reason.ron");
-                    info!("saving context to {target:?}");
-                    let s = ron_to_string_pretty(&reason)?;
-                    std::fs::write(&target, &s).map_err(ctx!("saving to {target:?}"))?
-                }
-
-                info!("(re-)evaluating the summary file across all results for this key");
-
                 // Capture errors, which we will report to `post_benchmark_error`
                 let res = (|| -> Result<()> {
+                    info!("evaluating benchmark file");
+
+                    // Doing this *before* moving the files, as a way to
+                    // ensure that no invalid files end up in the results
+                    // pool!
+
+                    evobench_evaluator(&vec![
+                        "single".into(),
+                        evobench_log.path().into(),
+                        "--show-thread-number".into(),
+                        "--excel".into(),
+                        (&result_dir).append("single.xlsx").into(),
+                    ])?;
+
+                    // It's a bit inefficient to read the $EVOBENCH_LOG
+                    // twice, but currently can't change the options
+                    // (--show-thread-number) without a separate run, also
+                    // the cost is just a second or so.
+                    evobench_evaluator(&vec![
+                        "single".into(),
+                        evobench_log.path().into(),
+                        "--flame".into(),
+                        (&result_dir).append("single").into(),
+                    ])?;
+
+                    info!("evaluating the benchmark file succeeded");
+
+                    {
+                        // HACK to allow for the SILO
+                        // benchmarking/Makefile to move away the
+                        // EVOBENCH_LOG file after preprocessing, and have
+                        // that archived here. For summaries, have to run
+                        // the evobench-evaluator on those manually,
+                        // though.
+                        let evobench_log_preprocessing = TemporaryFile::from(
+                            (&bench_tmp_dir)
+                                .append(format!("evobench-{pid}.log-preprocessing.log")),
+                        );
+                        if evobench_log_preprocessing.path().exists() {
+                            compress_file_as(
+                                &evobench_log_preprocessing,
+                                "evobench-preprocessing.log",
+                            )?;
+
+                            evobench_evaluator(&vec![
+                                "single".into(),
+                                evobench_log_preprocessing.path().into(),
+                                "--show-thread-number".into(),
+                                "--excel".into(),
+                                (&result_dir).append("single-preprocessing.xlsx").into(),
+                            ])?;
+                            evobench_evaluator(&vec![
+                                "single".into(),
+                                evobench_log_preprocessing.path().into(),
+                                "--flame".into(),
+                                (&result_dir).append("single-preprocessing").into(),
+                            ])?;
+                        }
+                    }
+
+                    {
+                        let target = (&result_dir).append("schedule_condition.ron");
+                        info!("saving context to {target:?}");
+                        let schedule_condition_str = ron_to_string_pretty(&schedule_condition)?;
+                        std::fs::write(&target, &schedule_condition_str)
+                            .map_err(ctx!("saving to {target:?}"))?
+                    }
+
+                    {
+                        let target = (&result_dir).append("reason.ron");
+                        info!("saving context to {target:?}");
+                        let s = ron_to_string_pretty(&reason)?;
+                        std::fs::write(&target, &s).map_err(ctx!("saving to {target:?}"))?
+                    }
+
+                    info!("(re-)evaluating the summary file across all results for this key");
+
                     fn generate_summary<P: AsRef<Path>>(
                         key_dir: &PathBuf,
                         job_output_dirs: &[P],
