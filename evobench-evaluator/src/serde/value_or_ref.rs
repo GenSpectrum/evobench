@@ -18,12 +18,11 @@ enum ValueOrRefInner<T> {
 
 /// A string naming an entry in another place, or holding a value directly.
 // Hiding the enum to force access via `value_with_backing`, to avoid
-// accidental mis-use of the reference names.
-#[derive(Debug, Serialize, Deserialize)]
+// accidental mis-use of the reference names. Also need the wrapper to
+// allow the phantom type parameter.
+#[derive(Debug)]
 pub struct ValueOrRef<RefTarget: ValueOrRefTarget, T> {
-    #[serde(flatten)]
     inner: ValueOrRefInner<T>,
-    #[serde(skip)]
     source: PhantomData<fn() -> RefTarget>,
 }
 
@@ -89,5 +88,26 @@ impl<RefTarget: ValueOrRefTarget, T> ValueOrRef<RefTarget, T> {
             },
             source: PhantomData,
         })
+    }
+}
+
+impl<'de, RefTarget: ValueOrRefTarget, T: Deserialize<'de>> Deserialize<'de>
+    for ValueOrRef<RefTarget, T>
+{
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let inner = ValueOrRefInner::deserialize(deserializer)?;
+        Ok(Self {
+            inner,
+            source: PhantomData,
+        })
+    }
+}
+
+impl<RefTarget: ValueOrRefTarget, T: Serialize> Serialize for ValueOrRef<RefTarget, T> {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.inner.serialize(serializer)
     }
 }
