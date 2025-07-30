@@ -33,6 +33,8 @@ TODO
   deterministic control (i.e. that there are no other jobs influencing
   the results).
 
+#### Queues and pipelines
+
 * A job is always being held by one queue at any time, but can be
   passed on by the queue. There are 3 reasons it can be passed on: it
   is finished (`remaining_count` dropped to zero), it failed too many
@@ -45,10 +47,15 @@ TODO
   higher-priority jobs are worked on first (`GraveYard` queues do not
   work on their jobs).
 
-#### Queues and pipelines
+* If a job execution fails, the job is always re-inserted into the
+  same queue it was run from (but with the lowered
+  `remaining_error_budget`). This means, its insertion time is updated
+  (i.e. it will be scheduled after other jobs with the same priority
+  in the queue; this gives potentially non-failing jobs a chance to
+  yield results sooner).
 
-* Queues are (currently) stored as files in a directory. By default
-  each queue has a subdirectory under
+* Queues are (currently) implemented as a directory with files, one
+  per job. By default each queue has a subdirectory under
   `~/.evobench-run/queues/`. Entries are inserted with the current
   hi-res time stamp (plus process id and a process-local counter to
   disambiguate) as the file name, and are serialized `BenchmarkingJob`
@@ -67,9 +74,9 @@ TODO
   finished, and one to catch all jobs that error out. If either is
   `None`, jobs will be dropped instead in that case.
 
-* Whenever a job is finished, `evobench-run run daemon` tries to select
-  the next job to run, if any, by first filtering the queue pipeline
-  for the queues that are runnable at the given time, then selecting
+* Whenever a job execution is finished, `evobench-run run daemon` tries to select
+  the next job to execute, if any, by first filtering the queue pipeline
+  for the queues that are executable at the given time, then selecting
   the job(s) with the maximum total priority, where the total priority
   is the sum of the job's `priority` and `current_boost` fields and
   the queue's own priority, which is either as configured for the
