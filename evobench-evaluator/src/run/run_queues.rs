@@ -206,6 +206,7 @@ impl RunQueues {
         let active_queues: Vec<(RunQueueWithNext<'s, 's>, Option<DateTimeRange<Local>>)> =
             self.active_queues(now).collect();
 
+        // The most prioritized job across all queues
         let job = {
             // Get the single most prioritized job from each queue (if
             // any). Note: these `QueueItem`s are not locked!
