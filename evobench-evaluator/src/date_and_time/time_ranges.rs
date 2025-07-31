@@ -187,6 +187,16 @@ pub struct DateTimeRange<Tz: TimeZone> {
     pub to: DateTime<Tz>,
 }
 
+impl<Tz: TimeZone> PartialEq for DateTimeRange<Tz> {
+    fn eq(&self, other: &Self) -> bool {
+        self.from.eq(&other.from) && self.to.eq(&other.to)
+    }
+}
+
+// Docs for Eq say should not impl by hand, but, ??. DateTime<Tz>
+// *does* impl it, so.
+impl<Tz: TimeZone> Eq for DateTimeRange<Tz> {}
+
 impl<Tz: TimeZone> Display for DateTimeRange<Tz> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self { from, to } = self;

@@ -269,7 +269,7 @@ impl<'basedir, V: DeserializeOwned + Serialize> QueueItem<'basedir, V> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Queue<V: DeserializeOwned + Serialize>(KeyVal<TimeKey, V>);
 
 fn keyvalerror_from_lock_error<V>(

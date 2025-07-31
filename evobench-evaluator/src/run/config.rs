@@ -7,10 +7,13 @@ use std::{
 };
 
 use anyhow::{anyhow, Result};
+use chrono::{DateTime, Local};
 use kstring::KString;
 
 use crate::{
     config_file::{ConfigFile, DefaultConfigPath},
+    date_and_time::time_ranges::{DateTimeRange, LocalNaiveTimeRange},
+    info,
     io_utils::{bash::bash_string_from_cmd, div::create_dir_if_not_exists},
     key::CustomParameters,
     serde::{
@@ -215,6 +218,43 @@ impl ScheduleCondition {
                 from: _,
                 to: _,
             } => Some(priority.unwrap_or(Self::TIMED_QUEUE_DEFAULT_PRIORITY)),
+            ScheduleCondition::GraveYard => None,
+        }
+    }
+
+    /// Returns an optional time window (given if runnable due to
+    /// being in this time window) if runnable
+    pub fn is_runnable_at(
+        &self,
+        reference_time: DateTime<Local>,
+    ) -> Option<Option<DateTimeRange<Local>>> {
+        match self {
+            ScheduleCondition::Immediately { situation: _ } => Some(None),
+            ScheduleCondition::LocalNaiveTimeWindow {
+                priority: _,
+                situation: _,
+                stop_start: _,
+                repeatedly: _,
+                move_when_time_window_ends: _,
+                from,
+                to,
+            } => {
+                let ltr = LocalNaiveTimeRange {
+                    from: *from,
+                    to: *to,
+                };
+                let dtr: Option<DateTimeRange<Local>> = ltr.after_datetime(&reference_time, true);
+                if let Some(dtr) = dtr {
+                    if dtr.contains(&reference_time) {
+                        Some(Some(dtr))
+                    } else {
+                        None
+                    }
+                } else {
+                    info!("times in {ltr} do not resolve for {reference_time}");
+                    None
+                }
+            }
             ScheduleCondition::GraveYard => None,
         }
     }

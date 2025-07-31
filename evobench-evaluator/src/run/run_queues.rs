@@ -109,7 +109,33 @@ impl RunQueues {
 
     /// All queues which are runnable at the given time, with their
     /// successor queue, and calculated time window if any
+    fn new_active_queues<'s>(
+        &'s self,
+        reference_time: DateTime<Local>,
+    ) -> impl Iterator<Item = (RunQueueWithNext<'s, 's>, Option<DateTimeRange<Local>>)> {
+        self.run_queue_with_nexts().filter_map(move |rq| {
+            if let Some(range) = rq.schedule_condition.is_runnable_at(reference_time) {
+                Some((rq, range))
+            } else {
+                None
+            }
+        })
+    }
+
+    // XXX tmp
     fn active_queues<'s>(
+        &'s self,
+        reference_time: DateTime<Local>,
+    ) -> impl Iterator<Item = (RunQueueWithNext<'s, 's>, Option<DateTimeRange<Local>>)> {
+        let new: Vec<_> = self.new_active_queues(reference_time).collect();
+        let old: Vec<_> = self.old_active_queues(reference_time).collect();
+        assert_eq!(new, old);
+        new.into_iter()
+    }
+
+    /// All queues which are runnable at the given time, with their
+    /// successor queue, and calculated time window if any
+    fn old_active_queues<'s>(
         &'s self,
         reference_time: DateTime<Local>,
     ) -> impl Iterator<Item = (RunQueueWithNext<'s, 's>, Option<DateTimeRange<Local>>)> {

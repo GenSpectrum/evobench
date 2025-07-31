@@ -41,7 +41,7 @@ pub fn run_command(cmd: &[String], start_stop: &str) -> Result<()> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct RunQueue<'conf> {
     pub file_name: ProperFilename,
     pub schedule_condition: &'conf ScheduleCondition,
@@ -82,7 +82,7 @@ impl<'conf> RunQueue<'conf> {
 
 /// A `RunQueue` paired with its optional successor `RunQueue` (the
 /// queue where jobs go next)
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct RunQueueWithNext<'conf, 'r> {
     pub current: &'r RunQueue<'conf>,
     pub next: Option<&'r RunQueue<'conf>>,

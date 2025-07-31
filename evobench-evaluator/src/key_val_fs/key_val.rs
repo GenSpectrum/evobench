@@ -300,6 +300,13 @@ pub struct KeyVal<K: AsKey, V: DeserializeOwned + Serialize> {
     dir_file: File,
 }
 
+// Just for testing
+impl<K: AsKey, V: DeserializeOwned + Serialize> PartialEq for KeyVal<K, V> {
+    fn eq(&self, other: &Self) -> bool {
+        self.config.eq(&other.config) && self.base_dir.eq(&other.base_dir)
+    }
+}
+
 impl<K: AsKey, V: DeserializeOwned + Serialize> KeyVal<K, V> {
     pub fn open(base_dir: impl AsRef<Path>, config: KeyValConfig) -> Result<Self, KeyValError> {
         let base_dir = base_dir.as_ref().to_owned();
