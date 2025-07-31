@@ -19,6 +19,7 @@ use crate::{
     config_file::ron_to_string_pretty,
     ctx, info,
     io_utils::{
+        bash::cmd_with_args_as_bash_string,
         capture::{CaptureOpts, OutFile},
         temporary_file::TemporaryFile,
     },
@@ -204,8 +205,7 @@ pub fn run_job(
 
             // for debugging info only:
             let cmd_in_dir = {
-                let mut cmd = vec![command.to_string_lossy().into_owned()];
-                cmd.append(&mut arguments.clone());
+                let cmd = cmd_with_args_as_bash_string(command.to_string_lossy(), arguments);
                 format!("command {cmd:?} in directory {dir:?}")
             };
 

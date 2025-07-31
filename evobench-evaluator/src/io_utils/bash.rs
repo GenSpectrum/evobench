@@ -29,8 +29,20 @@ pub fn bash_string_literal(s: &str) -> Cow<str> {
     }
 }
 
-pub fn cmd_as_bash_string<S: AsRef<str>>(cmd: impl IntoIterator<Item = S>) -> String {
+pub fn cmd_as_bash_string(cmd: impl IntoIterator<Item = impl AsRef<str>>) -> String {
     cmd.into_iter()
         .map(|s| bash_string_literal(s.as_ref()).to_string())
         .join(" ")
+}
+
+pub fn cmd_with_args_as_bash_string(
+    cmd: impl AsRef<str>,
+    args: impl IntoIterator<Item = impl AsRef<str>>,
+) -> String {
+    let mut cmd = cmd.as_ref().to_owned();
+    for arg in args {
+        cmd.push_str(" ");
+        cmd.push_str(&*bash_string_literal(arg.as_ref()));
+    }
+    cmd
 }
