@@ -13,7 +13,7 @@ use anyhow::{anyhow, Result};
 
 use crate::{ctx, serde::date_and_time::DateTimeWithOffset};
 
-use super::bash::cmd_as_bash_string;
+use super::bash::bash_string_from_cmd;
 
 // ETOOCOMPLICATED.
 pub fn get_cmd_and_args(cmd: &Command) -> Vec<Cow<str>> {
@@ -28,7 +28,7 @@ pub fn get_cmd_and_args(cmd: &Command) -> Vec<Cow<str>> {
 }
 
 pub fn get_cmd_and_args_as_bash_string(cmd: &Command) -> String {
-    cmd_as_bash_string(get_cmd_and_args(cmd))
+    bash_string_from_cmd(get_cmd_and_args(cmd))
 }
 
 pub fn new_proxy_thread<'scope, 'file, 'm, F: Read + Send + 'static>(

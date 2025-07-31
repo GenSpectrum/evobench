@@ -11,7 +11,7 @@ use kstring::KString;
 
 use crate::{
     config_file::{ConfigFile, DefaultConfigPath},
-    io_utils::{bash::cmd_as_bash_string, div::create_dir_if_not_exists},
+    io_utils::{bash::bash_string_from_cmd, div::create_dir_if_not_exists},
     key::CustomParameters,
     serde::{
         allowed_env_var::AllowedEnvVar,
@@ -108,7 +108,7 @@ impl Display for ScheduleCondition {
                     "stay"
                 };
                 let cmd = if let Some(st) = stop_start {
-                    cmd_as_bash_string(st)
+                    bash_string_from_cmd(st)
                 } else {
                     "-".into()
                 };
