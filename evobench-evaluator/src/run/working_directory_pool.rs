@@ -6,7 +6,7 @@
 
 use std::{collections::BTreeMap, num::NonZeroU8, path::PathBuf, str::FromStr, sync::Arc, u64};
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use serde::Serialize;
 
 use crate::{
@@ -220,10 +220,10 @@ impl WorkingDirectoryPool {
     ///  Runs the given action on the requested working directory and
     ///  with the timestamp of the action start (used in error paths),
     ///  and if there are errors, store them as metadata with the
-    ///  directory and remove it from the pool. Panics if a working
-    ///  directory with the given id doesn't exist. `run_parameters`
-    ///  and `context` are only used to be stored with the error, if
-    ///  any.
+    ///  directory and remove it from the pool. Returns an error if a
+    ///  working directory with the given id doesn't
+    ///  exist. `run_parameters` and `context` are only used to be
+    ///  stored with the error, if any.
     pub fn process_working_directory<T>(
         &mut self,
         working_directory_id: WorkingDirectoryId,
@@ -234,7 +234,10 @@ impl WorkingDirectoryPool {
         let wd = self
             .entries
             .get_mut(&working_directory_id)
-            .expect("working directory id must still exist");
+            // Can't just .expect here because the use cases seem too
+            // complex (concurrency means that a working directory
+            // very well might disappear), thus:
+            .ok_or_else(|| anyhow!("working directory id must still exist"))?;
 
         let timestamp = DateTimeWithOffset::now();
 
