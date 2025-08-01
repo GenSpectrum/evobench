@@ -70,13 +70,6 @@ impl RunQueues {
         self.borrow_pipeline()
     }
 
-    pub fn queue_names(&self) -> Vec<&str> {
-        self.pipeline()
-            .iter()
-            .map(|q| q.file_name.as_str())
-            .collect()
-    }
-
     pub fn erroneous_jobs_queue(&self) -> Option<&RunQueue> {
         self.borrow_erroneous_jobs_queue().as_ref()
     }
@@ -133,7 +126,7 @@ impl RunQueues {
 
     /// The `RunQueue`s paired with their successor (still in the
     /// original, configured, order)
-    pub fn run_queue_with_nexts<'s>(&'s self) -> impl Iterator<Item = RunQueueWithNext<'s, 's>> {
+    fn run_queue_with_nexts<'s>(&'s self) -> impl Iterator<Item = RunQueueWithNext<'s, 's>> {
         self.pipeline()
             .iter()
             .zip_longest(self.pipeline().iter().skip(1))
