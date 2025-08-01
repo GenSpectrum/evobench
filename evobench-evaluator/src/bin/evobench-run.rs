@@ -215,7 +215,9 @@ fn run_queues(
 
         let conf = &config_with_reload.run_config;
 
-        let ran = queues.run_next_job(
+        let queues_data = queues.data()?;
+
+        let ran = queues_data.run_next_job(
             |reason, benchmarking_command, run_parameters, queue| {
                 run_job(
                     &mut working_directory_pool,

@@ -1,4 +1,4 @@
-use std::{ops::Deref, process::Command, sync::Arc};
+use std::{process::Command, sync::Arc};
 
 use anyhow::{bail, Result};
 
@@ -7,9 +7,9 @@ use crate::{
     key::RunParameters,
     key_val_fs::{
         key_val::KeyValError,
-        queue::{Queue, QueueGetItemOpts, QueueItem, QueueIterationOpts},
+        queue::{Queue, QueueGetItemOpts, QueueItem, QueueIterationOpts, TimeKey},
     },
-    serde::proper_filename::ProperFilename,
+    serde::{priority::Priority, proper_filename::ProperFilename},
     utillib::{
         arc::CloneArc,
         logging::{log_level, LogLevel},
@@ -48,6 +48,32 @@ pub struct RunQueue<'conf> {
     pub queue: Queue<BenchmarkingJob>,
 }
 
+/// A loaded copy of the on-disk data, for on-the-fly
+/// indexing/multiple traversal
+#[derive(Debug, PartialEq)]
+pub struct RunQueueData<'conf, 'run_queue> {
+    run_queue: &'run_queue RunQueue<'conf>,
+    /// The queue items, with total priority from job and queue
+    queue_data: Vec<(TimeKey, BenchmarkingJob, Priority)>,
+}
+
+impl<'conf, 'run_queue> RunQueueData<'conf, 'run_queue> {
+    pub fn run_queue(&self) -> &'run_queue RunQueue<'conf> {
+        self.run_queue
+    }
+    pub fn jobs(&self) -> impl Iterator<Item = &BenchmarkingJob> {
+        self.queue_data.iter().map(|(_, job, _)| job)
+    }
+    /// Priority already includes the queue priority here.
+    pub fn entries(&self) -> impl Iterator<Item = &(TimeKey, BenchmarkingJob, Priority)> {
+        self.queue_data.iter()
+    }
+    /// Panics for invalid i
+    pub fn entry(&self, i: usize) -> &(TimeKey, BenchmarkingJob, Priority) {
+        &self.queue_data[i]
+    }
+}
+
 pub enum TerminationReason {
     Timeout,
     QueueEmpty,
@@ -59,8 +85,28 @@ impl<'conf> RunQueue<'conf> {
         self.queue.push_front(job)
     }
 
+    pub fn data<'run_queue>(&'run_queue self) -> Result<RunQueueData<'conf, 'run_queue>> {
+        let queue_data = self
+            .jobs()
+            .map(|r| -> Result<_> {
+                let (queue_item, job) = r?;
+                let queue_priority = self
+                    .schedule_condition
+                    .priority()
+                    .expect("no graveyard queue in pipeline");
+                let priority = (job.priority()? + queue_priority)?;
+                Ok((queue_item.key()?, job, priority))
+            })
+            .collect::<Result<_>>()?;
+        Ok(RunQueueData {
+            run_queue: self,
+            queue_data,
+        })
+    }
+
     /// NOTE: this returns unlocked `QueueItem`s! Call
     /// `lock_exclusive()` on them to lock them afterwards.
+    // XXX obsolete, kept public and in direct use only for testing, rename and only use in
     pub fn jobs<'s>(
         &'s self,
     ) -> impl Iterator<Item = Result<(QueueItem<'s, BenchmarkingJob>, BenchmarkingJob), KeyValError>>
@@ -88,12 +134,12 @@ pub struct RunQueueWithNext<'conf, 'r> {
     pub next: Option<&'r RunQueue<'conf>>,
 }
 
-impl<'conf, 'r> Deref for RunQueueWithNext<'conf, 'r> {
-    type Target = RunQueue<'conf>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.current
-    }
+/// A `RunQueueData` paired with its optional successor `RunQueueData` (the
+/// queue where jobs go next)
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub struct RunQueueDataWithNext<'conf, 'run_queue, 'r> {
+    pub current: &'r RunQueueData<'conf, 'run_queue>,
+    pub next: Option<&'r RunQueueData<'conf, 'run_queue>>,
 }
 
 impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
@@ -155,13 +201,13 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
                     info!("job gave error: {job:?}: {error:#?}");
                     if remaining_error_budget > 0 {
                         // Re-schedule
-                        self.push_front(&job)?;
+                        self.current.push_front(&job)?;
                     }
                 } else {
                     let remaining_count = remaining_count - 1;
                     if remaining_count > 0 {
                         let maybe_queue;
-                        match self.schedule_condition {
+                        match self.current.schedule_condition {
                             ScheduleCondition::Immediately { situation: _ } => {
                                 // Job is always going to the next queue
                                 maybe_queue = self.next;
@@ -184,7 +230,7 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
                                     // time here, because need to do that
                                     // before we start, hence using `stop_at`
                                     // for that. Thus, simply:)
-                                    maybe_queue = Some(self);
+                                    maybe_queue = Some(self.current);
                                 } else {
                                     maybe_queue = self.next;
                                 }
@@ -234,8 +280,8 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
     }
 
     pub fn handle_timeout(&self) -> Result<()> {
-        info!("ran out of time in queue {}", self.file_name);
-        if self.schedule_condition.move_when_time_window_ends() {
+        info!("ran out of time in queue {}", self.current.file_name);
+        if self.current.schedule_condition.move_when_time_window_ends() {
             let mut count = 0;
             for entry in self.current.queue.sorted_entries(false, None, false)? {
                 // XX continue in the face of
@@ -255,5 +301,14 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
             );
         }
         Ok(())
+    }
+}
+
+impl<'conf, 'run_queue, 'r> RunQueueDataWithNext<'conf, 'run_queue, 'r> {
+    pub fn run_queue_with_next(&self) -> RunQueueWithNext<'conf, 'run_queue> {
+        let RunQueueDataWithNext { current, next } = self;
+        let current = current.run_queue();
+        let next = next.map(|rq| rq.run_queue());
+        RunQueueWithNext { current, next }
     }
 }

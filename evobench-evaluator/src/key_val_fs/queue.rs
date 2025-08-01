@@ -131,6 +131,17 @@ enum PerhapsLock<'l, T> {
     Lock(T),
 }
 
+impl<'l, T> PartialEq for PerhapsLock<'l, T> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::NoLock(_), Self::NoLock(_)) => true,
+            (Self::EntryGone, Self::EntryGone) => true,
+            (Self::Lock(_), Self::Lock(_)) => true,
+            _ => false,
+        }
+    }
+}
+
 impl<'l, T> PerhapsLock<'l, T> {
     fn is_gone(&self) -> bool {
         match self {
@@ -153,6 +164,15 @@ pub struct QueueItem<'basedir, V: DeserializeOwned + Serialize + 'static> {
         &'this mut Entry<'basedir, TimeKey, V>,
         PerhapsLock<'this, ExclusiveFileLock<'this, File>>,
     ),
+}
+
+impl<'basedir, V: DeserializeOwned + Serialize + 'static + Debug> PartialEq
+    for QueueItem<'basedir, V>
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.borrow_verbose() == other.borrow_verbose()
+            && self.borrow_perhaps_lock() == other.borrow_perhaps_lock()
+    }
 }
 
 impl<'basedir, V: DeserializeOwned + Serialize + 'static + Debug> Debug for QueueItem<'basedir, V> {

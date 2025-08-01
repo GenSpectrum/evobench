@@ -32,7 +32,7 @@ fn decode_hex<const N: usize>(input: &[u8], output: &mut [u8; N]) -> Result<()> 
     Ok(())
 }
 
-#[derive(Clone, Hash, PartialEq, Eq)]
+#[derive(Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct GitHash([u8; 20]);
 
 impl Debug for GitHash {

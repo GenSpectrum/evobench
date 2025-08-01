@@ -77,6 +77,12 @@ pub struct Entry<'p, K: AsKey, V: DeserializeOwned + Serialize> {
     value_file: Option<File>,
 }
 
+impl<'p, K: AsKey, V: DeserializeOwned + Serialize> PartialEq for Entry<'p, K, V> {
+    fn eq(&self, other: &Self) -> bool {
+        self.base_dir == other.base_dir && self.target_path == other.target_path
+    }
+}
+
 impl<'p, K: AsKey, V: DeserializeOwned + Serialize> Entry<'p, K, V> {
     pub fn target_path(&self) -> &Path {
         &self.target_path

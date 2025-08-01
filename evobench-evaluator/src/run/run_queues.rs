@@ -1,4 +1,10 @@
-use std::{collections::BTreeSet, ops::Neg, path::PathBuf, sync::Arc, time::SystemTime};
+use std::{
+    collections::{btree_map::Entry, BTreeMap, BTreeSet},
+    ops::Neg,
+    path::PathBuf,
+    sync::Arc,
+    time::SystemTime,
+};
 
 use anyhow::{bail, Result};
 use chrono::{DateTime, Local};
@@ -7,6 +13,7 @@ use itertools::{EitherOrBoth, Itertools};
 use crate::{
     ctx,
     date_and_time::time_ranges::{DateTimeRange, LocalNaiveTimeRange},
+    git::GitHash,
     info,
     key::RunParameters,
     key_val_fs::{
@@ -23,7 +30,7 @@ use super::{
     config::{BenchmarkingCommand, QueuesConfig, ScheduleCondition},
     global_app_state_dir::GlobalAppStateDir,
     run_context::RunContext,
-    run_queue::{RunQueue, RunQueueWithNext},
+    run_queue::{RunQueue, RunQueueData, RunQueueDataWithNext, RunQueueWithNext},
 };
 
 // Move, where?
@@ -49,6 +56,15 @@ pub struct RunQueues {
     done_jobs_queue: Option<RunQueue<'this>>,
 }
 
+/// A loaded copy of the on-disk data, for on-the-fly
+/// indexing/multiple traversal
+pub struct RunQueuesData<'run_queues> {
+    run_queues: &'run_queues RunQueues,
+    pipeline_data: Vec<RunQueueData<'run_queues, 'run_queues>>,
+    /// Value is (index in pipeline_data, index within its queue_data)
+    jobs_by_commit_id: BTreeMap<GitHash, Vec<(usize, usize)>>,
+}
+
 impl RunQueues {
     pub fn pipeline(&self) -> &[RunQueue] {
         self.borrow_pipeline()
@@ -71,6 +87,33 @@ impl RunQueues {
 
     pub fn first(&self) -> &RunQueue {
         &self.pipeline()[0]
+    }
+
+    pub fn data<'run_queues>(&'run_queues self) -> Result<RunQueuesData<'run_queues>> {
+        let pipeline_data: Vec<RunQueueData> = self
+            .pipeline()
+            .iter()
+            .map(|rq| rq.data())
+            .collect::<Result<_>>()?;
+        let mut jobs_by_commit_id = BTreeMap::default();
+        for (i, rqd) in pipeline_data.iter().enumerate() {
+            for (j, job) in rqd.jobs().enumerate() {
+                let commit_id = &job.benchmarking_job_public.run_parameters.commit_id;
+                match jobs_by_commit_id.entry(commit_id.clone()) {
+                    Entry::Vacant(vacant_entry) => {
+                        vacant_entry.insert(vec![(i, j)]);
+                    }
+                    Entry::Occupied(mut occupied_entry) => {
+                        occupied_entry.get_mut().push((i, j));
+                    }
+                }
+            }
+        }
+        Ok(RunQueuesData {
+            run_queues: self,
+            pipeline_data,
+            jobs_by_commit_id,
+        })
     }
 
     /// Also returns the queue following the requested one, if any
@@ -109,12 +152,12 @@ impl RunQueues {
 
     /// All queues which are runnable at the given time, with their
     /// successor queue, and calculated time window if any
-    fn new_active_queues<'s>(
+    fn new_old_active_queues<'s>(
         &'s self,
         reference_time: DateTime<Local>,
     ) -> impl Iterator<Item = (RunQueueWithNext<'s, 's>, Option<DateTimeRange<Local>>)> {
         self.run_queue_with_nexts().filter_map(move |rq| {
-            if let Some(range) = rq.schedule_condition.is_runnable_at(reference_time) {
+            if let Some(range) = rq.current.schedule_condition.is_runnable_at(reference_time) {
                 Some((rq, range))
             } else {
                 None
@@ -127,7 +170,7 @@ impl RunQueues {
         &'s self,
         reference_time: DateTime<Local>,
     ) -> impl Iterator<Item = (RunQueueWithNext<'s, 's>, Option<DateTimeRange<Local>>)> {
-        let new: Vec<_> = self.new_active_queues(reference_time).collect();
+        let new: Vec<_> = self.new_old_active_queues(reference_time).collect();
         let old: Vec<_> = self.old_active_queues(reference_time).collect();
         assert_eq!(new, old);
         new.into_iter()
@@ -140,7 +183,7 @@ impl RunQueues {
         reference_time: DateTime<Local>,
     ) -> impl Iterator<Item = (RunQueueWithNext<'s, 's>, Option<DateTimeRange<Local>>)> {
         self.run_queue_with_nexts()
-            .filter_map(move |rq| match rq.schedule_condition {
+            .filter_map(move |rq| match rq.current.schedule_condition {
                 ScheduleCondition::Immediately { situation: _ } => Some((rq, None)),
                 ScheduleCondition::LocalNaiveTimeWindow {
                     priority: _,
@@ -167,7 +210,7 @@ impl RunQueues {
                         info!(
                             "times in {ltr} do not resolve for {reference_time}, \
                              omitting queue {:?}",
-                            rq.file_name,
+                            rq.current.file_name,
                         );
                         None
                     }
@@ -176,118 +219,79 @@ impl RunQueues {
             })
     }
 
-    /// Run the first or most prioritized job in the queues. Returns
-    /// true if a job was found, false if all runnable queues are
-    /// empty. This method needs to be run in a loop forever for
-    /// daemon style processing. The reason this doesn't do the
-    /// looping inside is to allow for a reload of the queue config
-    /// and then queues. `current_stop_start`, if given, represents an
-    /// active `stop_start` command that was run with `stop` and now
-    /// needs a `start` when the next running action does not require
-    /// the same command to be `stop`ed. Likewise, this method returns
-    /// the active `stop_start` command, if any, by the time it
-    /// returns. The caller should pass that back into this method on
-    /// the next iteration. Using SliceOrBox to allow carrying it over
-    /// a config reload. `now` should be the current time (at least is
-    /// understood as such), get it via `get_now_chrono()` right
-    /// before calling this method.
-    pub fn run_next_job<'s, 'conf, 'r, 'rc>(
+    /// The most prioritized job across all runnable queues
+    fn old_most_prioritized_job<'s, 'conf, 'r, 'rc>(
         &'s self,
-        execute: impl FnMut(
-            &Option<String>,
-            Arc<BenchmarkingCommand>,
-            Arc<RunParameters>,
-            &RunQueue,
-        ) -> Result<()>,
-        run_context: &mut RunContext,
         now: DateTime<Local>,
-    ) -> Result<bool> {
+    ) -> Result<
+        Option<(
+            RunQueueWithNext<'s, 's>,
+            Option<DateTimeRange<Local>>,
+            QueueItem<'s, BenchmarkingJob>,
+            BenchmarkingJob,
+            Priority,
+        )>,
+    > {
         let verbose = log_level() >= LogLevel::Info;
-        let active_queues: Vec<(RunQueueWithNext<'s, 's>, Option<DateTimeRange<Local>>)> =
-            self.active_queues(now).collect();
 
-        // The most prioritized job across all queues
-        let job = {
-            // Get the single most prioritized job from each queue (if
-            // any). Note: these `QueueItem`s are not locked!
-            let mut jobs: Vec<(
-                &RunQueueWithNext<'s, 's>,
-                Option<DateTimeRange<Local>>,
-                QueueItem<BenchmarkingJob>,
-                BenchmarkingJob,
-                Priority,
-            )> = active_queues
-                .iter()
-                .map(|(rq, dtr)| -> Result<Option<_>> {
-                    let mut jobs: Vec<(TimeKey, BenchmarkingJob, Priority)> = rq
-                        .jobs()
-                        .map(|r| -> Result<_> {
-                            let (item, job) = r?;
-                            // Get key and drop item to avoid keeping
-                            // open a file handle for every entry in
-                            // the queue. Also, pre-calculate
-                            // priorities since that can fail.
-                            let job_priority = job.priority()?;
-                            Ok((item.key()?, job, job_priority))
-                        })
-                        .collect::<Result<_>>()
-                        .map_err(ctx!("reading entries from queue {:?}", *rq))?;
-                    jobs.sort_by_key(|(_, _, job_priority)| job_priority.neg());
+        // Get the single most prioritized job from each queue (if
+        // any). Note: these `QueueItem`s are not locked!
+        let mut jobs: Vec<(
+            RunQueueWithNext<'s, 's>,
+            Option<DateTimeRange<Local>>,
+            QueueItem<BenchmarkingJob>,
+            BenchmarkingJob,
+            Priority,
+        )> = self
+            .active_queues(now)
+            .map(|(rq, dtr)| -> Result<Option<_>> {
+                let mut jobs: Vec<(TimeKey, BenchmarkingJob, Priority)> = rq
+                    .current
+                    .jobs()
+                    .map(|r| -> Result<_> {
+                        let (item, job) = r?;
+                        // Get key and drop item to avoid keeping
+                        // open a file handle for every entry in
+                        // the queue. Also, pre-calculate
+                        // priorities since that can fail.
+                        let job_priority = job.priority()?;
+                        Ok((item.key()?, job, job_priority))
+                    })
+                    .collect::<Result<_>>()
+                    .map_err(ctx!("reading entries from queue {:?}", rq.current))?;
+                jobs.sort_by_key(|(_, _, job_priority)| job_priority.neg());
 
-                    if let Some((key, job, job_priority)) = jobs.into_iter().next() {
-                        if let Some(item) = rq.queue.get_item(
-                            &key,
-                            QueueGetItemOpts {
-                                verbose,
-                                no_lock: true,
-                                error_when_locked: false,
-                                delete_first: false,
-                            },
-                        )? {
-                            let priority = (job_priority
-                                + rq.schedule_condition
-                                    .priority()
-                                    .expect("no graveyards here"))?;
-                            Ok(Some((rq, (*dtr).clone(), item, job, priority)))
-                        } else {
-                            info!("entry {key} has disappeared in the mean time, skipping it");
-                            Ok(None)
-                        }
+                if let Some((key, job, job_priority)) = jobs.into_iter().next() {
+                    if let Some(item) = rq.current.queue.get_item(
+                        &key,
+                        QueueGetItemOpts {
+                            verbose,
+                            no_lock: true,
+                            error_when_locked: false,
+                            delete_first: false,
+                        },
+                    )? {
+                        let priority = (job_priority
+                            + rq.current
+                                .schedule_condition
+                                .priority()
+                                .expect("no graveyards here"))?;
+                        Ok(Some((rq, dtr, item, job, priority)))
                     } else {
+                        info!("entry {key} has disappeared in the mean time, skipping it");
                         Ok(None)
                     }
-                })
-                .filter_map(|r| r.transpose())
-                .collect::<Result<_>>()?;
+                } else {
+                    Ok(None)
+                }
+            })
+            .filter_map(|r| r.transpose())
+            .collect::<Result<_>>()?;
 
-            // And then get the most prioritized job of all, adjusted
-            // for the queue it is in.
-            jobs.sort_by_key(|(_, _, _, _, priority)| priority.neg());
-            jobs.into_iter().next()
-        };
-
-        let ran_job = if let Some((rqwn, dtr, item, job, _)) = job {
-            run_context.stop_start_be(rqwn.schedule_condition.stop_start())?;
-            if let Some(dtr) = dtr {
-                run_context.running_job_in_windowed_queue(&*rqwn, dtr);
-            }
-
-            rqwn.run_job(
-                &item,
-                job,
-                self.erroneous_jobs_queue(),
-                self.done_jobs_queue(),
-                execute,
-            )?;
-
-            true
-        } else {
-            run_context.stop_start_be(None)?;
-
-            false
-        };
-
-        Ok(ran_job)
+        // And then get the most prioritized job of all, adjusted
+        // for the queue it is in.
+        jobs.sort_by_key(|(_, _, _, _, priority)| priority.neg());
+        Ok(jobs.into_iter().next())
     }
 
     /// Verify that the queue configuration is valid
@@ -435,5 +439,203 @@ impl RunQueues {
         slf.check_run_queues()?;
 
         Ok(slf)
+    }
+}
+
+impl<'run_queues> RunQueuesData<'run_queues> {
+    pub fn entries_by_commit_id(
+        &self,
+        commit_id: &GitHash,
+    ) -> impl Iterator<Item = &(TimeKey, BenchmarkingJob, Priority)> {
+        let slice = self
+            .jobs_by_commit_id
+            .get(commit_id)
+            .map(|v| v.as_slice())
+            .unwrap_or([].as_slice());
+        slice
+            .iter()
+            .copied()
+            .map(|(i, j)| self.pipeline_data[i].entry(j))
+    }
+    pub fn have_entry_with_commit_id(&self, commit_id: &GitHash) -> bool {
+        self.entries_by_commit_id(commit_id).next().is_some()
+    }
+
+    /// The `RunQueueData`s paired with their successor (still in the
+    /// original, configured, order)
+    pub fn run_queue_with_nexts<'s>(
+        &'s self,
+    ) -> impl Iterator<Item = RunQueueDataWithNext<'run_queues, 'run_queues, 's>> {
+        self.pipeline_data
+            .iter()
+            .zip_longest(self.pipeline_data.iter().skip(1))
+            .map(|either_or_both| match either_or_both {
+                EitherOrBoth::Both(current, next) => RunQueueDataWithNext {
+                    current,
+                    next: Some(next),
+                },
+                EitherOrBoth::Left(current) => RunQueueDataWithNext {
+                    current,
+                    next: None,
+                },
+                EitherOrBoth::Right(_) => unreachable!("because the left sequence is longer"),
+            })
+    }
+
+    /// All queues which are runnable at the given time, with their
+    /// successor queue, and calculated time window if any
+    fn new_active_queues<'s>(
+        &'s self,
+        reference_time: DateTime<Local>,
+    ) -> impl Iterator<
+        Item = (
+            RunQueueDataWithNext<'run_queues, 'run_queues, 's>,
+            Option<DateTimeRange<Local>>,
+        ),
+    > {
+        self.run_queue_with_nexts().filter_map(move |rq| {
+            if let Some(range) = rq
+                .current
+                .run_queue()
+                .schedule_condition
+                .is_runnable_at(reference_time)
+            {
+                Some((rq, range))
+            } else {
+                None
+            }
+        })
+    }
+
+    // XXX tmp
+    fn active_queues<'s>(
+        &'s self,
+        reference_time: DateTime<Local>,
+    ) -> impl Iterator<
+        Item = (
+            RunQueueDataWithNext<'run_queues, 'run_queues, 's>,
+            Option<DateTimeRange<Local>>,
+        ),
+    > {
+        let older: Vec<_> = self.run_queues.active_queues(reference_time).collect();
+        let new: Vec<_> = self
+            .new_active_queues(reference_time)
+            .map(|(rq, o)| (rq.run_queue_with_next(), o))
+            .collect();
+        assert_eq!(older, new);
+
+        self.new_active_queues(reference_time)
+    }
+
+    /// The most prioritized job across all runnable queues
+    fn most_prioritized_job<'s, 'conf, 'r, 'rc>(
+        &'s self,
+        now: DateTime<Local>,
+    ) -> Result<
+        Option<(
+            RunQueueDataWithNext<'run_queues, 'run_queues, 's>,
+            Option<DateTimeRange<Local>>,
+            QueueItem<'run_queues, BenchmarkingJob>,
+            &'s BenchmarkingJob,
+            Priority,
+        )>,
+    > {
+        let verbose = log_level() >= LogLevel::Info;
+
+        // Get the single most prioritized job from each queue (if
+        // any), then of those the most prioritized one. Using
+        // min_by_key since this takes the first of the equal jobs,
+        // unlike max_by_key.
+        if let Some(((key, job, prio), rq, dtr)) = self
+            .active_queues(now)
+            .filter_map(|(rq, dtr)| -> Option<_> {
+                let entry = rq
+                    .current
+                    .entries()
+                    .min_by_key(|(_, _, job_priority)| job_priority.neg())?;
+
+                Some((entry, rq, dtr))
+            })
+            .min_by_key(|((_, _, job_priority), _, _)| job_priority.neg())
+        {
+            if let Some(item) = rq.current.run_queue().queue.get_item(
+                key,
+                QueueGetItemOpts {
+                    verbose,
+                    no_lock: true,
+                    error_when_locked: false,
+                    delete_first: false,
+                },
+            )? {
+                Ok(Some((rq, dtr, item, job, *prio)))
+            } else {
+                info!("entry {key} has disappeared in the mean time, skipping it");
+                Ok(None)
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Run the first or most prioritized job in the queues. Returns
+    /// true if a job was found, false if all runnable queues are
+    /// empty. This method needs to be run in a loop forever for
+    /// daemon style processing. The reason this doesn't do the
+    /// looping inside is to allow for a reload of the queue config
+    /// and then queues. `current_stop_start`, if given, represents an
+    /// active `stop_start` command that was run with `stop` and now
+    /// needs a `start` when the next running action does not require
+    /// the same command to be `stop`ed. Likewise, this method returns
+    /// the active `stop_start` command, if any, by the time it
+    /// returns. The caller should pass that back into this method on
+    /// the next iteration. Using SliceOrBox to allow carrying it over
+    /// a config reload. `now` should be the current time (at least is
+    /// understood as such), get it via `get_now_chrono()` right
+    /// before calling this method.
+    pub fn run_next_job<'s, 'conf, 'r, 'rc>(
+        &'s self,
+        execute: impl FnMut(
+            &Option<String>,
+            Arc<BenchmarkingCommand>,
+            Arc<RunParameters>,
+            &RunQueue,
+        ) -> Result<()>,
+        run_context: &mut RunContext,
+        now: DateTime<Local>,
+    ) -> Result<bool> {
+        // XXX remove old_* stuff check once verified.
+        let old_job = self.run_queues.old_most_prioritized_job(now)?;
+        let old_job_1 = old_job
+            .as_ref()
+            .map(|(rqwn, dtr, item, job, prio)| (rqwn.clone(), dtr, item, job, prio));
+        let job = self.most_prioritized_job(now)?;
+        let job_1 = job.as_ref().map(|(rqwn, dtr, item, job, prio)| {
+            (rqwn.run_queue_with_next(), dtr, item, *job, prio)
+        });
+        assert_eq!(old_job_1, job_1);
+
+        let ran_job = if let Some((rqdwn, dtr, item, job, _)) = job {
+            let rq = rqdwn.current.run_queue();
+            run_context.stop_start_be(rq.schedule_condition.stop_start())?;
+            if let Some(dtr) = dtr {
+                run_context.running_job_in_windowed_queue(rq, dtr);
+            }
+
+            rqdwn.run_queue_with_next().run_job(
+                &item,
+                job.clone(),
+                self.run_queues.erroneous_jobs_queue(),
+                self.run_queues.done_jobs_queue(),
+                execute,
+            )?;
+
+            true
+        } else {
+            run_context.stop_start_be(None)?;
+
+            false
+        };
+
+        Ok(ran_job)
     }
 }

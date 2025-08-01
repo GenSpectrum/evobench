@@ -52,6 +52,12 @@ pub struct ExclusiveFileLock<'s, F: FileExt> {
     file: &'s F,
 }
 
+impl<'s, F: FileExt> PartialEq for ExclusiveFileLock<'s, F> {
+    fn eq(&self, other: &Self) -> bool {
+        self.path == other.path
+    }
+}
+
 impl<'s, F: FileExt> Drop for ExclusiveFileLock<'s, F> {
     fn drop(&mut self) {
         self.file
