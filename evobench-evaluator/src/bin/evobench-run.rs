@@ -513,28 +513,23 @@ fn main() -> Result<()> {
                             .map(|v| v.to_number_string())
                             .unwrap_or_else(|| "".into());
 
+                        let time = if verbose {
+                            &*format!("{file_name} ({key})")
+                        } else {
+                            &*key.datetime().to_rfc3339()
+                        };
+                        table.write_data_row(&[
+                            time,
+                            locking,
+                            priority,
+                            &*wd,
+                            reason,
+                            commit_id,
+                            custom_parameters,
+                        ])?;
                         if verbose {
-                            table.write_data_row(&[
-                                &*format!("{file_name} ({key})"),
-                                locking,
-                                priority,
-                                &*wd,
-                                reason,
-                                commit_id,
-                                custom_parameters,
-                            ])?;
                             let s = ron_to_string_pretty(&job)?;
                             table.print(&format!("{s}\n\n"))?;
-                        } else {
-                            table.write_data_row(&[
-                                &*key.datetime().to_rfc3339(),
-                                locking,
-                                priority,
-                                &*wd,
-                                reason,
-                                commit_id,
-                                custom_parameters,
-                            ])?;
                         }
                     }
                     Ok(table.finish()?)
