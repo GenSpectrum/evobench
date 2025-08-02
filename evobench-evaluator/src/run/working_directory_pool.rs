@@ -285,16 +285,6 @@ impl WorkingDirectoryPool {
         WorkingDirectoryId(id)
     }
 
-    // /// All working directories (ids) checked out for the given commit
-    // pub fn get_working_directories_by_commit<'s>(
-    //     &'s self,
-    //     commit: &'s GitHash,
-    // ) -> impl Iterator<Item = u64> + use<'s> {
-    //     self.entries
-    //         .iter()
-    //         .filter_map(|(id, entry)| if entry.commit == *commit { Some(*id) } else { None })
-    // }
-
     /// Pick a working directory already checked out for the given
     /// commit, and if possible already built or even tested for
     /// it. Returns its id so that the right kind of fresh borrow can
