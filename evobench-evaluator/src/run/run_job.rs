@@ -34,7 +34,7 @@ use crate::{
 
 use super::{
     config::{BenchmarkingCommand, ScheduleCondition},
-    working_directory_pool::WorkingDirectoryPool,
+    working_directory_pool::{WorkingDirectoryId, WorkingDirectoryPool},
 };
 
 // ------------------------------------------------------------------
@@ -157,6 +157,7 @@ fn evobench_evaluator(args: &[OsString]) -> Result<()> {
 
 pub fn run_job(
     working_directory_pool: &mut WorkingDirectoryPool,
+    working_directory_id: WorkingDirectoryId,
     reason: &Option<String>,
     checked_run_parameters: &RunParameters,
     schedule_condition: &ScheduleCondition,
@@ -172,9 +173,6 @@ pub fn run_job(
         commit_id,
         custom_parameters,
     } = checked_run_parameters;
-
-    let working_directory_id =
-        working_directory_pool.get_a_working_directory_for_commit(&commit_id)?;
 
     let bench_tmp_dir = bench_tmp_dir()?;
 

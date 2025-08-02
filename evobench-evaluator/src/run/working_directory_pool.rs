@@ -19,7 +19,7 @@ use crate::{
     serde::{date_and_time::DateTimeWithOffset, git_url::GitUrl},
 };
 
-use super::working_directory::WorkingDirectory;
+use super::{run_queues::RunQueuesData, working_directory::WorkingDirectory};
 
 // clap::Args?
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
@@ -299,44 +299,64 @@ impl WorkingDirectoryPool {
     /// commit, and if possible already built or even tested for
     /// it. Returns its id so that the right kind of fresh borrow can
     /// be done.
-    pub fn try_get_best_working_directory_for_commit(
+    fn try_get_best_working_directory_for(
         &self,
-        commit: &GitHash,
+        run_parameters: &RunParameters,
+        run_queues_data: &RunQueuesData,
     ) -> Option<WorkingDirectoryId> {
-        let mut dirs: Vec<(&WorkingDirectoryId, &WorkingDirectory)> = self
+        // (todo?: is the working dir used last time for the same job
+        // available? Maybe doesn't really matter any more though?)
+
+        let commit: &GitHash = &run_parameters.commit_id;
+
+        // Find one with the same commit
+        if let Some((id, _dir)) = self
             .entries
             .iter()
-            .filter(|(_, entry)| entry.commit == *commit)
-            .collect();
-        dirs.sort_by_key(|(_, entry)| entry.status);
-        let res = dirs.last().map(|(id, _)| **id);
+            .filter(|(_, dir)| dir.commit == *commit)
+            // Prefer one that proceeded further and is matching
+            // closely: todo: store parameters for dir.
+            .max_by_key(|(_, dir)| dir.status)
+        {
+            info!("try_get_best_working_directory_for: found by commit {commit}");
+            return Some(*id);
+        }
 
-        info!(
-            "try_get_best_working_directory_for_commit({:?}, {commit}) returning {res:?}",
-            self.base_dir
-        );
+        // Find one that is *not* used by other jobs in the pipeline (i.e. obsolete),
+        // and todo: similar parameters
+        if let Some((id, _dir)) = self
+            .entries
+            .iter()
+            .filter(|(_, dir)| !run_queues_data.have_entry_with_commit_id(&dir.commit))
+            .max_by_key(|(_, dir)| dir.status)
+        {
+            info!("try_get_best_working_directory_for: found as obsolete");
+            return Some(*id);
+        }
 
-        res
+        None
     }
 
-    /// Return a working directory with the requested commit checked
-    /// out (but no build or other action carried out). Returns
-    /// existing entry for the commit if available, otherwise makes a
-    /// new clone if the configured capacity hasn't been reached or
-    /// returns the least-recently used clone (XX or closest to the
-    /// commit?). Does *not* check out the requested commit!
-    pub fn get_a_working_directory_for_commit<'s>(
+    /// Return the ~best working directory for the given
+    /// run_parameters (e.g. with the requested commit checked out)
+    /// and queue pipeline situation (e.g. if forced to change the
+    /// checked out commit in a working directory, choose one that
+    /// doesn't have a commit checked out that is in the
+    /// pipeline). Does *not* check out the commit needed for
+    /// run_parameters!
+    pub fn get_a_working_directory_for<'s>(
         &'s mut self,
-        commit: &'s GitHash,
+        run_parameters: &RunParameters,
+        run_queues_data: &RunQueuesData,
     ) -> Result<WorkingDirectoryId> {
-        if let Some(id) = self.try_get_best_working_directory_for_commit(commit) {
-            info!("get_a_working_directory_for_commit({commit}) -> old {id:?}");
+        if let Some(id) = self.try_get_best_working_directory_for(run_parameters, run_queues_data) {
+            info!("get_a_working_directory_for -> good old {id:?}");
             Ok(id)
         } else {
             if self.len() < self.capacity() {
                 // allocate a new one
                 let id = self.get_new()?;
-                info!("get_a_working_directory_for_commit({commit}) -> new {id:?}");
+                info!("get_a_working_directory_for -> new {id:?}");
                 Ok(id)
             } else {
                 // get the least-recently used one
@@ -347,7 +367,7 @@ impl WorkingDirectoryPool {
                     .expect("capacity is guaranteed >= 1")
                     .0
                     .clone();
-                info!("get_a_working_directory_for_commit({commit}) -> lru {id:?}");
+                info!("get_a_working_directory_for -> lru old {id:?}");
                 Ok(id)
             }
         }

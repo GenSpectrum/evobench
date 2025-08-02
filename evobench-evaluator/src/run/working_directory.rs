@@ -21,7 +21,7 @@ pub enum Status {
 }
 
 impl Status {
-    pub fn value_scrore(self) -> u32 {
+    pub fn score(self) -> u32 {
         match self {
             Status::CheckedOut => 1,
             Status::Built => 2,
@@ -38,7 +38,7 @@ impl PartialOrd for Status {
 
 impl Ord for Status {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.value_scrore().cmp(&other.value_scrore())
+        self.score().cmp(&other.score())
     }
 }
 

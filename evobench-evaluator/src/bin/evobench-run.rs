@@ -219,8 +219,12 @@ fn run_queues(
 
         let ran = queues_data.run_next_job(
             |reason, benchmarking_command, run_parameters, queue| {
+                let working_directory_id = working_directory_pool
+                    .get_a_working_directory_for(&run_parameters, &queues_data)?;
+
                 run_job(
                     &mut working_directory_pool,
+                    working_directory_id,
                     reason,
                     &run_parameters,
                     &queue.schedule_condition,
