@@ -91,8 +91,13 @@ fn get_username() -> Result<String> {
     std::env::var("USER").map_err(ctx!("can't get USER environment variable"))
 }
 
-/// 'Temporary' directory, it's OK to only have one for all since we
-/// have a lock. Creates it already.
+/// Returns the path to a temporary directory, creating it if
+/// necessary and checking ownership if it already exists. The
+/// directory is not unique for all processes, but shared for all
+/// evobench-run instances--which is OK both because we only do 1 run
+/// at the same time (and take a lock to ensure that), but also
+/// because we're now currently actually also adding the pid to the
+/// file paths inside.
 fn bench_tmp_dir() -> Result<PathBuf> {
     // XX use src/installation/binaries_repo.rs from xmlhub-indexer
     // instead once that's separated?
