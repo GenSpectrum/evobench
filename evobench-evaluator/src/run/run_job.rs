@@ -106,7 +106,13 @@ fn bench_tmp_dir() -> Result<PathBuf> {
                     std::io::ErrorKind::AlreadyExists => {
                         let m = std::fs::metadata(&tmp)?;
                         let dir_uid = m.uid();
-                        let uid = unsafe { getuid() }; // XX why is this unsafe?
+                        let uid = unsafe {
+                            // Safe because there's no way this can be
+                            // unsafe (there's no reason for the
+                            // unsafe status other than being a direct
+                            // C FFI call and thus marked so)
+                            getuid()
+                        };
                         if dir_uid == uid {
                             Ok(tmp)
                         } else {
@@ -167,7 +173,12 @@ pub fn run_job(
 
     let bench_tmp_dir = bench_tmp_dir()?;
 
-    let pid = unsafe { getpid() };
+    let pid = unsafe {
+        // Safe because there's no way this can be unsafe (there's no
+        // reason for the unsafe status other than being a direct C
+        // FFI call and thus marked so)
+        getpid()
+    };
     // File for evobench library output
     let evobench_log = TemporaryFile::from((&bench_tmp_dir).append(format!("evobench-{pid}.log")));
     // File for other output, for optional use by target application
