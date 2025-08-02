@@ -24,6 +24,7 @@ use crate::{
         temporary_file::TemporaryFile,
     },
     key::RunParameters,
+    path_util::rename_tmp_path,
     serde::{
         allowed_env_var::AllowEnvVar, date_and_time::DateTimeWithOffset,
         proper_filename::ProperFilename,
@@ -309,9 +310,15 @@ impl<'pool> JobRunner<'pool> {
             info!("moving files to {result_dir:?}");
 
             let compress_file_as = |source_file: &TemporaryFile,
-                                    target_filename: &str|
-             -> Result<()> {
+                                    target_filename: &str,
+                                    add_tmp: bool|
+             -> Result<PathBuf> {
                 let target_filename = add_extension(target_filename, "zstd").expect("got filename");
+                let target_filename = if add_tmp {
+                    add_extension(target_filename, "tmp").expect("got filename")
+                } else {
+                    target_filename
+                };
                 let target = (&result_dir).append(target_filename);
                 compress_file(
                     source_file.path(),
@@ -321,17 +328,16 @@ impl<'pool> JobRunner<'pool> {
                 )?;
                 // Do *not* remove the source file here as
                 // TemporaryFile::drop will do it.
-                Ok(())
+                Ok(target)
             };
-            compress_file_as(&evobench_log, "evobench.log")?;
-            compress_file_as(&bench_output_log, "bench_output.log")?;
+            let evobench_log_tmp = compress_file_as(&evobench_log, "evobench.log", true)?;
+            compress_file_as(&bench_output_log, "bench_output.log", false)?;
 
             info!("evaluating benchmark file");
 
             // Doing this *before* moving the files, as a way to
             // ensure that no invalid files end up in the results
             // pool!
-
             evobench_evaluator(&vec![
                 "single".into(),
                 evobench_log.path().into(),
@@ -353,6 +359,10 @@ impl<'pool> JobRunner<'pool> {
 
             info!("evaluating the benchmark file succeeded");
 
+            rename_tmp_path(evobench_log_tmp)?;
+
+            info!("compressed benchmark file renamed");
+
             {
                 // HACK to allow for the SILO
                 // benchmarking/Makefile to move away the
@@ -364,7 +374,11 @@ impl<'pool> JobRunner<'pool> {
                     (&bench_tmp_dir).append(format!("evobench-{pid}.log-preprocessing.log")),
                 );
                 if evobench_log_preprocessing.path().exists() {
-                    compress_file_as(&evobench_log_preprocessing, "evobench-preprocessing.log")?;
+                    let tmp_path = compress_file_as(
+                        &evobench_log_preprocessing,
+                        "evobench-preprocessing.log",
+                        true,
+                    )?;
 
                     evobench_evaluator(&vec![
                         "single".into(),
@@ -379,6 +393,8 @@ impl<'pool> JobRunner<'pool> {
                         "--flame".into(),
                         (&result_dir).append("single-preprocessing").into(),
                     ])?;
+
+                    rename_tmp_path(tmp_path)?;
                 }
             }
 
