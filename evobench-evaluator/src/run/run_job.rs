@@ -155,324 +155,336 @@ fn evobench_evaluator(args: &[OsString]) -> Result<()> {
     }
 }
 
-pub fn run_job(
-    working_directory_pool: &mut WorkingDirectoryPool,
-    working_directory_id: WorkingDirectoryId,
-    reason: &Option<String>,
-    checked_run_parameters: &RunParameters,
-    schedule_condition: &ScheduleCondition,
-    dry_run: DryRun,
-    benchmarking_command: &BenchmarkingCommand,
-    output_base_dir: &Path,
-) -> Result<()> {
-    if dry_run.means(DryRun::DoNothing) {
-        println!("dry-run: would run {checked_run_parameters:?}");
-        return Ok(());
-    }
-    let RunParameters {
-        commit_id,
-        custom_parameters,
-    } = checked_run_parameters;
+pub struct JobRunner<'pool> {
+    pub working_directory_pool: &'pool mut WorkingDirectoryPool,
+    pub output_base_dir: &'pool Path,
+    pub dry_run: DryRun,
+}
 
-    let bench_tmp_dir = bench_tmp_dir()?;
+impl<'pool> JobRunner<'pool> {
+    pub fn run_job(
+        self,
+        working_directory_id: WorkingDirectoryId,
+        reason: &Option<String>,
+        checked_run_parameters: &RunParameters,
+        schedule_condition: &ScheduleCondition,
+        benchmarking_command: &BenchmarkingCommand,
+    ) -> Result<()> {
+        if self.dry_run.means(DryRun::DoNothing) {
+            println!("dry-run: would run {checked_run_parameters:?}");
+            return Ok(());
+        }
+        let RunParameters {
+            commit_id,
+            custom_parameters,
+        } = checked_run_parameters;
 
-    let pid = unsafe {
-        // Safe because there's no way this can be unsafe (there's no
-        // reason for the unsafe status other than being a direct C
-        // FFI call and thus marked so)
-        getpid()
-    };
-    // File for evobench library output
-    let evobench_log = TemporaryFile::from((&bench_tmp_dir).append(format!("evobench-{pid}.log")));
-    // File for other output, for optional use by target application
-    let bench_output_log =
-        TemporaryFile::from((&bench_tmp_dir).append(format!("bench-output-{pid}.log")));
+        let bench_tmp_dir = bench_tmp_dir()?;
 
-    // Remove any stale files from previous runs
-    let _ = std::fs::remove_file(evobench_log.path());
-    let _ = std::fs::remove_file(bench_output_log.path());
-
-    // Copying the only variable we need outside the working directory
-    // context, to allow finishing work for which errors should not
-    // tag the working directory as failed; `None` means dry-run, no
-    // work to do.
-    let opt_timestamp = working_directory_pool.process_working_directory(
-        working_directory_id,
-        |working_directory, timestamp| -> Result<Option<DateTimeWithOffset>> {
-            working_directory.checkout(commit_id.clone())?;
-
-            if dry_run.means(DryRun::DoWorkingDir) {
-                println!("checked out working directory: {working_directory_id:?}");
-                return Ok(None);
-            }
-
-            let BenchmarkingCommand {
-                subdir,
-                command,
-                arguments,
-            } = benchmarking_command;
-
-            let dir = working_directory
-                .git_working_dir
-                .working_dir_path_ref()
-                .append(subdir);
-
-            // for debugging info only:
-            let cmd_in_dir = {
-                let cmd = bash_string_from_program_and_args(command.to_string_lossy(), arguments);
-                format!("command {cmd:?} in directory {dir:?}")
-            };
-
-            info!(
-                "running {cmd_in_dir}, EVOBENCH_LOG={:?}...",
-                evobench_log.path()
-            );
-
-            let mut command = Command::new(command);
-            let check = assert_evobench_env_var;
-            command
-                .envs(custom_parameters.btree_map())
-                .env(check("EVOBENCH_LOG"), evobench_log.path())
-                .env(check("BENCH_OUTPUT_LOG"), bench_output_log.path())
-                .env(check("COMMIT_ID"), commit_id.to_string())
-                .args(arguments)
-                .current_dir(&dir);
-
-            let command_output_file = OutFile::create(
-                &add_extension(
-                    working_directory.git_working_dir.working_dir_path_ref(),
-                    format!("output_of_benchmarking_command_at_{timestamp}"),
-                )
-                .expect("has filename"),
-            )?;
-
-            // Add info header
-            command_output_file.write_str(&serde_yml::to_string(checked_run_parameters)?)?;
-
-            let status = {
-                let mut other_files: Vec<Box<dyn Write + Send + 'static>> = vec![];
-                // Is it evil to use log_level() for this and not a
-                // function argument?
-                if log_level() >= LogLevel::Info {
-                    other_files.push(Box::new(stderr()));
-                }
-                let other_files = Arc::new(Mutex::new(other_files));
-
-                command_output_file.run_with_capture(
-                    command,
-                    other_files,
-                    CaptureOpts {
-                        add_source_indicator: true,
-                        add_timestamp: true,
-                    },
-                )?
-            };
-
-            if status.success() {
-                info!("running {cmd_in_dir} succeeded");
-
-                Ok(Some(timestamp.clone()))
-            } else {
-                info!("running {cmd_in_dir} failed.");
-                let last_part = command_output_file.last_part(3000)?;
-                if log_level() < LogLevel::Info {
-                    let mut err = stderr().lock();
-                    writeln!(err, "---- run_job: error in dir {dir:?}: -------")?;
-                    err.write_all(last_part.as_bytes())?;
-                    writeln!(err, "---- /run_job: error in dir {dir:?} -------")?;
-                }
-
-                bail!(
-                    "benchmarking command {cmd_in_dir} gave \
-                     error status {status}, last_part {last_part:?}"
-                )
-            }
-        },
-        Some(checked_run_parameters),
-        "run_job",
-    )?;
-
-    if let Some(timestamp) = opt_timestamp {
-        // The directory holding the full key information
-        let key_dir = checked_run_parameters.extend_path(output_base_dir.to_owned());
-        // Below that, we make a dir for this particular run
-        let result_dir = (&key_dir).append(timestamp.as_str());
-        std::fs::create_dir_all(&result_dir).map_err(ctx!("create_dir_all {result_dir:?}"))?;
-
-        info!("moving files to {result_dir:?}");
-
-        let compress_file_as = |source_file: &TemporaryFile, target_filename: &str| -> Result<()> {
-            let target_filename = add_extension(target_filename, "zstd").expect("got filename");
-            let target = (&result_dir).append(target_filename);
-            compress_file(
-                source_file.path(),
-                &target,
-                // be quiet when:
-                log_level() < LogLevel::Info,
-            )?;
-            // Do *not* remove the source file here as
-            // TemporaryFile::drop will do it.
-            Ok(())
+        let pid = unsafe {
+            // Safe because there's no way this can be unsafe (there's no
+            // reason for the unsafe status other than being a direct C
+            // FFI call and thus marked so)
+            getpid()
         };
-        compress_file_as(&evobench_log, "evobench.log")?;
-        compress_file_as(&bench_output_log, "bench_output.log")?;
+        // File for evobench library output
+        let evobench_log =
+            TemporaryFile::from((&bench_tmp_dir).append(format!("evobench-{pid}.log")));
+        // File for other output, for optional use by target application
+        let bench_output_log =
+            TemporaryFile::from((&bench_tmp_dir).append(format!("bench-output-{pid}.log")));
 
-        info!("evaluating benchmark file");
+        // Remove any stale files from previous runs
+        let _ = std::fs::remove_file(evobench_log.path());
+        let _ = std::fs::remove_file(bench_output_log.path());
 
-        // Doing this *before* moving the files, as a way to
-        // ensure that no invalid files end up in the results
-        // pool!
+        // Copying the only variable we need outside the working directory
+        // context, to allow finishing work for which errors should not
+        // tag the working directory as failed; `None` means dry-run, no
+        // work to do.
+        let opt_timestamp = self.working_directory_pool.process_working_directory(
+            working_directory_id,
+            |working_directory, timestamp| -> Result<Option<DateTimeWithOffset>> {
+                working_directory.checkout(commit_id.clone())?;
 
-        evobench_evaluator(&vec![
-            "single".into(),
-            evobench_log.path().into(),
-            "--show-thread-number".into(),
-            "--excel".into(),
-            (&result_dir).append("single.xlsx").into(),
-        ])?;
+                if self.dry_run.means(DryRun::DoWorkingDir) {
+                    println!("checked out working directory: {working_directory_id:?}");
+                    return Ok(None);
+                }
 
-        // It's a bit inefficient to read the $EVOBENCH_LOG
-        // twice, but currently can't change the options
-        // (--show-thread-number) without a separate run, also
-        // the cost is just a second or so.
-        evobench_evaluator(&vec![
-            "single".into(),
-            evobench_log.path().into(),
-            "--flame".into(),
-            (&result_dir).append("single").into(),
-        ])?;
+                let BenchmarkingCommand {
+                    subdir,
+                    command,
+                    arguments,
+                } = benchmarking_command;
 
-        info!("evaluating the benchmark file succeeded");
+                let dir = working_directory
+                    .git_working_dir
+                    .working_dir_path_ref()
+                    .append(subdir);
 
-        {
-            // HACK to allow for the SILO
-            // benchmarking/Makefile to move away the
-            // EVOBENCH_LOG file after preprocessing, and have
-            // that archived here. For summaries, have to run
-            // the evobench-evaluator on those manually,
-            // though.
-            let evobench_log_preprocessing = TemporaryFile::from(
-                (&bench_tmp_dir).append(format!("evobench-{pid}.log-preprocessing.log")),
-            );
-            if evobench_log_preprocessing.path().exists() {
-                compress_file_as(&evobench_log_preprocessing, "evobench-preprocessing.log")?;
+                // for debugging info only:
+                let cmd_in_dir = {
+                    let cmd =
+                        bash_string_from_program_and_args(command.to_string_lossy(), arguments);
+                    format!("command {cmd:?} in directory {dir:?}")
+                };
 
-                evobench_evaluator(&vec![
-                    "single".into(),
-                    evobench_log_preprocessing.path().into(),
-                    "--show-thread-number".into(),
-                    "--excel".into(),
-                    (&result_dir).append("single-preprocessing.xlsx").into(),
-                ])?;
-                evobench_evaluator(&vec![
-                    "single".into(),
-                    evobench_log_preprocessing.path().into(),
-                    "--flame".into(),
-                    (&result_dir).append("single-preprocessing").into(),
-                ])?;
-            }
-        }
+                info!(
+                    "running {cmd_in_dir}, EVOBENCH_LOG={:?}...",
+                    evobench_log.path()
+                );
 
-        {
-            let target = (&result_dir).append("schedule_condition.ron");
-            info!("saving context to {target:?}");
-            let schedule_condition_str = ron_to_string_pretty(&schedule_condition)?;
-            std::fs::write(&target, &schedule_condition_str)
-                .map_err(ctx!("saving to {target:?}"))?
-        }
+                let mut command = Command::new(command);
+                let check = assert_evobench_env_var;
+                command
+                    .envs(custom_parameters.btree_map())
+                    .env(check("EVOBENCH_LOG"), evobench_log.path())
+                    .env(check("BENCH_OUTPUT_LOG"), bench_output_log.path())
+                    .env(check("COMMIT_ID"), commit_id.to_string())
+                    .args(arguments)
+                    .current_dir(&dir);
 
-        {
-            let target = (&result_dir).append("reason.ron");
-            info!("saving context to {target:?}");
-            let s = ron_to_string_pretty(&reason)?;
-            std::fs::write(&target, &s).map_err(ctx!("saving to {target:?}"))?
-        }
+                let command_output_file = OutFile::create(
+                    &add_extension(
+                        working_directory.git_working_dir.working_dir_path_ref(),
+                        format!("output_of_benchmarking_command_at_{timestamp}"),
+                    )
+                    .expect("has filename"),
+                )?;
 
-        info!("(re-)evaluating the summary file across all results for this key");
+                // Add info header
+                command_output_file.write_str(&serde_yml::to_string(checked_run_parameters)?)?;
 
-        fn generate_summary<P: AsRef<Path>>(
-            key_dir: &PathBuf,
-            job_output_dirs: &[P],
-            target_type_opt: &str,
-            file_base_name: &str,
-        ) -> Result<()> {
-            let mut args: Vec<OsString> = vec!["summary".into()];
-            args.push(target_type_opt.into());
-            args.push(key_dir.append(file_base_name).into());
+                let status = {
+                    let mut other_files: Vec<Box<dyn Write + Send + 'static>> = vec![];
+                    // Is it evil to use log_level() for this and not a
+                    // function argument?
+                    if log_level() >= LogLevel::Info {
+                        other_files.push(Box::new(stderr()));
+                    }
+                    let other_files = Arc::new(Mutex::new(other_files));
 
-            for job_output_dir in job_output_dirs {
-                let evobench_log = job_output_dir.as_ref().append("evobench.log.zstd");
-                if std::fs::exists(&evobench_log).map_err(ctx!("checking path {evobench_log:?}"))? {
-                    args.push(evobench_log.into());
+                    command_output_file.run_with_capture(
+                        command,
+                        other_files,
+                        CaptureOpts {
+                            add_source_indicator: true,
+                            add_timestamp: true,
+                        },
+                    )?
+                };
+
+                if status.success() {
+                    info!("running {cmd_in_dir} succeeded");
+
+                    Ok(Some(timestamp.clone()))
                 } else {
-                    info!("missing file {evobench_log:?}, empty dir?");
+                    info!("running {cmd_in_dir} failed.");
+                    let last_part = command_output_file.last_part(3000)?;
+                    if log_level() < LogLevel::Info {
+                        let mut err = stderr().lock();
+                        writeln!(err, "---- run_job: error in dir {dir:?}: -------")?;
+                        err.write_all(last_part.as_bytes())?;
+                        writeln!(err, "---- /run_job: error in dir {dir:?} -------")?;
+                    }
+
+                    bail!(
+                        "benchmarking command {cmd_in_dir} gave \
+                     error status {status}, last_part {last_part:?}"
+                    )
+                }
+            },
+            Some(checked_run_parameters),
+            "run_job",
+        )?;
+
+        if let Some(timestamp) = opt_timestamp {
+            // The directory holding the full key information
+            let key_dir = checked_run_parameters.extend_path(self.output_base_dir.to_owned());
+            // Below that, we make a dir for this particular run
+            let result_dir = (&key_dir).append(timestamp.as_str());
+            std::fs::create_dir_all(&result_dir).map_err(ctx!("create_dir_all {result_dir:?}"))?;
+
+            info!("moving files to {result_dir:?}");
+
+            let compress_file_as = |source_file: &TemporaryFile,
+                                    target_filename: &str|
+             -> Result<()> {
+                let target_filename = add_extension(target_filename, "zstd").expect("got filename");
+                let target = (&result_dir).append(target_filename);
+                compress_file(
+                    source_file.path(),
+                    &target,
+                    // be quiet when:
+                    log_level() < LogLevel::Info,
+                )?;
+                // Do *not* remove the source file here as
+                // TemporaryFile::drop will do it.
+                Ok(())
+            };
+            compress_file_as(&evobench_log, "evobench.log")?;
+            compress_file_as(&bench_output_log, "bench_output.log")?;
+
+            info!("evaluating benchmark file");
+
+            // Doing this *before* moving the files, as a way to
+            // ensure that no invalid files end up in the results
+            // pool!
+
+            evobench_evaluator(&vec![
+                "single".into(),
+                evobench_log.path().into(),
+                "--show-thread-number".into(),
+                "--excel".into(),
+                (&result_dir).append("single.xlsx").into(),
+            ])?;
+
+            // It's a bit inefficient to read the $EVOBENCH_LOG
+            // twice, but currently can't change the options
+            // (--show-thread-number) without a separate run, also
+            // the cost is just a second or so.
+            evobench_evaluator(&vec![
+                "single".into(),
+                evobench_log.path().into(),
+                "--flame".into(),
+                (&result_dir).append("single").into(),
+            ])?;
+
+            info!("evaluating the benchmark file succeeded");
+
+            {
+                // HACK to allow for the SILO
+                // benchmarking/Makefile to move away the
+                // EVOBENCH_LOG file after preprocessing, and have
+                // that archived here. For summaries, have to run
+                // the evobench-evaluator on those manually,
+                // though.
+                let evobench_log_preprocessing = TemporaryFile::from(
+                    (&bench_tmp_dir).append(format!("evobench-{pid}.log-preprocessing.log")),
+                );
+                if evobench_log_preprocessing.path().exists() {
+                    compress_file_as(&evobench_log_preprocessing, "evobench-preprocessing.log")?;
+
+                    evobench_evaluator(&vec![
+                        "single".into(),
+                        evobench_log_preprocessing.path().into(),
+                        "--show-thread-number".into(),
+                        "--excel".into(),
+                        (&result_dir).append("single-preprocessing.xlsx").into(),
+                    ])?;
+                    evobench_evaluator(&vec![
+                        "single".into(),
+                        evobench_log_preprocessing.path().into(),
+                        "--flame".into(),
+                        (&result_dir).append("single-preprocessing").into(),
+                    ])?;
                 }
             }
 
-            evobench_evaluator(&args)?;
+            {
+                let target = (&result_dir).append("schedule_condition.ron");
+                info!("saving context to {target:?}");
+                let schedule_condition_str = ron_to_string_pretty(&schedule_condition)?;
+                std::fs::write(&target, &schedule_condition_str)
+                    .map_err(ctx!("saving to {target:?}"))?
+            }
 
-            Ok(())
-        }
+            {
+                let target = (&result_dir).append("reason.ron");
+                info!("saving context to {target:?}");
+                let s = ron_to_string_pretty(&reason)?;
+                std::fs::write(&target, &s).map_err(ctx!("saving to {target:?}"))?
+            }
 
-        let job_output_dirs: Vec<PathBuf> = std::fs::read_dir(&key_dir)
-            .map_err(ctx!("opening dir {key_dir:?}"))?
-            .map(|entry| -> Result<Option<PathBuf>, std::io::Error> {
-                let entry: std::fs::DirEntry = entry?;
-                let ft = entry.file_type()?;
-                if ft.is_dir() {
-                    Ok(Some(entry.path()))
-                } else {
-                    Ok(None)
+            info!("(re-)evaluating the summary file across all results for this key");
+
+            fn generate_summary<P: AsRef<Path>>(
+                key_dir: &PathBuf,
+                job_output_dirs: &[P],
+                target_type_opt: &str,
+                file_base_name: &str,
+            ) -> Result<()> {
+                let mut args: Vec<OsString> = vec!["summary".into()];
+                args.push(target_type_opt.into());
+                args.push(key_dir.append(file_base_name).into());
+
+                for job_output_dir in job_output_dirs {
+                    let evobench_log = job_output_dir.as_ref().append("evobench.log.zstd");
+                    if std::fs::exists(&evobench_log)
+                        .map_err(ctx!("checking path {evobench_log:?}"))?
+                    {
+                        args.push(evobench_log.into());
+                    } else {
+                        info!("missing file {evobench_log:?}, empty dir?");
+                    }
                 }
-            })
-            .filter_map(|r| r.transpose())
-            .collect::<Result<_, _>>()
-            .map_err(ctx!("getting dir listing for {key_dir:?}"))?;
 
-        generate_summary(&key_dir, &job_output_dirs, "--excel", "summary.xlsx")?;
-        generate_summary(&key_dir, &job_output_dirs, "--flame", "summary")?;
+                evobench_evaluator(&args)?;
 
-        let mut job_output_dirs_by_situation: HashMap<ProperFilename, Vec<&PathBuf>> =
-            HashMap::new();
-        for job_output_dir in &job_output_dirs {
-            let schedule_condition_path = job_output_dir.append("schedule_condition.ron");
-            match std::fs::read_to_string(&schedule_condition_path) {
-                Ok(s) => {
-                    let schedule_condition: ScheduleCondition = ron::from_str(&s)
-                        .map_err(ctx!("reading file {schedule_condition_path:?}"))?;
-                    if let Some(situation) = schedule_condition.situation() {
-                        // XX it's just too long, proper abstraction pls?
-                        match job_output_dirs_by_situation.entry(situation.clone()) {
-                            Entry::Occupied(mut occupied_entry) => {
-                                occupied_entry.get_mut().push(job_output_dir);
-                            }
-                            Entry::Vacant(vacant_entry) => {
-                                vacant_entry.insert(vec![job_output_dir]);
+                Ok(())
+            }
+
+            let job_output_dirs: Vec<PathBuf> = std::fs::read_dir(&key_dir)
+                .map_err(ctx!("opening dir {key_dir:?}"))?
+                .map(|entry| -> Result<Option<PathBuf>, std::io::Error> {
+                    let entry: std::fs::DirEntry = entry?;
+                    let ft = entry.file_type()?;
+                    if ft.is_dir() {
+                        Ok(Some(entry.path()))
+                    } else {
+                        Ok(None)
+                    }
+                })
+                .filter_map(|r| r.transpose())
+                .collect::<Result<_, _>>()
+                .map_err(ctx!("getting dir listing for {key_dir:?}"))?;
+
+            generate_summary(&key_dir, &job_output_dirs, "--excel", "summary.xlsx")?;
+            generate_summary(&key_dir, &job_output_dirs, "--flame", "summary")?;
+
+            let mut job_output_dirs_by_situation: HashMap<ProperFilename, Vec<&PathBuf>> =
+                HashMap::new();
+            for job_output_dir in &job_output_dirs {
+                let schedule_condition_path = job_output_dir.append("schedule_condition.ron");
+                match std::fs::read_to_string(&schedule_condition_path) {
+                    Ok(s) => {
+                        let schedule_condition: ScheduleCondition = ron::from_str(&s)
+                            .map_err(ctx!("reading file {schedule_condition_path:?}"))?;
+                        if let Some(situation) = schedule_condition.situation() {
+                            // XX it's just too long, proper abstraction pls?
+                            match job_output_dirs_by_situation.entry(situation.clone()) {
+                                Entry::Occupied(mut occupied_entry) => {
+                                    occupied_entry.get_mut().push(job_output_dir);
+                                }
+                                Entry::Vacant(vacant_entry) => {
+                                    vacant_entry.insert(vec![job_output_dir]);
+                                }
                             }
                         }
                     }
+                    Err(e) => match e.kind() {
+                        std::io::ErrorKind::NotFound => (),
+                        _ => Err(e).map_err(ctx!("reading file {schedule_condition_path:?}"))?,
+                    },
                 }
-                Err(e) => match e.kind() {
-                    std::io::ErrorKind::NotFound => (),
-                    _ => Err(e).map_err(ctx!("reading file {schedule_condition_path:?}"))?,
-                },
+            }
+
+            for (situation, job_output_dirs) in job_output_dirs_by_situation.iter() {
+                generate_summary(
+                    &key_dir,
+                    job_output_dirs.as_slice(),
+                    "--excel",
+                    &format!("summary-{situation}.xlsx"),
+                )?;
+                generate_summary(
+                    &key_dir,
+                    job_output_dirs.as_slice(),
+                    "--flame",
+                    &format!("summary-{situation}"),
+                )?;
             }
         }
-
-        for (situation, job_output_dirs) in job_output_dirs_by_situation.iter() {
-            generate_summary(
-                &key_dir,
-                job_output_dirs.as_slice(),
-                "--excel",
-                &format!("summary-{situation}.xlsx"),
-            )?;
-            generate_summary(
-                &key_dir,
-                job_output_dirs.as_slice(),
-                "--flame",
-                &format!("summary-{situation}"),
-            )?;
-        }
+        Ok(())
     }
-    Ok(())
 }

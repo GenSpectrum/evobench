@@ -7,7 +7,7 @@
 use std::{collections::BTreeMap, num::NonZeroU8, path::PathBuf, str::FromStr, sync::Arc, u64};
 
 use anyhow::{anyhow, Result};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     ctx,
@@ -37,7 +37,7 @@ pub struct WorkingDirectoryPoolOpts {
     pub capacity: NonZeroU8,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct WorkingDirectoryId(u64);
 
 impl WorkingDirectoryId {

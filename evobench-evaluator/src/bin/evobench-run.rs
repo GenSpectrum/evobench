@@ -32,7 +32,7 @@ use evobench_evaluator::{
         insert_jobs::{insert_jobs, open_already_inserted, ForceOpt, QuietOpt},
         polling_pool::PollingPool,
         run_context::RunContext,
-        run_job::{run_job, DryRun},
+        run_job::{DryRun, JobRunner},
         run_queue::RunQueue,
         run_queues::{get_now_chrono, RunQueues},
         working_directory_pool::WorkingDirectoryPool,
@@ -214,24 +214,15 @@ fn run_queues(
         // XX handle errors without exiting? Or do that above
 
         let conf = &config_with_reload.run_config;
+        let output_base_dir = path_resolve_home(&conf.output_base_dir)?;
 
         let queues_data = queues.data()?;
 
         let ran = queues_data.run_next_job(
-            |reason, benchmarking_command, run_parameters, queue| {
-                let working_directory_id = working_directory_pool
-                    .get_a_working_directory_for(&run_parameters, &queues_data)?;
-
-                run_job(
-                    &mut working_directory_pool,
-                    working_directory_id,
-                    reason,
-                    &run_parameters,
-                    &queue.schedule_condition,
-                    dry_run,
-                    &benchmarking_command,
-                    &path_resolve_home(&conf.output_base_dir)?,
-                )
+            JobRunner {
+                working_directory_pool: &mut working_directory_pool,
+                output_base_dir: &output_base_dir,
+                dry_run,
             },
             &mut run_context,
             get_now_chrono(),

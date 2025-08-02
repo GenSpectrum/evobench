@@ -9,7 +9,10 @@ use crate::{
     utillib::arc::CloneArc,
 };
 
-use super::config::{BenchmarkingCommand, JobTemplate};
+use super::{
+    config::{BenchmarkingCommand, JobTemplate},
+    working_directory_pool::WorkingDirectoryId,
+};
 
 #[derive(Debug, PartialEq, Clone, clap::Args, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -97,15 +100,22 @@ pub struct BenchmarkingJobOpts {
     pub run_parameters: RunParametersOpts,
 }
 
-/// Just the public parts of a BenchmarkingJob
+/// Just the public constant parts of a BenchmarkingJob
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BenchmarkingJobPublic {
     pub reason: Option<String>,
     pub run_parameters: Arc<RunParameters>,
+    pub command: Arc<BenchmarkingCommand>,
+}
+
+/// Just the public changing parts of a BenchmarkingJob
+#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BenchmarkingJobState {
     pub remaining_count: u8,
     pub remaining_error_budget: u8,
-    pub command: Arc<BenchmarkingCommand>,
+    pub last_working_directory: Option<WorkingDirectoryId>,
 }
 
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
@@ -113,6 +123,8 @@ pub struct BenchmarkingJobPublic {
 pub struct BenchmarkingJob {
     #[serde(flatten)]
     pub benchmarking_job_public: BenchmarkingJobPublic,
+    #[serde(flatten)]
+    pub benchmarking_job_state: BenchmarkingJobState,
     priority: Priority,
     current_boost: Priority,
 }
@@ -124,14 +136,19 @@ impl BenchmarkingJob {
 
     /// Clones everything except `current_boost` is set to 0. You can
     /// change the public fields afterwards.
-    pub fn clone_for_queue_reinsertion(&self) -> Self {
+    pub fn clone_for_queue_reinsertion(
+        &self,
+        benchmarking_job_state: BenchmarkingJobState,
+    ) -> Self {
         let Self {
             benchmarking_job_public,
             priority,
             current_boost: _,
+            benchmarking_job_state: _,
         } = self;
         Self {
             benchmarking_job_public: benchmarking_job_public.clone(),
+            benchmarking_job_state,
             priority: *priority,
             current_boost: Priority::NORMAL,
         }
@@ -180,9 +197,12 @@ impl BenchmarkingJobOpts {
                         run_parameters: run_parameters
                             .complete(custom_parameters.clone_arc())
                             .into(),
+                        command: command.clone_arc(),
+                    },
+                    benchmarking_job_state: BenchmarkingJobState {
                         remaining_count: count,
                         remaining_error_budget: error_budget,
-                        command: command.clone_arc(),
+                        last_working_directory: None,
                     },
                     priority,
                     current_boost: *initial_boost,

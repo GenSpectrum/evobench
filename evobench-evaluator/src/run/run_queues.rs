@@ -15,7 +15,6 @@ use crate::{
     date_and_time::time_ranges::{DateTimeRange, LocalNaiveTimeRange},
     git::GitHash,
     info,
-    key::RunParameters,
     key_val_fs::{
         key_val::{KeyValConfig, KeyValSync},
         queue::{Queue, QueueGetItemOpts, QueueItem, TimeKey},
@@ -27,9 +26,10 @@ use crate::{
 
 use super::{
     benchmarking_job::BenchmarkingJob,
-    config::{BenchmarkingCommand, QueuesConfig, ScheduleCondition},
+    config::{QueuesConfig, ScheduleCondition},
     global_app_state_dir::GlobalAppStateDir,
     run_context::RunContext,
+    run_job::JobRunner,
     run_queue::{RunQueue, RunQueueData, RunQueueDataWithNext, RunQueueWithNext},
 };
 
@@ -587,12 +587,7 @@ impl<'run_queues> RunQueuesData<'run_queues> {
     /// before calling this method.
     pub fn run_next_job<'s, 'conf, 'r, 'rc>(
         &'s self,
-        execute: impl FnMut(
-            &Option<String>,
-            Arc<BenchmarkingCommand>,
-            Arc<RunParameters>,
-            &RunQueue,
-        ) -> Result<()>,
+        job_runner: JobRunner,
         run_context: &mut RunContext,
         now: DateTime<Local>,
     ) -> Result<bool> {
@@ -614,12 +609,17 @@ impl<'run_queues> RunQueuesData<'run_queues> {
                 run_context.running_job_in_windowed_queue(rq, dtr);
             }
 
+            let working_directory_id = job_runner
+                .working_directory_pool
+                .get_a_working_directory_for(&job.benchmarking_job_public.run_parameters, self)?;
+
             rqdwn.run_queue_with_next().run_job(
                 &item,
                 job.clone(),
                 self.run_queues.erroneous_jobs_queue(),
                 self.run_queues.done_jobs_queue(),
-                execute,
+                job_runner,
+                working_directory_id,
             )?;
 
             true
