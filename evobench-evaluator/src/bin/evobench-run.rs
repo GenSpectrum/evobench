@@ -379,8 +379,8 @@ fn main() -> Result<()> {
                 out: O,
             ) -> Result<TerminalTable<'v, 's, O>> {
                 TerminalTable::start(
-                    // t  R  pr rsn commit
-                    &[37, 3, 5, 17, 42],
+                    // t  R  pr WD reason commit
+                    &[37, 3, 5, 3, 17, 42],
                     titles,
                     style,
                     terminal_table_opts.clone(),
@@ -396,10 +396,12 @@ fn main() -> Result<()> {
                     "Insertion_time",
                     "S", // Status
                     "Prio",
+                    "WD",
                     "Reason",
                     "Commit_id",
                     "Custom_parameters",
                 ]
+                // .map() is not const
                 .map(|s| TerminalTableTitle {
                     text: Cow::Borrowed(s),
                     span: 1,
@@ -432,7 +434,7 @@ fn main() -> Result<()> {
                     // "Custom parameters"
                     let titles = &[TerminalTableTitle {
                         text: format!("{i}: queue {file_name} ({schedule_condition}):").into(),
-                        span: 6,
+                        span: 7,
                     }];
                     let mut table = table_with_titles(titles, None, &terminal_table_opts, out)?;
 
@@ -505,12 +507,18 @@ fn main() -> Result<()> {
                             }
                         };
                         let priority = &*job.priority()?.to_string();
+                        let wd = job
+                            .benchmarking_job_state
+                            .last_working_directory
+                            .map(|v| v.to_number_string())
+                            .unwrap_or_else(|| "".into());
 
                         if verbose {
                             table.write_data_row(&[
                                 &*format!("{file_name} ({key})"),
                                 locking,
                                 priority,
+                                &*wd,
                                 reason,
                                 commit_id,
                                 custom_parameters,
@@ -522,6 +530,7 @@ fn main() -> Result<()> {
                                 &*key.datetime().to_rfc3339(),
                                 locking,
                                 priority,
+                                &*wd,
                                 reason,
                                 commit_id,
                                 custom_parameters,

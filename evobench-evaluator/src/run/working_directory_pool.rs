@@ -41,8 +41,11 @@ pub struct WorkingDirectoryPoolOpts {
 pub struct WorkingDirectoryId(u64);
 
 impl WorkingDirectoryId {
-    pub fn to_directory_file_name(self) -> String {
+    pub fn to_number_string(self) -> String {
         format!("{}", self.0)
+    }
+    pub fn to_directory_file_name(self) -> String {
+        self.to_number_string()
     }
 }
 
