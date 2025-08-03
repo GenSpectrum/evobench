@@ -49,11 +49,67 @@ impl WorkingDirectoryId {
     }
 }
 
+impl FromStr for WorkingDirectoryId {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        let id = s.parse()?;
+        Ok(Self(id))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct WorkingDirectoryPoolBaseDir {
+    pub base_dir: PathBuf,
+}
+
+impl WorkingDirectoryPoolBaseDir {
+    pub fn new(
+        opts: &WorkingDirectoryPoolOpts,
+        get_working_directory_pool_base: &dyn Fn() -> Result<PathBuf>,
+    ) -> Result<Self> {
+        let base_dir = if let Some(path) = opts.base_dir.as_ref() {
+            path.to_owned()
+        } else {
+            get_working_directory_pool_base()?
+        };
+        Ok(Self { base_dir })
+    }
+
+    pub fn path(&self) -> &PathBuf {
+        &self.base_dir
+    }
+
+    /// The path to the symlink to the currently used working
+    /// directory
+    fn current_working_directory_symlink_path(&self) -> PathBuf {
+        (&self.base_dir).append("current")
+    }
+
+    /// Read the working directory from symlink, if present
+    pub fn get_current_working_directory(&self) -> Result<Option<WorkingDirectoryId>> {
+        let path = self.current_working_directory_symlink_path();
+        match std::fs::read_link(&path) {
+            Ok(val) => {
+                let s = val
+                    .to_str()
+                    .ok_or_else(|| anyhow!("missing symlink target in {path:?}"))?;
+                let id = WorkingDirectoryId::from_str(s)?;
+                Ok(Some(id))
+            }
+            Err(e) => match e.kind() {
+                std::io::ErrorKind::NotFound => Ok(None),
+                _ => Err(e).map_err(ctx!("reading symlink {path:?}")),
+            },
+        }
+    }
+}
+
 pub struct WorkingDirectoryPool {
     opts: Arc<WorkingDirectoryPoolOpts>,
     remote_repository_url: GitUrl,
     // Actual basedir used (opts only has an Option!)
-    base_dir: PathBuf,
+    base_dir: WorkingDirectoryPoolBaseDir,
     next_id: u64,
     entries: BTreeMap<WorkingDirectoryId, WorkingDirectory>,
     /// Only one process may use this pool at the same time
@@ -73,65 +129,63 @@ pub struct ProcessingError {
 impl WorkingDirectoryPool {
     pub fn open(
         opts: Arc<WorkingDirectoryPoolOpts>,
+        base_dir: WorkingDirectoryPoolBaseDir,
         remote_repository_url: GitUrl,
         create_dir_if_not_exists: bool,
-        get_working_directory_pool_base: &dyn Fn() -> Result<PathBuf>,
     ) -> Result<Self> {
-        let base_dir = if let Some(path) = opts.base_dir.as_ref() {
-            path.to_owned()
-        } else {
-            get_working_directory_pool_base()?
-        };
-
         if create_dir_if_not_exists {
-            io_utils::div::create_dir_if_not_exists(&base_dir, "working pool directory")?;
+            io_utils::div::create_dir_if_not_exists(base_dir.path(), "working pool directory")?;
         }
 
         let mut next_id: u64 = 0;
 
-        let entries: BTreeMap<WorkingDirectoryId, WorkingDirectory> = std::fs::read_dir(&base_dir)
-            .map_err(ctx!("opening working pool directory {base_dir:?}"))?
-            .map(
-                |entry| -> Result<Option<(WorkingDirectoryId, WorkingDirectory)>> {
-                    let entry = entry?;
-                    let ft = entry.file_type()?;
-                    if !ft.is_dir() {
-                        return Ok(None);
-                    }
-                    let id = if let Some(fname) = entry.file_name().to_str() {
-                        if let Some((id_str, _rest)) = fname.split_once('.') {
-                            if let Ok(id) = u64::from_str(id_str) {
-                                if id >= next_id {
-                                    next_id = id + 1;
-                                }
-                            }
+        let entries: BTreeMap<WorkingDirectoryId, WorkingDirectory> =
+            std::fs::read_dir(base_dir.path())
+                .map_err(ctx!("opening working pool directory {:?}", base_dir.path()))?
+                .map(
+                    |entry| -> Result<Option<(WorkingDirectoryId, WorkingDirectory)>> {
+                        let entry = entry?;
+                        let ft = entry.file_type()?;
+                        if !ft.is_dir() {
                             return Ok(None);
-                        } else {
-                            if let Ok(id) = fname.parse() {
-                                if id >= next_id {
-                                    next_id = id + 1;
-                                }
-                                WorkingDirectoryId(id)
-                            } else {
-                                return Ok(None);
-                            }
                         }
-                    } else {
-                        return Ok(None);
-                    };
-                    let path = entry.path();
-                    let wd = WorkingDirectory::open(path)?;
-                    Ok(Some((id, wd)))
-                },
-            )
-            .filter_map(|r| r.transpose())
-            .collect::<Result<_>>()
-            .map_err(ctx!(
-                "reading contents of working pool directory {base_dir:?}"
-            ))?;
+                        let id = if let Some(fname) = entry.file_name().to_str() {
+                            if let Some((id_str, _rest)) = fname.split_once('.') {
+                                if let Ok(id) = u64::from_str(id_str) {
+                                    if id >= next_id {
+                                        next_id = id + 1;
+                                    }
+                                }
+                                return Ok(None);
+                            } else {
+                                if let Ok(id) = fname.parse() {
+                                    if id >= next_id {
+                                        next_id = id + 1;
+                                    }
+                                    WorkingDirectoryId(id)
+                                } else {
+                                    return Ok(None);
+                                }
+                            }
+                        } else {
+                            return Ok(None);
+                        };
+                        let path = entry.path();
+                        let wd = WorkingDirectory::open(path)?;
+                        Ok(Some((id, wd)))
+                    },
+                )
+                .filter_map(|r| r.transpose())
+                .collect::<Result<_>>()
+                .map_err(ctx!(
+                    "reading contents of working pool directory {base_dir:?}"
+                ))?;
 
-        let lock = StandaloneExclusiveFileLock::try_lock_path(&base_dir, || {
-            format!("working directory pool {base_dir:?} is already locked")
+        let lock = StandaloneExclusiveFileLock::try_lock_path(base_dir.path(), || {
+            format!(
+                "working directory pool {:?} is already locked",
+                base_dir.path()
+            )
         })?;
 
         let slf = Self {
@@ -153,7 +207,7 @@ impl WorkingDirectoryPool {
         Ok(slf)
     }
 
-    pub fn base_dir(&self) -> &PathBuf {
+    pub fn base_dir(&self) -> &WorkingDirectoryPoolBaseDir {
         &self.base_dir
     }
 
@@ -185,7 +239,7 @@ impl WorkingDirectoryPool {
     fn get_new(&mut self) -> Result<WorkingDirectoryId> {
         let id = self.next_id();
         let dir = WorkingDirectory::clone_repo(
-            self.base_dir(),
+            self.base_dir().path(),
             &id.to_directory_file_name(),
             self.git_url(),
         )?;
@@ -199,12 +253,12 @@ impl WorkingDirectoryPool {
         processing_error: ProcessingError,
         timestamp: &DateTimeWithOffset,
     ) -> Result<()> {
-        let old_dir_path = self.base_dir().append(id.to_directory_file_name());
-        let new_dir_path = self.base_dir().append(format!(
+        let old_dir_path = self.base_dir().path().append(id.to_directory_file_name());
+        let new_dir_path = self.base_dir().path().append(format!(
             "{}.dir_at_{timestamp}",
             id.to_directory_file_name()
         ));
-        let error_file_path = self.base_dir().append(format!(
+        let error_file_path = self.base_dir().path().append(format!(
             "{}.error_at_{timestamp}",
             id.to_directory_file_name()
         ));
@@ -235,6 +289,8 @@ impl WorkingDirectoryPool {
         run_parameters: Option<&RunParameters>,
         context: &str,
     ) -> Result<T> {
+        self.set_current_working_directory(working_directory_id)?;
+
         let wd = self
             .entries
             .get_mut(&working_directory_id)
@@ -363,5 +419,28 @@ impl WorkingDirectoryPool {
                 Ok(id)
             }
         }
+    }
+
+    /// Remove the symlink to the currently used working directory
+    pub(crate) fn clear_current_working_directory(&self) -> Result<()> {
+        let path = self.base_dir.current_working_directory_symlink_path();
+        if let Err(e) = std::fs::remove_file(&path) {
+            match e.kind() {
+                std::io::ErrorKind::NotFound => (),
+                _ => Err(e).map_err(ctx!("removing symlink {path:?}"))?,
+            }
+        }
+        Ok(())
+    }
+
+    /// Set the symlink to the currently used working directory. The
+    /// old one must be removed beforehand via
+    /// `clear_current_working_directory`.
+    fn set_current_working_directory(&self, id: WorkingDirectoryId) -> Result<()> {
+        let source_path = id.to_directory_file_name();
+        let target_path = self.base_dir.current_working_directory_symlink_path();
+        std::os::unix::fs::symlink(&source_path, &target_path).map_err(ctx!(
+            "creating symlink at {target_path:?} to {source_path:?}"
+        ))
     }
 }

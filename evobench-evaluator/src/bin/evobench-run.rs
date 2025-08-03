@@ -35,7 +35,7 @@ use evobench_evaluator::{
         run_job::{DryRun, JobRunner},
         run_queue::RunQueue,
         run_queues::RunQueues,
-        working_directory_pool::WorkingDirectoryPool,
+        working_directory_pool::{WorkingDirectoryPool, WorkingDirectoryPoolBaseDir},
     },
     serde::{
         date_and_time::{system_time_to_rfc3339, DateTimeWithOffset},
@@ -206,6 +206,7 @@ fn run_queues(
     config_path: Option<PathBuf>,
     mut config_with_reload: RunConfigWithReload,
     mut queues: RunQueues,
+    working_directory_base_dir: WorkingDirectoryPoolBaseDir,
     mut working_directory_pool: WorkingDirectoryPool,
     dry_run: DryRun,
     global_app_state_dir: &GlobalAppStateDir,
@@ -250,9 +251,9 @@ fn run_queues(
                 queues = RunQueues::open(conf.queues.clone_arc(), true, &global_app_state_dir)?;
                 working_directory_pool = WorkingDirectoryPool::open(
                     conf.working_directory_pool.clone_arc(),
+                    working_directory_base_dir.clone(),
                     conf.remote_repository.url.clone(),
                     true,
-                    &|| global_app_state_dir.working_directory_pool_base(),
                 )?;
             }
             Ok(None) => {
@@ -308,6 +309,11 @@ fn main() -> Result<()> {
     let conf = &config_with_reload.run_config;
 
     let global_app_state_dir = GlobalAppStateDir::new()?;
+
+    let working_directory_base_dir =
+        WorkingDirectoryPoolBaseDir::new(&conf.working_directory_pool, &|| {
+            global_app_state_dir.working_directory_pool_base()
+        })?;
 
     let queues = RunQueues::open(conf.queues.clone_arc(), true, &global_app_state_dir)?;
 
@@ -496,25 +502,31 @@ fn main() -> Result<()> {
                             .run_parameters
                             .custom_parameters
                             .to_string();
-                        let locking = if schedule_condition.is_grave_yard() {
-                            ""
+                        let (locking, is_locked) = if schedule_condition.is_grave_yard() {
+                            ("", false)
                         } else {
                             let lock_status = entry
                                 .take_lockable_file()
                                 .expect("not taken before")
                                 .lock_status()?;
                             if lock_status == LockStatus::ExclusiveLock {
-                                "R"
+                                ("R", true)
                             } else {
-                                ""
+                                ("", false)
                             }
                         };
                         let priority = &*job.priority()?.to_string();
-                        let wd = job
-                            .benchmarking_job_state
-                            .last_working_directory
-                            .map(|v| v.to_number_string())
-                            .unwrap_or_else(|| "".into());
+                        let wd = if is_locked {
+                            working_directory_base_dir
+                                .get_current_working_directory()?
+                                .map(|v| v.to_number_string())
+                                .unwrap_or_else(|| "".into())
+                        } else {
+                            job.benchmarking_job_state
+                                .last_working_directory
+                                .map(|v| v.to_number_string())
+                                .unwrap_or_else(|| "".into())
+                        };
 
                         let time = if verbose {
                             &*format!("{file_name} ({key})")
@@ -687,10 +699,10 @@ fn main() -> Result<()> {
 
         SubCommand::Run { dry_run, mode } => {
             let working_directory_pool = WorkingDirectoryPool::open(
-                conf.working_directory_pool.clone(),
+                conf.working_directory_pool.clone_arc(),
+                working_directory_base_dir.clone(),
                 conf.remote_repository.url.clone(),
                 true,
-                &|| global_app_state_dir.working_directory_pool_base(),
             )?;
 
             match mode {
@@ -699,6 +711,7 @@ fn main() -> Result<()> {
                         config,
                         config_with_reload,
                         queues,
+                        working_directory_base_dir,
                         working_directory_pool,
                         dry_run,
                         &global_app_state_dir,
@@ -716,6 +729,7 @@ fn main() -> Result<()> {
                             config,
                             config_with_reload,
                             queues,
+                            working_directory_base_dir,
                             working_directory_pool,
                             dry_run,
                             &global_app_state_dir,

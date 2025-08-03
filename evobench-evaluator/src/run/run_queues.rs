@@ -613,6 +613,10 @@ impl<'run_queues> RunQueuesData<'run_queues> {
                 .working_directory_pool
                 .get_a_working_directory_for(&job.benchmarking_job_public.run_parameters, self)?;
 
+            job_runner
+                .working_directory_pool
+                .clear_current_working_directory()?;
+
             rqdwn.run_queue_with_next().run_job(
                 &item,
                 job.clone(),

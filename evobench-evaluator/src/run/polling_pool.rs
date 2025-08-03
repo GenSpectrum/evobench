@@ -15,7 +15,10 @@ use crate::{
 
 use super::{
     config::JobTemplate,
-    working_directory_pool::{WorkingDirectoryId, WorkingDirectoryPool, WorkingDirectoryPoolOpts},
+    working_directory_pool::{
+        WorkingDirectoryId, WorkingDirectoryPool, WorkingDirectoryPoolBaseDir,
+        WorkingDirectoryPoolOpts,
+    },
 };
 
 fn check_exists(git_working_dir: &GitWorkingDir, commit: &GitHash) -> Result<bool> {
@@ -33,11 +36,13 @@ impl PollingPool {
             base_dir: Some(polling_pool_base.to_owned()),
             capacity: 1.try_into().unwrap(),
         };
+        let base_dir =
+            WorkingDirectoryPoolBaseDir::new(&opts, &|| unreachable!("already given in opts"))?;
         let pool = WorkingDirectoryPool::open(
             Arc::new(opts),
+            base_dir,
             remote_repository_url.clone(),
             true,
-            &|| unreachable!("already given in opts"),
         )?;
         Ok(Self { pool })
     }
@@ -45,6 +50,7 @@ impl PollingPool {
     /// Updates the remotes, but only if the commit isn't already in
     /// the local clone.
     pub fn commit_is_valid(&mut self, commit: &GitHash) -> Result<bool> {
+        self.pool.clear_current_working_directory()?;
         let working_directory_id = self.pool.get_first()?;
         self.pool.process_working_directory(
             working_directory_id,
@@ -67,6 +73,7 @@ impl PollingPool {
     /// Get working dir, git remote update it, and return its id for
     /// subsequent work on it
     pub fn updated_working_dir(&mut self) -> Result<WorkingDirectoryId> {
+        self.pool.clear_current_working_directory()?;
         let working_directory_id = self.pool.get_first()?;
         self.pool.process_working_directory(
             working_directory_id,
