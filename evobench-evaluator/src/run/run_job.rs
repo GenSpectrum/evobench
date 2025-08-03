@@ -296,7 +296,7 @@ impl<'pool> JobRunner<'pool> {
 
                     bail!(
                         "benchmarking command {cmd_in_dir} gave \
-                     error status {status}, last_part {last_part:?}"
+                         error status {status}, last_part {last_part:?}"
                     )
                 }
             },
@@ -304,207 +304,202 @@ impl<'pool> JobRunner<'pool> {
             "run_job",
         )?;
 
-        // XX dry stuff?
-        if self.dry_run.means(DryRun::DoAll) {
-            // The directory holding the full key information
-            let key_dir = checked_run_parameters.extend_path(self.output_base_dir.to_owned());
-            // Below that, we make a dir for this particular run
-            let result_dir = (&key_dir).append(self.timestamp.as_str());
-            std::fs::create_dir_all(&result_dir).map_err(ctx!("create_dir_all {result_dir:?}"))?;
+        // The directory holding the full key information
+        let key_dir = checked_run_parameters.extend_path(self.output_base_dir.to_owned());
+        // Below that, we make a dir for this particular run
+        let result_dir = (&key_dir).append(self.timestamp.as_str());
+        std::fs::create_dir_all(&result_dir).map_err(ctx!("create_dir_all {result_dir:?}"))?;
 
-            info!("moving files to {result_dir:?}");
+        info!("moving files to {result_dir:?}");
 
-            let compress_file_as = |source_file: &TemporaryFile,
-                                    target_filename: &str,
-                                    add_tmp: bool|
-             -> Result<PathBuf> {
-                let target_filename = add_extension(target_filename, "zstd").expect("got filename");
-                let target_filename = if add_tmp {
-                    add_extension(target_filename, "tmp").expect("got filename")
-                } else {
-                    target_filename
-                };
-                let target = (&result_dir).append(target_filename);
-                compress_file(
-                    source_file.path(),
-                    &target,
-                    // be quiet when:
-                    log_level() < LogLevel::Info,
-                )?;
-                // Do *not* remove the source file here as
-                // TemporaryFile::drop will do it.
-                Ok(target)
+        let compress_file_as = |source_file: &TemporaryFile,
+                                target_filename: &str,
+                                add_tmp: bool|
+         -> Result<PathBuf> {
+            let target_filename = add_extension(target_filename, "zstd").expect("got filename");
+            let target_filename = if add_tmp {
+                add_extension(target_filename, "tmp").expect("got filename")
+            } else {
+                target_filename
             };
-            let evobench_log_tmp = compress_file_as(&evobench_log, "evobench.log", true)?;
-            compress_file_as(&bench_output_log, "bench_output.log", false)?;
+            let target = (&result_dir).append(target_filename);
+            compress_file(
+                source_file.path(),
+                &target,
+                // be quiet when:
+                log_level() < LogLevel::Info,
+            )?;
+            // Do *not* remove the source file here as
+            // TemporaryFile::drop will do it.
+            Ok(target)
+        };
+        let evobench_log_tmp = compress_file_as(&evobench_log, "evobench.log", true)?;
+        compress_file_as(&bench_output_log, "bench_output.log", false)?;
 
-            info!("evaluating benchmark file");
+        info!("evaluating benchmark file");
 
-            // Doing this *before* moving the files, as a way to
-            // ensure that no invalid files end up in the results
-            // pool!
-            evobench_evaluator(&vec![
-                "single".into(),
-                evobench_log.path().into(),
-                "--show-thread-number".into(),
-                "--excel".into(),
-                (&result_dir).append("single.xlsx").into(),
-            ])?;
+        // Doing this *before* moving the files, as a way to
+        // ensure that no invalid files end up in the results
+        // pool!
+        evobench_evaluator(&vec![
+            "single".into(),
+            evobench_log.path().into(),
+            "--show-thread-number".into(),
+            "--excel".into(),
+            (&result_dir).append("single.xlsx").into(),
+        ])?;
 
-            // It's a bit inefficient to read the $EVOBENCH_LOG
-            // twice, but currently can't change the options
-            // (--show-thread-number) without a separate run, also
-            // the cost is just a second or so.
-            evobench_evaluator(&vec![
-                "single".into(),
-                evobench_log.path().into(),
-                "--flame".into(),
-                (&result_dir).append("single").into(),
-            ])?;
+        // It's a bit inefficient to read the $EVOBENCH_LOG
+        // twice, but currently can't change the options
+        // (--show-thread-number) without a separate run, also
+        // the cost is just a second or so.
+        evobench_evaluator(&vec![
+            "single".into(),
+            evobench_log.path().into(),
+            "--flame".into(),
+            (&result_dir).append("single").into(),
+        ])?;
 
-            info!("evaluating the benchmark file succeeded");
+        info!("evaluating the benchmark file succeeded");
 
-            rename_tmp_path(evobench_log_tmp)?;
+        rename_tmp_path(evobench_log_tmp)?;
 
-            info!("compressed benchmark file renamed");
+        info!("compressed benchmark file renamed");
 
-            {
-                // HACK to allow for the SILO
-                // benchmarking/Makefile to move away the
-                // EVOBENCH_LOG file after preprocessing, and have
-                // that archived here. For summaries, have to run
-                // the evobench-evaluator on those manually,
-                // though.
-                let evobench_log_preprocessing = TemporaryFile::from(
-                    (&bench_tmp_dir).append(format!("evobench-{pid}.log-preprocessing.log")),
-                );
-                if evobench_log_preprocessing.path().exists() {
-                    let tmp_path = compress_file_as(
-                        &evobench_log_preprocessing,
-                        "evobench-preprocessing.log",
-                        true,
-                    )?;
+        {
+            // HACK to allow for the SILO
+            // benchmarking/Makefile to move away the
+            // EVOBENCH_LOG file after preprocessing, and have
+            // that archived here. For summaries, have to run
+            // the evobench-evaluator on those manually,
+            // though.
+            let evobench_log_preprocessing = TemporaryFile::from(
+                (&bench_tmp_dir).append(format!("evobench-{pid}.log-preprocessing.log")),
+            );
+            if evobench_log_preprocessing.path().exists() {
+                let tmp_path = compress_file_as(
+                    &evobench_log_preprocessing,
+                    "evobench-preprocessing.log",
+                    true,
+                )?;
 
-                    evobench_evaluator(&vec![
-                        "single".into(),
-                        evobench_log_preprocessing.path().into(),
-                        "--show-thread-number".into(),
-                        "--excel".into(),
-                        (&result_dir).append("single-preprocessing.xlsx").into(),
-                    ])?;
-                    evobench_evaluator(&vec![
-                        "single".into(),
-                        evobench_log_preprocessing.path().into(),
-                        "--flame".into(),
-                        (&result_dir).append("single-preprocessing").into(),
-                    ])?;
+                evobench_evaluator(&vec![
+                    "single".into(),
+                    evobench_log_preprocessing.path().into(),
+                    "--show-thread-number".into(),
+                    "--excel".into(),
+                    (&result_dir).append("single-preprocessing.xlsx").into(),
+                ])?;
+                evobench_evaluator(&vec![
+                    "single".into(),
+                    evobench_log_preprocessing.path().into(),
+                    "--flame".into(),
+                    (&result_dir).append("single-preprocessing").into(),
+                ])?;
 
-                    rename_tmp_path(tmp_path)?;
+                rename_tmp_path(tmp_path)?;
+            }
+        }
+
+        {
+            let target = (&result_dir).append("schedule_condition.ron");
+            info!("saving context to {target:?}");
+            let schedule_condition_str = ron_to_string_pretty(&schedule_condition)?;
+            std::fs::write(&target, &schedule_condition_str)
+                .map_err(ctx!("saving to {target:?}"))?
+        }
+
+        {
+            let target = (&result_dir).append("reason.ron");
+            info!("saving context to {target:?}");
+            let s = ron_to_string_pretty(&reason)?;
+            std::fs::write(&target, &s).map_err(ctx!("saving to {target:?}"))?
+        }
+
+        info!("(re-)evaluating the summary file across all results for this key");
+
+        fn generate_summary<P: AsRef<Path>>(
+            key_dir: &PathBuf,
+            job_output_dirs: &[P],
+            target_type_opt: &str,
+            file_base_name: &str,
+        ) -> Result<()> {
+            let mut args: Vec<OsString> = vec!["summary".into()];
+            args.push(target_type_opt.into());
+            args.push(key_dir.append(file_base_name).into());
+
+            for job_output_dir in job_output_dirs {
+                let evobench_log = job_output_dir.as_ref().append("evobench.log.zstd");
+                if std::fs::exists(&evobench_log).map_err(ctx!("checking path {evobench_log:?}"))? {
+                    args.push(evobench_log.into());
+                } else {
+                    info!("missing file {evobench_log:?}, empty dir?");
                 }
             }
 
-            {
-                let target = (&result_dir).append("schedule_condition.ron");
-                info!("saving context to {target:?}");
-                let schedule_condition_str = ron_to_string_pretty(&schedule_condition)?;
-                std::fs::write(&target, &schedule_condition_str)
-                    .map_err(ctx!("saving to {target:?}"))?
-            }
+            evobench_evaluator(&args)?;
 
-            {
-                let target = (&result_dir).append("reason.ron");
-                info!("saving context to {target:?}");
-                let s = ron_to_string_pretty(&reason)?;
-                std::fs::write(&target, &s).map_err(ctx!("saving to {target:?}"))?
-            }
+            Ok(())
+        }
 
-            info!("(re-)evaluating the summary file across all results for this key");
-
-            fn generate_summary<P: AsRef<Path>>(
-                key_dir: &PathBuf,
-                job_output_dirs: &[P],
-                target_type_opt: &str,
-                file_base_name: &str,
-            ) -> Result<()> {
-                let mut args: Vec<OsString> = vec!["summary".into()];
-                args.push(target_type_opt.into());
-                args.push(key_dir.append(file_base_name).into());
-
-                for job_output_dir in job_output_dirs {
-                    let evobench_log = job_output_dir.as_ref().append("evobench.log.zstd");
-                    if std::fs::exists(&evobench_log)
-                        .map_err(ctx!("checking path {evobench_log:?}"))?
-                    {
-                        args.push(evobench_log.into());
-                    } else {
-                        info!("missing file {evobench_log:?}, empty dir?");
-                    }
+        let job_output_dirs: Vec<PathBuf> = std::fs::read_dir(&key_dir)
+            .map_err(ctx!("opening dir {key_dir:?}"))?
+            .map(|entry| -> Result<Option<PathBuf>, std::io::Error> {
+                let entry: std::fs::DirEntry = entry?;
+                let ft = entry.file_type()?;
+                if ft.is_dir() {
+                    Ok(Some(entry.path()))
+                } else {
+                    Ok(None)
                 }
+            })
+            .filter_map(|r| r.transpose())
+            .collect::<Result<_, _>>()
+            .map_err(ctx!("getting dir listing for {key_dir:?}"))?;
 
-                evobench_evaluator(&args)?;
+        generate_summary(&key_dir, &job_output_dirs, "--excel", "summary.xlsx")?;
+        generate_summary(&key_dir, &job_output_dirs, "--flame", "summary")?;
 
-                Ok(())
-            }
-
-            let job_output_dirs: Vec<PathBuf> = std::fs::read_dir(&key_dir)
-                .map_err(ctx!("opening dir {key_dir:?}"))?
-                .map(|entry| -> Result<Option<PathBuf>, std::io::Error> {
-                    let entry: std::fs::DirEntry = entry?;
-                    let ft = entry.file_type()?;
-                    if ft.is_dir() {
-                        Ok(Some(entry.path()))
-                    } else {
-                        Ok(None)
-                    }
-                })
-                .filter_map(|r| r.transpose())
-                .collect::<Result<_, _>>()
-                .map_err(ctx!("getting dir listing for {key_dir:?}"))?;
-
-            generate_summary(&key_dir, &job_output_dirs, "--excel", "summary.xlsx")?;
-            generate_summary(&key_dir, &job_output_dirs, "--flame", "summary")?;
-
-            let mut job_output_dirs_by_situation: HashMap<ProperFilename, Vec<&PathBuf>> =
-                HashMap::new();
-            for job_output_dir in &job_output_dirs {
-                let schedule_condition_path = job_output_dir.append("schedule_condition.ron");
-                match std::fs::read_to_string(&schedule_condition_path) {
-                    Ok(s) => {
-                        let schedule_condition: ScheduleCondition = ron::from_str(&s)
-                            .map_err(ctx!("reading file {schedule_condition_path:?}"))?;
-                        if let Some(situation) = schedule_condition.situation() {
-                            // XX it's just too long, proper abstraction pls?
-                            match job_output_dirs_by_situation.entry(situation.clone()) {
-                                Entry::Occupied(mut occupied_entry) => {
-                                    occupied_entry.get_mut().push(job_output_dir);
-                                }
-                                Entry::Vacant(vacant_entry) => {
-                                    vacant_entry.insert(vec![job_output_dir]);
-                                }
+        let mut job_output_dirs_by_situation: HashMap<ProperFilename, Vec<&PathBuf>> =
+            HashMap::new();
+        for job_output_dir in &job_output_dirs {
+            let schedule_condition_path = job_output_dir.append("schedule_condition.ron");
+            match std::fs::read_to_string(&schedule_condition_path) {
+                Ok(s) => {
+                    let schedule_condition: ScheduleCondition = ron::from_str(&s)
+                        .map_err(ctx!("reading file {schedule_condition_path:?}"))?;
+                    if let Some(situation) = schedule_condition.situation() {
+                        // XX it's just too long, proper abstraction pls?
+                        match job_output_dirs_by_situation.entry(situation.clone()) {
+                            Entry::Occupied(mut occupied_entry) => {
+                                occupied_entry.get_mut().push(job_output_dir);
+                            }
+                            Entry::Vacant(vacant_entry) => {
+                                vacant_entry.insert(vec![job_output_dir]);
                             }
                         }
                     }
-                    Err(e) => match e.kind() {
-                        std::io::ErrorKind::NotFound => (),
-                        _ => Err(e).map_err(ctx!("reading file {schedule_condition_path:?}"))?,
-                    },
                 }
+                Err(e) => match e.kind() {
+                    std::io::ErrorKind::NotFound => (),
+                    _ => Err(e).map_err(ctx!("reading file {schedule_condition_path:?}"))?,
+                },
             }
+        }
 
-            for (situation, job_output_dirs) in job_output_dirs_by_situation.iter() {
-                generate_summary(
-                    &key_dir,
-                    job_output_dirs.as_slice(),
-                    "--excel",
-                    &format!("summary-{situation}.xlsx"),
-                )?;
-                generate_summary(
-                    &key_dir,
-                    job_output_dirs.as_slice(),
-                    "--flame",
-                    &format!("summary-{situation}"),
-                )?;
-            }
+        for (situation, job_output_dirs) in job_output_dirs_by_situation.iter() {
+            generate_summary(
+                &key_dir,
+                job_output_dirs.as_slice(),
+                "--excel",
+                &format!("summary-{situation}.xlsx"),
+            )?;
+            generate_summary(
+                &key_dir,
+                job_output_dirs.as_slice(),
+                "--flame",
+                &format!("summary-{situation}"),
+            )?;
         }
         Ok(())
     }
