@@ -8,6 +8,56 @@ TODO
 
 ### Working principles
 
+When tasking the evobench system to benchmark a particular commit,
+that is creating any number of benchmarking jobs (instances of the
+type `BenchmarkingJob`) via the `JobTemplate` instances declared in
+the configuration file (currently it's not possible to specify a job
+template on the command line). Each such job in turn is execute any
+number of time again as configured. The configuration can assign
+different job templates depending on the source of the commit (which
+branch it was found on, or whether it came from the `evobench-run
+insert` or `insert-local` commands).
+
+`evobench-run list` and `evobench-run list-all` show one
+`BenchmarkingJob` instance per line; `evobench-run list` shows how the
+jobs progress, each time a job changes queue or its queue insertion
+time that means a run has concluded.
+
+To reiterate: a `GitHash` leads to 0 or more `BenchmarkingJob`s, each
+of which leads to 1 or more benchmark runs, each of which leads to a
+sub directory with the timestamp of the start of the run as the
+directory name and holding the results for that run. The files are:
+
+`bench_output.log.zstd`
+: contents of what the target app wrote to $BENCH_OUTPUT_LOG
+
+`evobench.log.zstd`
+: contents of what evobench-probes wrote to $EVOBENCH_LOG
+
+`single.xlsx`
+: statistical results of the run, extracted from `evobench.log.zstd`
+
+`single-*.svg`
+: part of the same in flame graph form
+
+`schedule_condition.ron`
+: the queue configuration that triggered the run
+
+`reason.ron`
+: what created the job (e.g. branch name the commit was found on)
+
+The directory above this has all the runs for the same job (actually,
+all jobs with the same commit and parameters, i.e. forcing a re-issue
+of a job with the same data leads to more entries here), and contains
+created `summary*` files containing statistics across all the
+individual runs: these represent the statistical variability across
+runs (across all of them if no quoted string is in the file name, but
+also separated by the value of the `situation` field in
+`schedule_condition.ron` of the runs), and form the basis for change
+detection or trend calculations (todo).
+
+More details on jobs and the other entities follow below.
+
 #### Jobs
 
 * A benchmarking "job" is about executing a particular benchmark with
@@ -121,7 +171,7 @@ the job for minimizing the overhead.
 The default location for this pool is at
 `~/.evobench-run/working_directory_pool/`. The same directory also
 contains the log files from running benchmarking jobs; they start with
-`$n.output_of_benchmarking_command*`, where $n is the number of the
+`$n.output_of_benchmarking_command*`, where `$n` is the number of the
 working directory. There are also `$n.error*` files in case a job
 failed, and soon `$n.status` files to store the status of a working
 directory.
