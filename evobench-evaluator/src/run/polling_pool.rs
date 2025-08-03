@@ -9,7 +9,7 @@ use run_git::git::GitWorkingDir;
 
 use crate::{
     git::GitHash,
-    serde::{git_branch_name::GitBranchName, git_url::GitUrl},
+    serde::{date_and_time::DateTimeWithOffset, git_branch_name::GitBranchName, git_url::GitUrl},
     utillib::arc::CloneArc,
 };
 
@@ -48,7 +48,8 @@ impl PollingPool {
         let working_directory_id = self.pool.get_first()?;
         self.pool.process_working_directory(
             working_directory_id,
-            |working_directory, _timestamp| {
+            &DateTimeWithOffset::now(),
+            |working_directory| {
                 // Check for the commit first, then if it fails, try
                 // to update; both for performance, but also to
                 // minimize contact with issues with remote server.
@@ -69,7 +70,8 @@ impl PollingPool {
         let working_directory_id = self.pool.get_first()?;
         self.pool.process_working_directory(
             working_directory_id,
-            |working_directory, _timestamp| {
+            &DateTimeWithOffset::now(),
+            |working_directory| {
                 let git_working_dir = &working_directory.git_working_dir;
                 git_working_dir.git(&["remote", "update"], true)?;
                 Ok(working_directory_id)
@@ -91,7 +93,8 @@ impl PollingPool {
     )> {
         self.pool.process_working_directory(
             working_directory_id,
-            |working_directory, _timestamp| {
+            &DateTimeWithOffset::now(),
+            |working_directory| {
                 let mut non_resolving = Vec::new();
                 let git_working_dir = &working_directory.git_working_dir;
                 let mut ids = Vec::new();

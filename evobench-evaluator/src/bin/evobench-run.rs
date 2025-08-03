@@ -34,10 +34,13 @@ use evobench_evaluator::{
         run_context::RunContext,
         run_job::{DryRun, JobRunner},
         run_queue::RunQueue,
-        run_queues::{get_now_chrono, RunQueues},
+        run_queues::RunQueues,
         working_directory_pool::WorkingDirectoryPool,
     },
-    serde::{date_and_time::system_time_to_rfc3339, git_branch_name::GitBranchName},
+    serde::{
+        date_and_time::{system_time_to_rfc3339, DateTimeWithOffset},
+        git_branch_name::GitBranchName,
+    },
     terminal_table::{TerminalTable, TerminalTableOpts, TerminalTableTitle},
     utillib::{
         arc::CloneArc,
@@ -223,9 +226,9 @@ fn run_queues(
                 working_directory_pool: &mut working_directory_pool,
                 output_base_dir: &output_base_dir,
                 dry_run,
+                timestamp: DateTimeWithOffset::now(),
             },
             &mut run_context,
-            get_now_chrono(),
         )?;
 
         if once {

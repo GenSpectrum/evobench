@@ -230,7 +230,8 @@ impl WorkingDirectoryPool {
     pub fn process_working_directory<T>(
         &mut self,
         working_directory_id: WorkingDirectoryId,
-        action: impl FnOnce(&mut WorkingDirectory, &DateTimeWithOffset) -> Result<T>,
+        timestamp: &DateTimeWithOffset,
+        action: impl FnOnce(&mut WorkingDirectory) -> Result<T>,
         run_parameters: Option<&RunParameters>,
         context: &str,
     ) -> Result<T> {
@@ -242,14 +243,12 @@ impl WorkingDirectoryPool {
             // very well might disappear), thus:
             .ok_or_else(|| anyhow!("working directory id must still exist"))?;
 
-        let timestamp = DateTimeWithOffset::now();
-
         info!(
             "process_working_directory {working_directory_id:?} \
              ({context}, {run_parameters:?})..."
         );
 
-        match action(wd, &timestamp) {
+        match action(wd) {
             Ok(v) => {
                 info!(
                     "process_working_directory {working_directory_id:?} \
@@ -274,7 +273,7 @@ impl WorkingDirectoryPool {
                         context: context.to_string(),
                         error: err.clone(),
                     },
-                    &timestamp,
+                    timestamp,
                 )
                 .map_err(ctx!("error storing the error {err}"))?;
                 Err(error)

@@ -11,6 +11,7 @@ use std::{
 };
 
 use anyhow::{bail, Result};
+use chrono::{DateTime, Local};
 use nix::libc::{getpid, getuid};
 use run_git::path_util::{add_extension, AppendToPath};
 use strum_macros::EnumString;
@@ -160,9 +161,15 @@ pub struct JobRunner<'pool> {
     pub working_directory_pool: &'pool mut WorkingDirectoryPool,
     pub output_base_dir: &'pool Path,
     pub dry_run: DryRun,
+    pub timestamp: DateTimeWithOffset,
 }
 
 impl<'pool> JobRunner<'pool> {
+    pub fn now(&self) -> DateTime<Local> {
+        // XX ~costly
+        self.timestamp.to_datetime().into()
+    }
+
     pub fn run_job(
         self,
         working_directory_id: WorkingDirectoryId,
@@ -199,18 +206,15 @@ impl<'pool> JobRunner<'pool> {
         let _ = std::fs::remove_file(evobench_log.path());
         let _ = std::fs::remove_file(bench_output_log.path());
 
-        // Copying the only variable we need outside the working directory
-        // context, to allow finishing work for which errors should not
-        // tag the working directory as failed; `None` means dry-run, no
-        // work to do.
-        let opt_timestamp = self.working_directory_pool.process_working_directory(
+        self.working_directory_pool.process_working_directory(
             working_directory_id,
-            |working_directory, timestamp| -> Result<Option<DateTimeWithOffset>> {
+            &self.timestamp,
+            |working_directory| -> Result<()> {
                 working_directory.checkout(commit_id.clone())?;
 
                 if self.dry_run.means(DryRun::DoWorkingDir) {
                     println!("checked out working directory: {working_directory_id:?}");
-                    return Ok(None);
+                    return Ok(());
                 }
 
                 let BenchmarkingCommand {
@@ -249,7 +253,7 @@ impl<'pool> JobRunner<'pool> {
                 let command_output_file = OutFile::create(
                     &add_extension(
                         working_directory.git_working_dir.working_dir_path_ref(),
-                        format!("output_of_benchmarking_command_at_{timestamp}"),
+                        format!("output_of_benchmarking_command_at_{}", self.timestamp),
                     )
                     .expect("has filename"),
                 )?;
@@ -279,7 +283,7 @@ impl<'pool> JobRunner<'pool> {
                 if status.success() {
                     info!("running {cmd_in_dir} succeeded");
 
-                    Ok(Some(timestamp.clone()))
+                    Ok(())
                 } else {
                     info!("running {cmd_in_dir} failed.");
                     let last_part = command_output_file.last_part(3000)?;
@@ -300,11 +304,12 @@ impl<'pool> JobRunner<'pool> {
             "run_job",
         )?;
 
-        if let Some(timestamp) = opt_timestamp {
+        // XX dry stuff?
+        if self.dry_run.means(DryRun::DoAll) {
             // The directory holding the full key information
             let key_dir = checked_run_parameters.extend_path(self.output_base_dir.to_owned());
             // Below that, we make a dir for this particular run
-            let result_dir = (&key_dir).append(timestamp.as_str());
+            let result_dir = (&key_dir).append(self.timestamp.as_str());
             std::fs::create_dir_all(&result_dir).map_err(ctx!("create_dir_all {result_dir:?}"))?;
 
             info!("moving files to {result_dir:?}");

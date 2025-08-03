@@ -589,8 +589,8 @@ impl<'run_queues> RunQueuesData<'run_queues> {
         &'s self,
         job_runner: JobRunner,
         run_context: &mut RunContext,
-        now: DateTime<Local>,
     ) -> Result<bool> {
+        let now = job_runner.now();
         // XXX remove old_* stuff check once verified.
         let old_job = self.run_queues.old_most_prioritized_job(now)?;
         let old_job_1 = old_job
