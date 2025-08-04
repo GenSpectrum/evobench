@@ -50,7 +50,8 @@ impl CustomParameterValue {
                 "0" | "1" => (),
                 _ => bail!(
                     "string not valid as a boolean custom parameter, \
-                     expecting \"0\" or \"1\": {value:?}"
+                     expecting \"0\" or \"1\": {:?}",
+                    value.as_str()
                 ),
             },
             CustomParameterType::NonZeroU32 => {

@@ -31,6 +31,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     crypto_hash::crypto_hash,
+    ctx,
     git::GitHash,
     key_val_fs::as_key::AsKey,
     run::{
@@ -115,7 +116,8 @@ impl CustomParameters {
             let allowable_key: AllowedEnvVar<AllowableCustomEnvVar> = AllowedEnvVar::from_str(key)?;
             if let Some(allowed_custom_parameter) = custom_parameters_required.get(&allowable_key) {
                 let val =
-                    CustomParameterValue::checked_from(allowed_custom_parameter.r#type, value)?;
+                    CustomParameterValue::checked_from(allowed_custom_parameter.r#type, value)
+                        .map_err(ctx!("for variable {:?}", key.as_str()))?;
 
                 res.insert(key.clone(), val);
             } else {
