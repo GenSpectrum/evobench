@@ -103,6 +103,9 @@ impl CustomParameters {
             AllowedCustomParameter,
         >,
     ) -> Result<Self> {
+        // XX: keyvals.iter() is never containing duplicates, now that
+        // this is a BTreeMap they are removed silently by serde
+        // (bummer!)
         let mut res = BTreeMap::new();
         for kv in keyvals {
             let (key, value) = kv;

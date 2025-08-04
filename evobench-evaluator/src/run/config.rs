@@ -6,12 +6,12 @@ use std::{
     sync::Arc,
 };
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use chrono::{DateTime, Local};
 use kstring::KString;
 
 use crate::{
-    config_file::{ConfigFile, DefaultConfigPath},
+    config_file::{ron_to_string_pretty, ConfigFile, DefaultConfigPath},
     date_and_time::time_ranges::{DateTimeRange, LocalNaiveTimeRange},
     info,
     io_utils::{bash::bash_string_from_cmd, div::create_dir_if_not_exists},
@@ -434,7 +434,11 @@ impl JobTemplateOpts {
             .ok_or_else(|| anyhow!("unknown target name {:?}", target_name.as_str()))?;
 
         let custom_parameters =
-            CustomParameters::checked_from(custom_parameters, &target.allowed_custom_parameters)?;
+            CustomParameters::checked_from(custom_parameters, &target.allowed_custom_parameters)
+                .with_context(|| {
+                    let context = ron_to_string_pretty(self).expect("no serialisation errors");
+                    anyhow!("processing {context}")
+                })?;
 
         Ok(JobTemplate {
             priority: *priority,
