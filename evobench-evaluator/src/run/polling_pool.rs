@@ -98,6 +98,7 @@ impl PollingPool {
         Vec<(&'b GitBranchName, GitHash, Arc<[JobTemplate]>)>,
         Vec<String>,
     )> {
+        self.pool.clear_current_working_directory()?;
         self.pool.process_working_directory(
             working_directory_id,
             &DateTimeWithOffset::now(),
