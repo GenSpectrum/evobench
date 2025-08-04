@@ -39,7 +39,10 @@ impl Drop for TemporaryFile {
     fn drop(&mut self) {
         match std::fs::remove_file(&self.path) {
             Ok(()) => info!("deleted temporary file {:?}", self.path),
-            Err(e) => info!("error deleting temporary file {:?}: {e:#}", self.path),
+            Err(e) => match e.kind() {
+                std::io::ErrorKind::NotFound => (),
+                _ => info!("error deleting temporary file {:?}: {e:#}", self.path),
+            },
         }
     }
 }
