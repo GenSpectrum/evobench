@@ -340,10 +340,13 @@ impl<'pool> JobRunner<'pool> {
             // TemporaryFile::drop will do it.
             Ok(target)
         };
-        let evobench_log_tmp = compress_file_as(&evobench_log, "evobench.log", true)?;
+        // First try to compress the log file, here we check whether
+        // it exists; before we expect to compress evobench.log
+        // without checking its existence.
         if bench_output_log.path().exists() {
             compress_file_as(&bench_output_log, "bench_output.log", false)?;
         }
+        let evobench_log_tmp = compress_file_as(&evobench_log, "evobench.log", true)?;
 
         info!("evaluating benchmark file");
 
