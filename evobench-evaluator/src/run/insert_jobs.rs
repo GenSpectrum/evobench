@@ -4,6 +4,7 @@ use anyhow::{bail, Result};
 use itertools::Itertools;
 
 use crate::{
+    config_file::ron_to_string_pretty,
     key::{BenchmarkingJobParameters, BenchmarkingJobParametersHash},
     key_val_fs::key_val::{KeyVal, KeyValSync},
     serde::{date_and_time::system_time_to_rfc3339, git_url::GitUrl},
@@ -91,8 +92,8 @@ pub fn insert_jobs(
                         .map(system_time_to_rfc3339)
                         .join(", ");
                     bail!(
-                        "the parameters {params:?} have already been inserted at \
-                         {insertion_times}"
+                        "the parameters {} have already been inserted at {insertion_times}",
+                        ron_to_string_pretty(&params).expect("no err")
                     )
                 }
             }
