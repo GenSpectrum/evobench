@@ -12,7 +12,7 @@ use std::{
     process::exit,
     str::FromStr,
     thread,
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 use evobench_evaluator::{
@@ -20,14 +20,14 @@ use evobench_evaluator::{
     get_terminal_width::get_terminal_width,
     git::GitHash,
     info,
-    key::{RunParameters, RunParametersOpts},
+    key::{BenchmarkingJobParameters, RunParameters, RunParametersOpts},
     key_val_fs::key_val::Entry,
     lockable_file::LockStatus,
     run::{
         benchmarking_job::{
             BenchmarkingJobOpts, BenchmarkingJobReasonOpt, BenchmarkingJobSettingsOpts,
         },
-        config::RunConfigWithReload,
+        config::{BenchmarkingCommand, RunConfigWithReload},
         global_app_state_dir::GlobalAppStateDir,
         insert_jobs::{insert_jobs, open_already_inserted, ForceOpt, QuietOpt},
         polling_pool::PollingPool,
@@ -272,6 +272,8 @@ fn run_queues(
     }
 }
 
+const TARGET_NAME_WIDTH: usize = 14;
+
 fn main() -> Result<()> {
     let Opts {
         log_level,
@@ -329,7 +331,7 @@ fn main() -> Result<()> {
         } => {
             let already_inserted = open_already_inserted(&global_app_state_dir)?;
 
-            let mut flat_jobs = Vec::new();
+            let mut flat_jobs: Vec<(BenchmarkingJobParameters, SystemTime)> = Vec::new();
             for job in already_inserted
                 .keys(false, None)?
                 .map(|hash| -> Result<_> {
@@ -345,7 +347,7 @@ fn main() -> Result<()> {
             }
             flat_jobs.sort_by_key(|v| v.1);
             let mut table = TerminalTable::start(
-                &[38, 43],
+                &[38, 43, TARGET_NAME_WIDTH],
                 &[
                     TerminalTableTitle {
                         text: Cow::Borrowed("Insertion time"),
@@ -353,6 +355,10 @@ fn main() -> Result<()> {
                     },
                     TerminalTableTitle {
                         text: Cow::Borrowed("Commit id"),
+                        span: 1,
+                    },
+                    TerminalTableTitle {
+                        text: Cow::Borrowed("Target name"),
                         span: 1,
                     },
                     TerminalTableTitle {
@@ -366,11 +372,23 @@ fn main() -> Result<()> {
             )?;
             for (params, insertion_time) in flat_jobs {
                 let t = system_time_to_rfc3339(insertion_time);
+                let BenchmarkingJobParameters {
+                    run_parameters,
+                    command,
+                } = params;
                 let RunParameters {
                     commit_id,
                     custom_parameters,
-                } = &*params;
-                let values: &[&dyn Display] = &[&t, &commit_id, &custom_parameters];
+                } = &*run_parameters;
+                let BenchmarkingCommand {
+                    target_name,
+                    subdir: _,
+                    command: _,
+                    arguments: _,
+                } = &*command;
+
+                let values: &[&dyn Display] =
+                    &[&t, &commit_id, &target_name.as_str(), &custom_parameters];
                 table.write_data_row(values)?;
             }
             drop(table.finish()?);
@@ -388,8 +406,8 @@ fn main() -> Result<()> {
                 out: O,
             ) -> Result<TerminalTable<'v, 's, O>> {
                 TerminalTable::start(
-                    // t  R  pr WD reason commit
-                    &[37, 3, 5, 3, 17, 42],
+                    // t  R  pr WD reason commit target
+                    &[37, 3, 5, 3, 17, 42, TARGET_NAME_WIDTH],
                     titles,
                     style,
                     terminal_table_opts.clone(),
@@ -399,6 +417,7 @@ fn main() -> Result<()> {
 
             let mut out = stdout().lock();
 
+            let full_span;
             {
                 // Show a table with no data rows, for main titles
                 let titles = &[
@@ -408,6 +427,7 @@ fn main() -> Result<()> {
                     "WD",
                     "Reason",
                     "Commit_id",
+                    "Target_name",
                     "Custom_parameters",
                 ]
                 // .map() is not const
@@ -415,6 +435,7 @@ fn main() -> Result<()> {
                     text: Cow::Borrowed(s),
                     span: 1,
                 });
+                full_span = titles.len();
                 // Somehow have to move `out` in and out, `&mut out`
                 // would not satisfy IsTerminal.
                 // rgb(10, 70, 140) looks perfect but `watch` turns it to black.
@@ -443,7 +464,7 @@ fn main() -> Result<()> {
                     // "Custom parameters"
                     let titles = &[TerminalTableTitle {
                         text: format!("{i}: queue {file_name} ({schedule_condition}):").into(),
-                        span: 7,
+                        span: full_span,
                     }];
                     let mut table = table_with_titles(titles, None, &terminal_table_opts, out)?;
 
@@ -527,6 +548,7 @@ fn main() -> Result<()> {
                                 .map(|v| v.to_number_string())
                                 .unwrap_or_else(|| "".into())
                         };
+                        let target_name = job.benchmarking_job_public.command.target_name.as_str();
 
                         let time = if verbose {
                             &*format!("{file_name} ({key})")
@@ -540,6 +562,7 @@ fn main() -> Result<()> {
                             &*wd,
                             reason,
                             commit_id,
+                            target_name,
                             custom_parameters,
                         ])?;
                         if verbose {

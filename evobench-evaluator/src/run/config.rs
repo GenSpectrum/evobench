@@ -1,12 +1,12 @@
 use std::{
     borrow::Cow,
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fmt::{Debug, Display},
     path::{Path, PathBuf},
     sync::Arc,
 };
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use chrono::{DateTime, Local};
 use kstring::KString;
 
@@ -22,6 +22,7 @@ use crate::{
         git_branch_name::GitBranchName,
         git_url::GitUrl,
         priority::Priority,
+        proper_dirname::ProperDirname,
         proper_filename::ProperFilename,
         val_or_ref::{ValOrRef, ValOrRefTarget},
     },
@@ -330,7 +331,7 @@ impl RemoteRepositoryOpts {
     fn check(
         &self,
         job_template_lists: &BTreeMap<KString, Arc<[JobTemplate]>>,
-        targets: &BTreeMap<KString, Arc<BenchmarkingTarget>>,
+        targets: &BTreeMap<ProperDirname, Arc<BenchmarkingTarget>>,
     ) -> Result<RemoteRepository> {
         let Self {
             url,
@@ -367,6 +368,12 @@ impl RemoteRepositoryOpts {
 /// benchmarking run; the env variables configured in CustomParameters
 /// are set when running this command.
 pub struct BenchmarkingCommand {
+    /// The name is matched on the `target_name` field in
+    /// `JobTemplate`, and it is used as the first path segment below
+    /// `output_base_dir` for storing the results. It will also be
+    /// shown by `evobench-run list`.
+    pub target_name: ProperDirname,
+
     /// Relative path to the subdirectory (provide "." for the top
     /// level of the working directory) where to run the command
     pub subdir: PathBuf,
@@ -395,7 +402,7 @@ pub struct BenchmarkingTarget {
 pub struct JobTemplateOpts {
     priority: Priority,
     initial_boost: Priority,
-    target_name: KString,
+    target_name: ProperDirname,
     // Using `String` for values--type checking is done in conversion
     // to `JobTemplate` (don't want to use another enum here that
     // would be required, and `allowed_custom_parameters` already have
@@ -413,7 +420,7 @@ pub struct JobTemplate {
 impl JobTemplateOpts {
     pub fn check(
         &self,
-        targets: &BTreeMap<KString, Arc<BenchmarkingTarget>>,
+        targets: &BTreeMap<ProperDirname, Arc<BenchmarkingTarget>>,
     ) -> Result<JobTemplate> {
         let Self {
             priority,
@@ -451,7 +458,7 @@ pub struct RunConfigOpts {
     /// What command to run on the target project to execute a
     /// benchmarking run; the env variables configured in
     /// CustomParameters are set when running this command.
-    pub targets: BTreeMap<KString, Arc<BenchmarkingTarget>>,
+    pub targets: Vec<Arc<BenchmarkingTarget>>,
 
     /// A set of named job template lists, referred to by name from
     /// `job_templates_for_insert` and `remote_branch_names_for_poll`.
@@ -500,7 +507,7 @@ impl DefaultConfigPath for RunConfigOpts {
 pub struct RunConfig {
     pub queues: Arc<QueuesConfig>,
     pub working_directory_pool: Arc<WorkingDirectoryPoolOpts>,
-    // pub targets: BTreeMap<String, BenchmarkingCommand>,
+    // targets: BTreeMap<ProperDirname, Arc<BenchmarkingTarget>>,
     pub job_template_lists: BTreeMap<KString, Arc<[JobTemplate]>>,
     pub job_templates_for_insert: Arc<[JobTemplate]>,
     pub benchmarking_job_settings: Arc<BenchmarkingJobSettingsOpts>,
@@ -521,6 +528,21 @@ impl RunConfigOpts {
             output_base_dir,
         } = self;
 
+        let targets: BTreeMap<ProperDirname, Arc<BenchmarkingTarget>> = {
+            let mut seen = BTreeSet::new();
+            targets
+                .iter()
+                .map(|benchmarking_target| {
+                    let name = &benchmarking_target.benchmarking_command.target_name;
+                    if seen.contains(&name) {
+                        bail!("duplicate `target_name` value {:?}", name.as_str())
+                    }
+                    seen.insert(name);
+                    Ok((name.clone(), benchmarking_target.clone_arc()))
+                })
+                .collect::<Result<_>>()?
+        };
+
         let job_template_lists: BTreeMap<KString, Arc<[JobTemplate]>> = job_template_lists
             .iter()
             .map(
@@ -529,7 +551,7 @@ impl RunConfigOpts {
                         template_list_name.clone(),
                         template_list
                             .iter()
-                            .map(|job_template_opts| job_template_opts.check(targets))
+                            .map(|job_template_opts| job_template_opts.check(&targets))
                             .collect::<Result<_>>()?,
                     ))
                 },
@@ -541,7 +563,7 @@ impl RunConfigOpts {
             .try_map(|job_template_optss| {
                 job_template_optss
                     .iter()
-                    .map(|job_template_opts| job_template_opts.check(targets))
+                    .map(|job_template_opts| job_template_opts.check(&targets))
                     .collect::<Result<_>>()
             })?
             // then retrieve the value, either the owned or from the
@@ -550,7 +572,7 @@ impl RunConfigOpts {
             // Clone the Arc while it is still alive as a temporary
             .clone_arc();
 
-        let remote_repository = remote_repository.check(&job_template_lists, targets)?;
+        let remote_repository = remote_repository.check(&job_template_lists, &targets)?;
 
         Ok(RunConfig {
             queues: queues.clone_arc(),
@@ -560,6 +582,7 @@ impl RunConfigOpts {
             benchmarking_job_settings: benchmarking_job_settings.clone_arc(),
             remote_repository,
             output_base_dir: output_base_dir.clone_arc(),
+            // targets,
         })
     }
 }

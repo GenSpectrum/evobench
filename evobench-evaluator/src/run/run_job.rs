@@ -218,6 +218,7 @@ impl<'pool> JobRunner<'pool> {
                 }
 
                 let BenchmarkingCommand {
+                    target_name: _,
                     subdir,
                     command,
                     arguments,
@@ -305,7 +306,10 @@ impl<'pool> JobRunner<'pool> {
         )?;
 
         // The directory holding the full key information
-        let key_dir = checked_run_parameters.extend_path(self.output_base_dir.to_owned());
+        let key_dir = checked_run_parameters.extend_path(
+            self.output_base_dir
+                .append(benchmarking_command.target_name.as_str()),
+        );
         // Below that, we make a dir for this particular run
         let result_dir = (&key_dir).append(self.timestamp.as_str());
         std::fs::create_dir_all(&result_dir).map_err(ctx!("create_dir_all {result_dir:?}"))?;

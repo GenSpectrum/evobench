@@ -27,19 +27,21 @@ use std::{
 use anyhow::{bail, Result};
 use itertools::Itertools;
 use kstring::KString;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     crypto_hash::crypto_hash,
     git::GitHash,
     key_val_fs::as_key::AsKey,
     run::{
+        config::BenchmarkingCommand,
         custom_parameter::{AllowedCustomParameter, CustomParameterValue},
         run_job::AllowableCustomEnvVar,
     },
     serde::{allowed_env_var::AllowedEnvVar, date_and_time::DateTimeWithOffset},
 };
 
-#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OsInfo {
     /// e.g. taken from `UName.sysname`
@@ -52,7 +54,7 @@ pub struct OsInfo {
 
 /// Information that together should allow a host to be determined to
 /// be equivalent.
-#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HostInfo {
     pub cpu_model: String,
@@ -63,7 +65,7 @@ pub struct HostInfo {
     pub os_info: OsInfo,
 }
 
-#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Host {
     /// e.g. taken from `UName.nodename`
@@ -73,7 +75,7 @@ pub struct Host {
 
 /// As determined by evobench-run (but should compare to duplicates
 /// of some of the fields in the bench log file resulting from a run)
-#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EarlyContext {
     pub host: Host,
@@ -85,7 +87,7 @@ pub struct EarlyContext {
 /// Custom key/value pairings, passed on as environment variables when
 /// executing the benchmarking runner of the target project. These
 /// are checked for allowed and required values.
-#[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct CustomParameters(BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, CustomParameterValue>);
 
 impl CustomParameters {
@@ -155,7 +157,7 @@ pub struct RunParametersOpts {
     pub commit_id: GitHash,
 }
 
-#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunParameters {
     pub commit_id: GitHash,
@@ -175,16 +177,32 @@ impl RunParameters {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RunParametersHash(String);
+/// Only the parts of a BenchmarkingJob that determine results--but
+/// also excluding schedule_condition, which *does* have a conscious
+/// influence on results, but comes from the configured pipeline, not
+/// the insertion. This here is used for insertion uniqueness
+/// checking, but maybe also for key determination lager (XX todo).
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+pub struct BenchmarkingJobParameters {
+    pub run_parameters: Arc<RunParameters>,
+    /// NOTE that BenchmarkingCommand has both `target_name` and the
+    /// actual values; we currently make our key be based on *both* at
+    /// the same time! I.e. a job with the same actual values but
+    /// different `target_name` will be treated as another key!
+    /// (FUTURE: is this really right?)
+    pub command: Arc<BenchmarkingCommand>,
+}
 
-impl From<&RunParameters> for RunParametersHash {
-    fn from(value: &RunParameters) -> Self {
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+pub struct BenchmarkingJobParametersHash(String);
+
+impl From<&BenchmarkingJobParameters> for BenchmarkingJobParametersHash {
+    fn from(value: &BenchmarkingJobParameters) -> Self {
         Self(crypto_hash(value))
     }
 }
 
-impl AsKey for RunParametersHash {
+impl AsKey for BenchmarkingJobParametersHash {
     fn as_filename_str(&self) -> std::borrow::Cow<str> {
         (&self.0).into()
     }
@@ -206,7 +224,7 @@ impl RunParametersOpts {
 
 /// As output by the benchmark runner of the target project (currently
 /// always the evobench-probes library)
-#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LateContext {
     /// Taken from `log_message::Metadata`: including version, as determined
@@ -214,7 +232,7 @@ pub struct LateContext {
     pub compiler: String,
 }
 
-#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Key {
     /// Info gleaned by evobench-run before executing a run.

@@ -4,7 +4,7 @@ use anyhow::Result;
 
 use crate::{
     ctx,
-    key::{RunParameters, RunParametersOpts},
+    key::{BenchmarkingJobParameters, RunParameters, RunParametersOpts},
     serde::priority::{NonComparableNumber, Priority},
     utillib::arc::CloneArc,
 };
@@ -151,6 +151,26 @@ impl BenchmarkingJob {
             benchmarking_job_state,
             priority: *priority,
             current_boost: Priority::NORMAL,
+        }
+    }
+
+    pub fn benchmarking_job_parameters(&self) -> BenchmarkingJobParameters {
+        // Ignore all fields that are not "key" parts (inputs
+        // determining/influencing the output)
+        let BenchmarkingJob {
+            benchmarking_job_public:
+                BenchmarkingJobPublic {
+                    reason: _,
+                    run_parameters,
+                    command,
+                },
+            benchmarking_job_state: _,
+            priority: _,
+            current_boost: _,
+        } = self;
+        BenchmarkingJobParameters {
+            run_parameters: run_parameters.clone_arc(),
+            command: command.clone_arc(),
         }
     }
 }
