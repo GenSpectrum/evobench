@@ -3,6 +3,7 @@ use std::process::Command;
 use anyhow::{bail, Result};
 
 use crate::{
+    config_file::ron_to_string_pretty,
     ctx, info,
     key_val_fs::{
         key_val::KeyValError,
@@ -168,7 +169,10 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
                 remaining_error_budget,
                 last_working_directory: Some(working_directory_id),
             });
-            info!("job completed: {job:?}");
+            info!(
+                "job completed: {}",
+                ron_to_string_pretty(&job).expect("no err")
+            );
             if let Some(done_jobs_queue) = done_jobs_queue {
                 done_jobs_queue.push_front(&job)?;
             }
@@ -195,7 +199,10 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
                     // XX this should use more important error
                     // logging than info!; (XX also, repetitive
                     // BenchmarkingJob recreation and cloning.)
-                    info!("job gave error: {job:?}: {error:#?}");
+                    info!(
+                        "job gave error: {}: {error:#?}",
+                        ron_to_string_pretty(&job).expect("no err")
+                    );
                     if remaining_error_budget > 0 {
                         // Re-schedule
                         let job = job.clone_for_queue_reinsertion(BenchmarkingJobState {
@@ -250,7 +257,10 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
                         if let Some(queue) = maybe_queue {
                             queue.push_front(&job)?;
                         } else {
-                            info!("job dropping off the pipeline: {job:?}");
+                            info!(
+                                "job dropping off the pipeline: {}",
+                                ron_to_string_pretty(&job).expect("no err")
+                            );
                         }
                     } else {
                         job_completed(remaining_count)?;
@@ -276,7 +286,8 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
             } else {
                 info!(
                     "job dropped due to running out of error budget \
-                     and no configured erroneous_jobs_queue: {job:?}"
+                     and no configured erroneous_jobs_queue: {}",
+                    ron_to_string_pretty(&job).expect("no err")
                 );
             }
         }
