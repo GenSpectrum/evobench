@@ -341,7 +341,9 @@ impl<'pool> JobRunner<'pool> {
             Ok(target)
         };
         let evobench_log_tmp = compress_file_as(&evobench_log, "evobench.log", true)?;
-        compress_file_as(&bench_output_log, "bench_output.log", false)?;
+        if bench_output_log.path().exists() {
+            compress_file_as(&bench_output_log, "bench_output.log", false)?;
+        }
 
         info!("evaluating benchmark file");
 
