@@ -13,7 +13,7 @@ use crate::{
     ctx,
     git::GitHash,
     info, io_utils,
-    key::RunParameters,
+    key::{BenchmarkingJobParameters, RunParameters},
     lockable_file::StandaloneExclusiveFileLock,
     path_util::AppendToPath,
     serde::{date_and_time::DateTimeWithOffset, git_url::GitUrl},
@@ -121,7 +121,7 @@ pub struct WorkingDirectoryPool {
 pub struct ProcessingError {
     /// An Option since working directory pools are also used for
     /// things that are not benchmark runs
-    run_parameters: Option<RunParameters>,
+    benchmarking_job_parameters: Option<BenchmarkingJobParameters>,
     context: String,
     error: String,
 }
@@ -286,7 +286,7 @@ impl WorkingDirectoryPool {
         working_directory_id: WorkingDirectoryId,
         timestamp: &DateTimeWithOffset,
         action: impl FnOnce(&mut WorkingDirectory) -> Result<T>,
-        run_parameters: Option<&RunParameters>,
+        benchmarking_job_parameters: Option<&BenchmarkingJobParameters>,
         context: &str,
     ) -> Result<T> {
         self.set_current_working_directory(working_directory_id)?;
@@ -301,14 +301,14 @@ impl WorkingDirectoryPool {
 
         info!(
             "process_working_directory {working_directory_id:?} \
-             ({context}, {run_parameters:?})..."
+             ({context}, {benchmarking_job_parameters:?})..."
         );
 
         match action(wd) {
             Ok(v) => {
                 info!(
                     "process_working_directory {working_directory_id:?} \
-                     ({context}, {run_parameters:?}) succeeded."
+                     ({context}, {benchmarking_job_parameters:?}) succeeded."
                 );
 
                 Ok(v)
@@ -318,14 +318,14 @@ impl WorkingDirectoryPool {
                     // Do not show error as it might be large; XX
                     // which is a mis-feature!
                     "process_working_directory {working_directory_id:?} \
-                     ({context}, {run_parameters:?}) failed."
+                     ({context}, {benchmarking_job_parameters:?}) failed."
                 );
 
                 let err = format!("{error:#?}");
                 self.set_processing_error(
                     working_directory_id,
                     ProcessingError {
-                        run_parameters: run_parameters.cloned(),
+                        benchmarking_job_parameters: benchmarking_job_parameters.cloned(),
                         context: context.to_string(),
                         error: err.clone(),
                     },

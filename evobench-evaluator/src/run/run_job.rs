@@ -4,6 +4,7 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     ffi::OsString,
     io::{stderr, Write},
+    ops::Deref,
     os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
     process::Command,
@@ -24,7 +25,7 @@ use crate::{
         capture::{CaptureOpts, OutFile},
         temporary_file::TemporaryFile,
     },
-    key::RunParameters,
+    key::{BenchmarkingJobParameters, RunParameters},
     path_util::rename_tmp_path,
     serde::{
         allowed_env_var::AllowEnvVar, date_and_time::DateTimeWithOffset,
@@ -174,18 +175,21 @@ impl<'pool> JobRunner<'pool> {
         self,
         working_directory_id: WorkingDirectoryId,
         reason: &Option<String>,
-        checked_run_parameters: &RunParameters,
+        benchmarking_job_parameters: &BenchmarkingJobParameters,
         schedule_condition: &ScheduleCondition,
-        benchmarking_command: &BenchmarkingCommand,
     ) -> Result<()> {
         if self.dry_run.means(DryRun::DoNothing) {
-            println!("dry-run: would run {checked_run_parameters:?}");
+            println!("dry-run: would run {benchmarking_job_parameters:?}");
             return Ok(());
         }
+        let BenchmarkingJobParameters {
+            run_parameters,
+            command,
+        } = benchmarking_job_parameters;
         let RunParameters {
             commit_id,
             custom_parameters,
-        } = checked_run_parameters;
+        } = run_parameters.deref();
 
         let bench_tmp_dir = bench_tmp_dir()?;
 
@@ -222,7 +226,7 @@ impl<'pool> JobRunner<'pool> {
                     subdir,
                     command,
                     arguments,
-                } = benchmarking_command;
+                } = command.deref();
 
                 let dir = working_directory
                     .git_working_dir
@@ -259,8 +263,9 @@ impl<'pool> JobRunner<'pool> {
                     .expect("has filename"),
                 )?;
 
-                // Add info header
-                command_output_file.write_str(&serde_yml::to_string(checked_run_parameters)?)?;
+                // Add info header in YAML
+                command_output_file
+                    .write_str(&serde_yml::to_string(benchmarking_job_parameters)?)?;
 
                 let status = {
                     let mut other_files: Vec<Box<dyn Write + Send + 'static>> = vec![];
@@ -301,15 +306,13 @@ impl<'pool> JobRunner<'pool> {
                     )
                 }
             },
-            Some(checked_run_parameters),
+            Some(benchmarking_job_parameters),
             "run_job",
         )?;
 
         // The directory holding the full key information
-        let key_dir = checked_run_parameters.extend_path(
-            self.output_base_dir
-                .append(benchmarking_command.target_name.as_str()),
-        );
+        let key_dir =
+            run_parameters.extend_path(self.output_base_dir.append(command.target_name.as_str()));
         // Below that, we make a dir for this particular run
         let result_dir = (&key_dir).append(self.timestamp.as_str());
         std::fs::create_dir_all(&result_dir).map_err(ctx!("create_dir_all {result_dir:?}"))?;

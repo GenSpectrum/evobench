@@ -177,8 +177,9 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
 
         let BenchmarkingJobPublic {
             reason,
-            run_parameters,
-            command,
+            // Getting these via job.benchmarking_job_parameters() instead
+            run_parameters: _,
+            command: _,
         } = job.benchmarking_job_public.clone();
 
         if remaining_error_budget > 0 {
@@ -186,9 +187,8 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
                 if let Err(error) = job_runner.run_job(
                     working_directory_id,
                     &reason,
-                    &run_parameters,
+                    &job.benchmarking_job_parameters(),
                     &self.current.schedule_condition,
-                    &command,
                 ) {
                     remaining_error_budget = remaining_error_budget - 1;
 
