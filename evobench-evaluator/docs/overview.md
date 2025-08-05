@@ -1,10 +1,47 @@
 # Overview over how evobench works
 
+The evobench project/repository maintains 3 parts: two tools,
+`evobench-evaluator` and `evobench-run` (described below), and a C++
+library to collect benchmarking data,
+[evobench-probes](../../evobench-probes/README.md).
+
 ## evobench-evaluator
 
-TODO
+This is a tool to evaluate the log files from benchmark runs using
+(currently) the [evobench-probes](../../evobench-probes/README.md)
+library, and generate statistics as Excel files and flame graphs. It
+needs to be given a file or files explicitly to do its work, it
+doesn't know on its own about what log files might belong together. It
+also doesn't execute new benchmarking runs. Run it with `--help`.
 
 ## evobench-run
+
+This is a tool to maintain a (currently single) pipeline of queues of
+benchmarking jobs that need execution now or at some particular time,
+and runs those when appropriate, only ever one at the same time (to
+avoid the jobs from interfering with each other and influencing the
+benchmarking results). The tool has various subcommands, for polling a
+repository for changes, inserting jobs, listing them, and running them
+(daemon). Run it with `--help`.
+
+It has a concept of a "key", which is all pieces of information that
+influence a benchmarking run (which commit of the target project was
+run, with which custom parameters, in which queuing context
+(configurable), and on which machine/OS (but which is not currently
+used as results are currently only stored locally)).
+
+It currently runs the `evobench-evaluator` after each finished job run
+to evaluate the results of the run and also generate summary
+statistics across all runs for the same "key".
+
+### Configuration
+
+Currently the best documentation of the configuration file is in the
+[evobench-run.ron](https://github.com/GenSpectrum/silo-benchmark-ci/blob/master/etc/evobench-run.ron)
+file of the
+[silo-benchmark-ci](https://github.com/GenSpectrum/silo-benchmark-ci)
+repository. It also mentions where to start looking in the code if
+something needs to be verified.
 
 ### Working principles
 
