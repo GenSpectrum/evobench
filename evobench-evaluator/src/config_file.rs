@@ -17,6 +17,7 @@ use serde::{de::DeserializeOwned, Serialize};
 
 use crate::{
     ctx, info,
+    io_utils::tempfile_utils::TempfileOpts,
     json5_from_str::{json5_from_str, Json5FromStrError},
     path_util::add_extension,
     serde::proper_filename::ProperFilename,
@@ -29,6 +30,45 @@ use crate::{
 pub fn ron_to_string_pretty<V: serde::Serialize>(value: &V) -> Result<String, ron::Error> {
     ron::Options::default()
         .to_string_pretty(value, ron::ser::PrettyConfig::default().struct_names(true))
+}
+
+/// Writes via tmpfile-and-rename; retains permissions
+pub fn ron_to_file_pretty<V: serde::Serialize>(
+    value: &V,
+    path: impl AsRef<Path>,
+    _initial_mode: Option<u32>,
+) -> Result<()> {
+    let s = ron_to_string_pretty(value)?;
+    let path = path.as_ref();
+    let tmpfile = TempfileOpts {
+        target_path: path.into(),
+        retain_tempfile: false,
+        migrate_access: true,
+    }
+    .tempfile()?;
+    let temp_path = &tmpfile.temp_path;
+    // XX make use of initial_mode
+    std::fs::write(temp_path, s).map_err(ctx!("writing file to {temp_path:?}"))?;
+    tmpfile.finish()?;
+    Ok(())
+}
+
+pub fn parse_ron<V: DeserializeOwned>(s: &str) -> Result<V> {
+    ron::from_str(&s)
+        .map_err(|error| {
+            let ron::error::SpannedError {
+                code,
+                position: ron::error::Position { line, col },
+            } = error;
+            anyhow!("{code} at line:column {line}:{col}")
+        })
+        .map_err(ctx!("decoding RON"))
+}
+
+pub fn load_ron_file<V: DeserializeOwned>(path: impl AsRef<Path>) -> Result<V> {
+    let path = path.as_ref();
+    let s = std::fs::read_to_string(&path).map_err(ctx!("loading file from {path:?}"))?;
+    parse_ron(&s).map_err(ctx!("reading file from {path:?}"))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -59,15 +99,7 @@ impl ConfigBackend {
         let s =
             std::fs::read_to_string(&path).map_err(ctx!("loading config file from {path:?}"))?;
         match self {
-            ConfigBackend::Ron => ron::from_str(&s)
-                .map_err(|error| {
-                    let ron::error::SpannedError {
-                        code,
-                        position: ron::error::Position { line, col },
-                    } = error;
-                    anyhow!("{code} at line:column {line}:{col}")
-                })
-                .map_err(ctx!("decoding RON from config file {path:?}")),
+            ConfigBackend::Ron => parse_ron(&s).map_err(ctx!("reading config file from {path:?}")),
             ConfigBackend::Json5 => {
                 // https://crates.io/crates/json5
                 // https://crates.io/crates/serde_json5 <-- currently used, fork of json5
