@@ -13,7 +13,7 @@ use std::{
 
 use anyhow::{bail, Result};
 use chrono::{DateTime, Local};
-use nix::libc::{getpid, getuid};
+use nix::{libc::getuid, unistd::getpid};
 use run_git::path_util::{add_extension, AppendToPath};
 use strum_macros::EnumString;
 
@@ -193,12 +193,7 @@ impl<'pool> JobRunner<'pool> {
 
         let bench_tmp_dir = bench_tmp_dir()?;
 
-        let pid = unsafe {
-            // Safe because there's no way this can be unsafe (there's no
-            // reason for the unsafe status other than being a direct C
-            // FFI call and thus marked so)
-            getpid()
-        };
+        let pid = getpid();
         // File for evobench library output
         let evobench_log =
             TemporaryFile::from((&bench_tmp_dir).append(format!("evobench-{pid}.log")));
