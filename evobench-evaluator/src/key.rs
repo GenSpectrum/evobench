@@ -63,6 +63,9 @@ pub struct HostInfo {
     // ram_kb: NonZeroU32,
     // and swap?
     // ^ Both irrelevant as long as there's *enough* RAM.
+    // XX Thus, log these things (together with free mem
+    // before/during?/after? time of evaluation), then allow to
+    // correlate, but don't make it part of the key, OK?
     pub os_info: OsInfo,
 }
 
