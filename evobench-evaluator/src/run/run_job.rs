@@ -13,7 +13,7 @@ use std::{
 
 use anyhow::{bail, Result};
 use chrono::{DateTime, Local};
-use nix::{libc::getuid, unistd::getpid};
+use nix::{unistd::getpid, unistd::getuid};
 use run_git::path_util::{add_extension, AppendToPath};
 use strum_macros::EnumString;
 
@@ -114,13 +114,7 @@ fn bench_tmp_dir() -> Result<PathBuf> {
                     std::io::ErrorKind::AlreadyExists => {
                         let m = std::fs::metadata(&tmp)?;
                         let dir_uid = m.uid();
-                        let uid = unsafe {
-                            // Safe because there's no way this can be
-                            // unsafe (there's no reason for the
-                            // unsafe status other than being a direct
-                            // C FFI call and thus marked so)
-                            getuid()
-                        };
+                        let uid: u32 = getuid().into();
                         if dir_uid == uid {
                             Ok(tmp)
                         } else {
