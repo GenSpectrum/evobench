@@ -25,7 +25,7 @@ const PROGRAM_NAME: &str = "evobench-evaluator";
 
 #[derive(clap::Parser, Debug)]
 #[clap(next_line_help = true)]
-#[clap(set_term_width = get_terminal_width())]
+#[clap(set_term_width = get_terminal_width(4))]
 struct Opts {
     /// The subcommand to run. Use `--help` after the sub-command to
     /// get a list of the allowed options there.

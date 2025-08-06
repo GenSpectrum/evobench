@@ -16,10 +16,12 @@ pub fn terminal_size_using_tty() -> Option<(Width, Height)> {
 }
 
 /// Always return a width, fall back to a default value of 120.
-pub fn get_terminal_width() -> usize {
+pub fn get_terminal_width(right_margin: usize) -> usize {
     let default = 120;
     if let Some((terminal_size::Width(width), _height)) = terminal_size_using_tty() {
-        usize::from(width).checked_sub(4).unwrap_or(default)
+        usize::from(width)
+            .checked_sub(right_margin)
+            .unwrap_or(default)
     } else {
         default
     }

@@ -52,7 +52,7 @@ use evobench_evaluator::{
 
 #[derive(clap::Parser, Debug)]
 #[clap(next_line_help = true)]
-#[clap(set_term_width = get_terminal_width())]
+#[clap(set_term_width = get_terminal_width(4))]
 /// Schedule (and query?) benchmarking jobs.
 struct Opts {
     #[clap(flatten)]
@@ -587,7 +587,7 @@ fn main() -> Result<()> {
                     Ok(table.finish()?)
                 };
 
-            let width = get_terminal_width();
+            let width = get_terminal_width(1);
             let bar_of = |c: u8| String::try_from([c].repeat(width)).expect("ascii char given");
             let thin_bar = bar_of(b'-');
             let thick_bar = bar_of(b'=');
