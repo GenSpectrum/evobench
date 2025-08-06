@@ -5,6 +5,8 @@ use kstring::KString;
 use serde::de::Visitor;
 
 pub trait AllowEnvVar {
+    /// Max allowed variable name length in UTF-8 bytes
+    const MAX_ENV_VAR_NAME_LEN: usize;
     fn allow_env_var(s: &str) -> bool;
     fn expecting() -> String;
 }
@@ -61,6 +63,15 @@ impl<A: AllowEnvVar> FromStr for AllowedEnvVar<A> {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.contains('\0') {
+            bail!("null characters are not allowed in environment variable names")
+        }
+        if s.len() > A::MAX_ENV_VAR_NAME_LEN {
+            bail!(
+                "environment variable names must not be longer than {} bytes",
+                A::MAX_ENV_VAR_NAME_LEN
+            )
+        }
         if A::allow_env_var(s) {
             Ok(Self(KString::from_ref(s), PhantomData))
         } else {

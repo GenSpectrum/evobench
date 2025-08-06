@@ -177,8 +177,13 @@ impl RunParameters {
     /// files for this run. TEMPORARY solution.
     pub fn extend_path(&self, mut path: PathBuf) -> PathBuf {
         for (key, val) in self.custom_parameters.0.iter() {
-            let v = val.as_str();
-            path.push(format!("{key}={v}"));
+            let val = val.as_str();
+            // key.len() + 1 + val.len() is statically guaranteed to
+            // fit in the 255 bytes of max file name length on
+            // Linux. \0 is disallowed on construction time. Since we
+            // interpolate a =, there are no possible remaining
+            // invalid cases.
+            path.push(format!("{key}={val}"));
         }
         path.push(self.commit_id.to_string());
         path

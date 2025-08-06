@@ -3,7 +3,11 @@ use std::{ffi::OsStr, num::NonZeroU32, str::FromStr};
 use anyhow::{anyhow, bail, Result};
 use kstring::KString;
 
-use crate::serde::{proper_dirname::ProperDirname, proper_filename::ProperFilename};
+use crate::serde::{
+    allowed_env_var::AllowEnvVar, proper_dirname::ProperDirname, proper_filename::ProperFilename,
+};
+
+use super::run_job::AllowableCustomEnvVar;
 
 /// The value type of a custom parameter--those values are passed as
 /// environment variables and hence as strings, but they are parsed
@@ -33,13 +37,25 @@ pub struct CustomParameterValue {
 }
 
 impl CustomParameterValue {
+    /// Make this so that "{key}={val}" fits in a path segment, so
+    /// that RunParameters.extend_path() always works.
+    pub const MAX_VALUE_STRING_LEN: usize = 255 - 1 - AllowableCustomEnvVar::MAX_ENV_VAR_NAME_LEN;
+
     pub fn as_str(&self) -> &str {
         &self.value
     }
 
     pub fn checked_from(r#type: CustomParameterType, value: &KString) -> Result<Self> {
+        // Check:
         match r#type {
-            CustomParameterType::String => (),
+            CustomParameterType::String => {
+                // This check is required, right? What does Rust do
+                // when setting env vars or converting to OsStr? Cut
+                // off?
+                if value.contains('\0') {
+                    bail!("custom parameter values may not contain null characters")
+                }
+            }
             CustomParameterType::Filename => {
                 let _ = ProperFilename::from_str(value).map_err(|e| anyhow!("expecting {e}"))?;
             }
@@ -61,6 +77,7 @@ impl CustomParameterValue {
                 let _ = u32::from_str(value)?;
             }
         }
+        // OK.
         Ok(Self {
             r#type,
             value: value.clone(),

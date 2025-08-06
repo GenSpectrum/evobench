@@ -53,9 +53,12 @@ pub fn is_evobench_env_var(s: &str) -> bool {
 #[derive(Debug)]
 pub struct AllowableCustomEnvVar;
 impl AllowEnvVar for AllowableCustomEnvVar {
+    const MAX_ENV_VAR_NAME_LEN: usize = 80;
+
     fn allow_env_var(s: &str) -> bool {
         !is_evobench_env_var(s)
     }
+
     fn expecting() -> String {
         format!(
             "a variable name that is *not* any of {}",
