@@ -211,7 +211,8 @@ impl WorkingDirectoryPool {
         &self.base_dir
     }
 
-    /// Guaranteed to be at least 1
+    /// The value from the configuration as `usize`. Guaranteed to be
+    /// at least 1.
     pub fn capacity(&self) -> usize {
         self.opts.capacity.get().into()
     }
