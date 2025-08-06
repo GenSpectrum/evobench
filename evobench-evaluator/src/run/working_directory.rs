@@ -94,6 +94,7 @@ pub struct WorkingDirectory {
     pub git_working_dir: GitWorkingDir,
     pub commit: GitHash,
     pub working_directory_status: WorkingDirectoryStatus,
+    working_directory_status_needs_saving: bool,
     /// last use time: mtime of the .status file
     pub mtime: SystemTime,
 }
@@ -111,12 +112,15 @@ impl WorkingDirectory {
     pub fn open(path: PathBuf) -> Result<Self> {
         // let quiet = false;
 
+        let working_directory_status_needs_saving;
+
         let status_path = Self::status_path_from_working_dir_path(&path)?;
         let (mtime, status);
         match status_path.metadata() {
             Ok(metadata) => {
                 mtime = metadata.modified()?;
                 status = load_ron_file(&status_path)?;
+                working_directory_status_needs_saving = false;
             }
             Err(e) => {
                 match e.kind() {
@@ -127,6 +131,7 @@ impl WorkingDirectory {
                         );
                         mtime = SystemTime::now();
                         status = WorkingDirectoryStatus::new();
+                        working_directory_status_needs_saving = true;
                     }
                     _ => {
                         return Err(e).map_err(ctx!(
@@ -145,40 +150,49 @@ impl WorkingDirectory {
                 .modified()?
         };
         let commit: GitHash = git_working_dir.get_head_commit_id()?.parse()?;
-        Ok(Self {
+        let mut slf = Self {
             git_working_dir,
             commit,
             working_directory_status: status,
+            working_directory_status_needs_saving,
             mtime,
-        })
+        };
+        slf.set_and_save_status(Status::CheckedOut)?;
+        Ok(slf)
     }
 
-    /// (Re-)save `$n.status` file (pool is locked (races?, when is
-    /// the lock taken?--XXX OH, actually there is no lock!), nobody
-    /// can change such a file, thus we do not have to re-check if it
-    /// was changed on disk)
-    fn save_status(&self) -> Result<()> {
-        let status = &self.working_directory_status;
-        let path = self.status_path()?;
-        ron_to_file_pretty(status, &path, None)?;
-        if status.status.is_set_aside() {
-            // Mis-use executable bit to easily see error status files
-            // in dir listings on the command line.
-            std::fs::set_permissions(&path, Permissions::from_mode(0o755))
-                .map_err(ctx!("setting executable permission on file {path:?}"))?;
+    /// Set status to `status`. Also increments the run count if the
+    /// status changed to Status::Processing, and (re-)saves
+    /// `$n.status` file if needed.
+    // (pool is locked (races?, when is
+    // the lock taken?--XXX OH, actually there is no lock!), nobody
+    // can change such a file, thus we do not have to re-check if it
+    // was changed on disk)
+    pub fn set_and_save_status(&mut self, status: Status) -> Result<()> {
+        let old_status = self.working_directory_status.status;
+        self.working_directory_status.status = status;
+        let needs_saving;
+        if old_status != status {
+            needs_saving = true;
+            if status == Status::Processing {
+                self.working_directory_status.num_runs += 1;
+            }
+        } else {
+            needs_saving = self.working_directory_status_needs_saving;
         }
+        if needs_saving {
+            let working_directory_status = &self.working_directory_status;
+            let path = self.status_path()?;
+            ron_to_file_pretty(working_directory_status, &path, None)?;
+            if working_directory_status.status.is_set_aside() {
+                // Mis-use executable bit to easily see error status files
+                // in dir listings on the command line.
+                std::fs::set_permissions(&path, Permissions::from_mode(0o755))
+                    .map_err(ctx!("setting executable permission on file {path:?}"))?;
+            }
+        }
+        self.working_directory_status_needs_saving = false;
         Ok(())
-    }
-
-    /// Give `increment_run_count == true` if you set it to
-    /// Status::Processing` (XX do this automatically? But have to
-    /// check if it is a change?)
-    pub fn change_status(&mut self, to_status: Status, increment_run_count: bool) -> Result<()> {
-        self.working_directory_status.status = to_status;
-        if increment_run_count {
-            self.working_directory_status.num_runs += 1;
-        }
-        self.save_status()
     }
 
     pub fn clone_repo(base_dir: &Path, dir_file_name: &str, url: &GitUrl) -> Result<Self> {
@@ -188,13 +202,14 @@ impl WorkingDirectory {
         let status = WorkingDirectoryStatus::new();
         let mtime = std::fs::metadata(git_working_dir.working_dir_path_ref())?.modified()?;
         info!("clone_repo({base_dir:?}, {dir_file_name:?}, {url}) succeeded");
-        let slf = Self {
+        let mut slf = Self {
             git_working_dir,
             commit,
             working_directory_status: status,
+            working_directory_status_needs_saving: true,
             mtime,
         };
-        slf.save_status()?;
+        slf.set_and_save_status(Status::CheckedOut)?;
         Ok(slf)
     }
 
@@ -231,8 +246,7 @@ impl WorkingDirectory {
                 self.git_working_dir.working_dir_path_ref()
             );
             self.commit = commit;
-            self.working_directory_status.status = Status::CheckedOut;
-            self.save_status()?;
+            self.set_and_save_status(Status::CheckedOut)?;
             Ok(())
         }
     }

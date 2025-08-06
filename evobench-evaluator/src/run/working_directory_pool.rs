@@ -313,7 +313,7 @@ impl WorkingDirectoryPool {
             bail!("working directory {working_directory_id:?} is set aside (error state)")
         }
 
-        wd.change_status(Status::Processing, true)?;
+        wd.set_and_save_status(Status::Processing)?;
 
         info!(
             "process_working_directory {working_directory_id:?} \
@@ -322,7 +322,7 @@ impl WorkingDirectoryPool {
 
         match action(wd) {
             Ok(v) => {
-                wd.change_status(Status::Finished, false)?;
+                wd.set_and_save_status(Status::Finished)?;
 
                 info!(
                     "process_working_directory {working_directory_id:?} \
@@ -332,7 +332,7 @@ impl WorkingDirectoryPool {
                 Ok(v)
             }
             Err(error) => {
-                wd.change_status(Status::Error, false)?;
+                wd.set_and_save_status(Status::Error)?;
 
                 info!(
                     // Do not show error as it might be large; XX
