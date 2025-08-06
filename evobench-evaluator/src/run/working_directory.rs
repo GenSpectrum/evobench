@@ -205,7 +205,7 @@ impl WorkingDirectory {
         let git_working_dir = git_clone(&base_dir, [], url.as_str(), dir_file_name, quiet)?;
         let commit: GitHash = git_working_dir.get_head_commit_id()?.parse()?;
         let status = WorkingDirectoryStatus::new();
-        let mtime = std::fs::metadata(git_working_dir.working_dir_path_ref())?.modified()?;
+        let mtime = status.creation_timestamp.to_systemtime();
         info!("clone_repo({base_dir:?}, {dir_file_name:?}, {url}) succeeded");
         let mut slf = Self {
             git_working_dir,
