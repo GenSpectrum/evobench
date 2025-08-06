@@ -10,6 +10,7 @@ use anyhow::{anyhow, bail, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    config_file::load_ron_file,
     ctx,
     git::GitHash,
     info, io_utils,
@@ -21,7 +22,7 @@ use crate::{
 
 use super::{
     run_queues::RunQueuesData,
-    working_directory::{Status, WorkingDirectory},
+    working_directory::{Status, WorkingDirectory, WorkingDirectoryStatus},
 };
 
 // clap::Args?
@@ -105,6 +106,16 @@ impl WorkingDirectoryPoolBaseDir {
                 _ => Err(e).map_err(ctx!("reading symlink {path:?}")),
             },
         }
+    }
+
+    pub fn get_working_directory_status(
+        &self,
+        id: WorkingDirectoryId,
+    ) -> Result<WorkingDirectoryStatus> {
+        let path = self.path().append(id.to_directory_file_name());
+        // XX partial copy paste from WorkingDirectory::open (ok not too much though)
+        let status_path = WorkingDirectory::status_path_from_working_dir_path(&path)?;
+        load_ron_file(&status_path)
     }
 }
 

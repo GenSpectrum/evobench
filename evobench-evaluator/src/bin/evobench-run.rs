@@ -35,6 +35,7 @@ use evobench_evaluator::{
         run_job::{DryRun, JobRunner},
         run_queue::RunQueue,
         run_queues::RunQueues,
+        working_directory::Status,
         working_directory_pool::{WorkingDirectoryPool, WorkingDirectoryPoolBaseDir},
     },
     serde::{
@@ -457,7 +458,7 @@ fn main() -> Result<()> {
                     } = run_queue;
 
                     // "Insertion time"
-                    // "locked" -- now just "R" or ""
+                    // "R", "E", ""
                     // priority
                     // reason
                     // "Commit id"
@@ -518,6 +519,8 @@ fn main() -> Result<()> {
                         } else {
                             ""
                         };
+                        let opt_current_working_directory =
+                            working_directory_base_dir.get_current_working_directory()?;
                         let custom_parameters = &*job
                             .benchmarking_job_public
                             .run_parameters
@@ -531,15 +534,26 @@ fn main() -> Result<()> {
                                 .expect("not taken before")
                                 .lock_status()?;
                             if lock_status == LockStatus::ExclusiveLock {
-                                ("R", true)
+                                let s = if let Some(dir) = opt_current_working_directory {
+                                    let status = working_directory_base_dir
+                                        .get_working_directory_status(dir)?;
+                                    match status.status {
+                                        Status::CheckedOut => "?", // Shouldn't happen
+                                        Status::Processing => "R", // running
+                                        Status::Error => "F",      // failure
+                                        Status::Finished => "E",   // evaluating
+                                    }
+                                } else {
+                                    "R"
+                                };
+                                (s, true)
                             } else {
                                 ("", false)
                             }
                         };
                         let priority = &*job.priority()?.to_string();
                         let wd = if is_locked {
-                            working_directory_base_dir
-                                .get_current_working_directory()?
+                            opt_current_working_directory
                                 .map(|v| v.to_number_string())
                                 .unwrap_or_else(|| "".into())
                         } else {

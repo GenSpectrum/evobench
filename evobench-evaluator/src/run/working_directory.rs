@@ -100,7 +100,7 @@ pub struct WorkingDirectory {
 }
 
 impl WorkingDirectory {
-    fn status_path_from_working_dir_path(path: &Path) -> Result<PathBuf> {
+    pub fn status_path_from_working_dir_path(path: &Path) -> Result<PathBuf> {
         add_extension(&path, "status")
             .ok_or_else(|| anyhow!("can't add extension to path {path:?}"))
     }
