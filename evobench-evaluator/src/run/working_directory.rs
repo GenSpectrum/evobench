@@ -2,6 +2,8 @@
 //! usable (i.e. is worth trying to use).
 
 use std::{
+    fs::Permissions,
+    os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
     time::SystemTime,
 };
@@ -156,8 +158,16 @@ impl WorkingDirectory {
     /// can change such a file, thus we do not have to re-check if it
     /// was changed on disk)
     fn save_status(&self) -> Result<()> {
+        let status = &self.working_directory_status;
         let path = self.status_path()?;
-        ron_to_file_pretty(&self.working_directory_status, &path, None)
+        ron_to_file_pretty(status, &path, None)?;
+        if status.status.is_set_aside() {
+            // Mis-use executable bit to easily see error status files
+            // in dir listings on the command line.
+            std::fs::set_permissions(&path, Permissions::from_mode(0o755))
+                .map_err(ctx!("setting executable permission on file {path:?}"))?;
+        }
+        Ok(())
     }
 
     /// Give `increment_run_count == true` if you set it to
