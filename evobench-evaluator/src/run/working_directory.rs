@@ -115,11 +115,11 @@ impl WorkingDirectory {
         let working_directory_status_needs_saving;
 
         let status_path = Self::status_path_from_working_dir_path(&path)?;
-        let (mtime, status);
+        let (mtime, working_directory_status);
         match status_path.metadata() {
             Ok(metadata) => {
                 mtime = metadata.modified()?;
-                status = load_ron_file(&status_path)?;
+                working_directory_status = load_ron_file(&status_path)?;
                 working_directory_status_needs_saving = false;
             }
             Err(e) => {
@@ -130,7 +130,7 @@ impl WorkingDirectory {
                              creating from defaults"
                         );
                         mtime = SystemTime::now();
-                        status = WorkingDirectoryStatus::new();
+                        working_directory_status = WorkingDirectoryStatus::new();
                         working_directory_status_needs_saving = true;
                     }
                     _ => {
@@ -153,7 +153,7 @@ impl WorkingDirectory {
         let mut slf = Self {
             git_working_dir,
             commit,
-            working_directory_status: status,
+            working_directory_status,
             working_directory_status_needs_saving,
             mtime,
         };
