@@ -169,6 +169,7 @@ impl WorkingDirectory {
     // can change such a file, thus we do not have to re-check if it
     // was changed on disk)
     pub fn set_and_save_status(&mut self, status: Status) -> Result<()> {
+        info!("{:?} set_and_save_status({status:?})", self.git_working_dir);
         let old_status = self.working_directory_status.status;
         self.working_directory_status.status = status;
         let needs_saving;
@@ -190,6 +191,10 @@ impl WorkingDirectory {
                 std::fs::set_permissions(&path, Permissions::from_mode(0o755))
                     .map_err(ctx!("setting executable permission on file {path:?}"))?;
             }
+            info!(
+                "{:?} set_and_save_status({status:?}): file saved",
+                self.git_working_dir
+            );
         }
         self.working_directory_status_needs_saving = false;
         Ok(())
