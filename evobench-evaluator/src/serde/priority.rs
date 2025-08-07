@@ -119,8 +119,13 @@ impl FromStr for Priority {
 
 impl Display for Priority {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let x = self.0;
         // XX round?
-        self.0.fmt(f)
+        if x.is_sign_negative() {
+            write!(f, "{x}")
+        } else {
+            write!(f, " {x}")
+        }
     }
 }
 

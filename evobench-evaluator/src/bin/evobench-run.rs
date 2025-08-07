@@ -410,7 +410,7 @@ fn main() -> Result<()> {
                 let insertion_time_width = if verbose { 82 } else { 37 };
                 TerminalTable::start(
                     // t  R  pr WD reason commit target
-                    &[insertion_time_width, 3, 5, 3, 17, 42, TARGET_NAME_WIDTH],
+                    &[insertion_time_width, 3, 6, 3, 17, 42, TARGET_NAME_WIDTH],
                     titles,
                     style,
                     terminal_table_opts.clone(),
