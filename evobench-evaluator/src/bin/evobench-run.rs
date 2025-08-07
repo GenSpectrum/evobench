@@ -405,10 +405,12 @@ fn main() -> Result<()> {
                 style: Option<&Style>,
                 terminal_table_opts: &TerminalTableOpts,
                 out: O,
+                verbose: bool,
             ) -> Result<TerminalTable<'v, 's, O>> {
+                let insertion_time_width = if verbose { 82 } else { 37 };
                 TerminalTable::start(
                     // t  R  pr WD reason commit target
-                    &[37, 3, 5, 3, 17, 42, TARGET_NAME_WIDTH],
+                    &[insertion_time_width, 3, 5, 3, 17, 42, TARGET_NAME_WIDTH],
                     titles,
                     style,
                     terminal_table_opts.clone(),
@@ -445,6 +447,7 @@ fn main() -> Result<()> {
                     Some(&Style::new().green().italic().bold()),
                     &terminal_table_opts,
                     out,
+                    verbose,
                 )?;
                 out = table.finish()?;
             }
@@ -467,7 +470,8 @@ fn main() -> Result<()> {
                         text: format!("{i}: queue {file_name} ({schedule_condition}):").into(),
                         span: full_span,
                     }];
-                    let mut table = table_with_titles(titles, None, &terminal_table_opts, out)?;
+                    let mut table =
+                        table_with_titles(titles, None, &terminal_table_opts, out, verbose)?;
 
                     // We want the last view_jobs_max_len items, one more
                     // if that's the complete list (the additional entry
