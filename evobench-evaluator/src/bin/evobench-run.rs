@@ -17,6 +17,7 @@ use std::{
 
 use evobench_evaluator::{
     config_file::{self, ron_to_string_pretty, save_config_file},
+    date_and_time::system_time_with_display::SystemTimeWithDisplay,
     get_terminal_width::get_terminal_width,
     git::GitHash,
     info,
@@ -47,6 +48,7 @@ use evobench_evaluator::{
         arc::CloneArc,
         logging::{set_log_level, LogLevelOpt},
         path_resolve_home::path_resolve_home,
+        re_exec::re_exec_with_existing_args_and_env,
     },
 };
 
@@ -198,11 +200,24 @@ pub enum RunMode {
         /// not given, runs in the foreground.
         #[clap(subcommand)]
         action: Option<DaemonizationAction>,
+
+        /// Check if the evobench-run binary is changed (older or
+        /// newer modification time), and if so, re-execute it with
+        /// the original arguments.
+        #[clap(long)]
+        restart_on_upgrades: bool,
     },
 }
 
+enum RunResult {
+    OnceResult(bool),
+    NeedReExec(PathBuf),
+}
+
 /// Run through the queues forever unless `once` is true (in which
-/// case it returns true if a job was run), but pick up config changes
+/// case it returns whether a job was run), but pick up config
+/// changes; it also returns in non-once mode if the binary changes
+/// and true was given for `restart_on_upgrades`.
 fn run_queues(
     config_path: Option<PathBuf>,
     mut config_with_reload: RunConfigWithReload,
@@ -212,7 +227,23 @@ fn run_queues(
     dry_run: DryRun,
     global_app_state_dir: &GlobalAppStateDir,
     once: bool,
-) -> Result<bool> {
+    restart_on_upgrades: bool,
+) -> Result<RunResult> {
+    let opt_binary_and_mtime = if restart_on_upgrades {
+        let path = std::env::current_exe()?;
+        match path.metadata() {
+            Ok(m) => {
+                if let Ok(mtime) = m.modified() {
+                    Some((path, mtime))
+                } else {
+                    None
+                }
+            }
+            Err(_) => None,
+        }
+    } else {
+        None
+    };
     let mut run_context = RunContext::default();
     let mut last_config_reload_error = None;
     loop {
@@ -234,10 +265,28 @@ fn run_queues(
         )?;
 
         if once {
-            return Ok(ran);
+            return Ok(RunResult::OnceResult(ran));
         }
 
         thread::sleep(Duration::from_secs(5));
+
+        // Has our binary been updated?
+        if let Some((binary, mtime)) = &opt_binary_and_mtime {
+            if let Ok(metadata) = binary.metadata() {
+                if let Ok(new_mtime) = metadata.modified() {
+                    // if new_mtime > *mtime {  ? or allow downgrades, too:
+                    if new_mtime != *mtime {
+                        info!(
+                            "evobench-run: this binary at {binary:?} has updated, \
+                             from {} to {}, going to re-exec",
+                            SystemTimeWithDisplay(*mtime),
+                            SystemTimeWithDisplay(new_mtime)
+                        );
+                        return Ok(RunResult::NeedReExec(binary.to_owned()));
+                    }
+                }
+            }
+        }
 
         match config_with_reload.perhaps_reload_config(config_path.as_ref()) {
             Ok(Some(new_config_with_reload)) => {
@@ -275,7 +324,7 @@ fn run_queues(
 
 const TARGET_NAME_WIDTH: usize = 14;
 
-fn main() -> Result<()> {
+fn run() -> Result<Option<PathBuf>> {
     let Opts {
         log_level,
         config,
@@ -301,7 +350,7 @@ fn main() -> Result<()> {
                 "These configuration file extensions / formats are supported:\n\n  {}\n",
                 config_file::supported_formats().join("\n  ")
             );
-            return Ok(());
+            return Ok(None);
         }
         _ => (),
     }
@@ -748,7 +797,7 @@ fn main() -> Result<()> {
 
             match mode {
                 RunMode::One { false_if_none } => {
-                    let ran = run_queues(
+                    match run_queues(
                         config,
                         config_with_reload,
                         queues,
@@ -757,16 +806,24 @@ fn main() -> Result<()> {
                         dry_run,
                         &global_app_state_dir,
                         true,
-                    )?;
-                    if false_if_none {
-                        exit(if ran { 0 } else { 1 })
+                        false,
+                    )? {
+                        RunResult::OnceResult(ran) => {
+                            if false_if_none {
+                                exit(if ran { 0 } else { 1 })
+                            }
+                        }
+                        RunResult::NeedReExec(_) => unreachable!(),
                     }
                 }
-                RunMode::Daemon { action } => {
+                RunMode::Daemon {
+                    action,
+                    restart_on_upgrades,
+                } => {
                     if let Some(action) = action {
                         todo!("daemonization {action:?}")
                     } else {
-                        run_queues(
+                        match run_queues(
                             config,
                             config_with_reload,
                             queues,
@@ -775,12 +832,26 @@ fn main() -> Result<()> {
                             dry_run,
                             &global_app_state_dir,
                             false,
-                        )?;
+                            restart_on_upgrades,
+                        )? {
+                            RunResult::OnceResult(_) => unreachable!(),
+                            RunResult::NeedReExec(executable_path) => {
+                                return Ok(Some(executable_path))
+                            }
+                        }
                     }
                 }
             }
         }
     }
 
-    Ok(())
+    Ok(None)
+}
+
+fn main() -> Result<()> {
+    if let Some(executable_path) = run()? {
+        Err(re_exec_with_existing_args_and_env(executable_path))?
+    } else {
+        Ok(())
+    }
 }
