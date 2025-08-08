@@ -10,7 +10,7 @@ use std::{
 };
 
 use anyhow::anyhow;
-use serde::de::Visitor;
+use serde::de::{Error, Visitor};
 
 /// A priority level. The level is any orderable instance of a `f64`
 /// value (i.e. not NAN).
@@ -144,11 +144,26 @@ impl<'de> Visitor<'de> for OurVisitor {
     {
         Priority::from_str(v).map_err(E::custom)
     }
+
+    // All 3 of these number implementations are necessary; and i16 or
+    // i64 alone didn't work for the number 0!
+
+    fn visit_f64<E: Error>(self, v: f64) -> Result<Self::Value, E> {
+        Priority::new(v).map_err(|e| Error::custom(e))
+    }
+
+    fn visit_u64<E: Error>(self, v: u64) -> Result<Self::Value, E> {
+        Priority::new(v as f64).map_err(|e| Error::custom(e))
+    }
+
+    fn visit_i64<E: Error>(self, v: i64) -> Result<Self::Value, E> {
+        Priority::new(v as f64).map_err(|e| Error::custom(e))
+    }
 }
 
 impl<'de> serde::Deserialize<'de> for Priority {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        deserializer.deserialize_str(OurVisitor)
+        deserializer.deserialize_any(OurVisitor)
     }
 }
 
@@ -157,6 +172,14 @@ impl serde::Serialize for Priority {
     where
         S: serde::Serializer,
     {
-        serializer.serialize_str(&self.to_string())
+        if *self == Priority::HIGH {
+            serializer.serialize_str("high")
+        } else if *self == Priority::NORMAL {
+            serializer.serialize_str("normal")
+        } else if *self == Priority::LOW {
+            serializer.serialize_str("low")
+        } else {
+            serializer.serialize_f64(self.0)
+        }
     }
 }
