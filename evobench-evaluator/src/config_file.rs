@@ -36,6 +36,7 @@ pub fn ron_to_string_pretty<V: serde::Serialize>(value: &V) -> Result<String, ro
 pub fn ron_to_file_pretty<V: serde::Serialize>(
     value: &V,
     path: impl AsRef<Path>,
+    migrate_access: bool,
     _initial_mode: Option<u32>,
 ) -> Result<()> {
     let s = ron_to_string_pretty(value)?;
@@ -43,7 +44,7 @@ pub fn ron_to_file_pretty<V: serde::Serialize>(
     let tmpfile = TempfileOpts {
         target_path: path.into(),
         retain_tempfile: false,
-        migrate_access: true,
+        migrate_access,
     }
     .tempfile()?;
     let temp_path = &tmpfile.temp_path;

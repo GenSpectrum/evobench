@@ -184,7 +184,7 @@ impl WorkingDirectory {
         if needs_saving {
             let working_directory_status = &self.working_directory_status;
             let path = self.status_path()?;
-            ron_to_file_pretty(working_directory_status, &path, None)?;
+            ron_to_file_pretty(working_directory_status, &path, false, None)?;
             if working_directory_status.status.is_set_aside() {
                 // Mis-use executable bit to easily see error status files
                 // in dir listings on the command line.
