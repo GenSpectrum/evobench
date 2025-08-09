@@ -337,7 +337,8 @@ impl WorkingDirectoryPool {
 
         info!(
             "process_working_directory {working_directory_id} \
-             ({context}, {benchmarking_job_parameters:?})..."
+             ({:?} for {context} at_{timestamp})...",
+            benchmarking_job_parameters.map(BenchmarkingJobParameters::slow_hash)
         );
 
         match action(wd) {
@@ -346,7 +347,8 @@ impl WorkingDirectoryPool {
 
                 info!(
                     "process_working_directory {working_directory_id} \
-                     ({context}, {benchmarking_job_parameters:?}) succeeded."
+                     ({:?} for {context} at_{timestamp}) succeeded.",
+                    benchmarking_job_parameters.map(BenchmarkingJobParameters::slow_hash)
                 );
 
                 Ok(v)
@@ -358,7 +360,8 @@ impl WorkingDirectoryPool {
                     // Do not show error as it might be large; XX
                     // which is a mis-feature!
                     "process_working_directory {working_directory_id} \
-                     ({context}, {benchmarking_job_parameters:?}) failed."
+                     ({:?} for {context} at_{timestamp}) failed.",
+                    benchmarking_job_parameters.map(BenchmarkingJobParameters::slow_hash)
                 );
 
                 let err = format!("{error:#?}");

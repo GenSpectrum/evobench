@@ -206,6 +206,12 @@ pub struct BenchmarkingJobParameters {
     pub command: Arc<BenchmarkingCommand>,
 }
 
+impl BenchmarkingJobParameters {
+    pub fn slow_hash(&self) -> BenchmarkingJobParametersHash {
+        self.into()
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct BenchmarkingJobParametersHash(String);
 
