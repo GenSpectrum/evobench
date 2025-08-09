@@ -4,7 +4,10 @@
 //! renamed but stays in the pool directory. (Only directories with
 //! names that are parseable as u64 are treated as usable entries.)
 
-use std::{collections::BTreeMap, num::NonZeroU8, path::PathBuf, str::FromStr, sync::Arc, u64};
+use std::{
+    collections::BTreeMap, fmt::Display, num::NonZeroU8, path::PathBuf, str::FromStr, sync::Arc,
+    u64,
+};
 
 use anyhow::{anyhow, bail, Result};
 use serde::{Deserialize, Serialize};
@@ -50,6 +53,12 @@ impl WorkingDirectoryId {
     }
     pub fn to_directory_file_name(self) -> String {
         self.to_number_string()
+    }
+}
+
+impl Display for WorkingDirectoryId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -321,13 +330,13 @@ impl WorkingDirectoryPool {
             .ok_or_else(|| anyhow!("working directory id must still exist"))?;
 
         if wd.working_directory_status.status.is_set_aside() {
-            bail!("working directory {working_directory_id:?} is set aside (error state)")
+            bail!("working directory {working_directory_id} is set aside (error state)")
         }
 
         wd.set_and_save_status(Status::Processing)?;
 
         info!(
-            "process_working_directory {working_directory_id:?} \
+            "process_working_directory {working_directory_id} \
              ({context}, {benchmarking_job_parameters:?})..."
         );
 
@@ -336,7 +345,7 @@ impl WorkingDirectoryPool {
                 wd.set_and_save_status(Status::Finished)?;
 
                 info!(
-                    "process_working_directory {working_directory_id:?} \
+                    "process_working_directory {working_directory_id} \
                      ({context}, {benchmarking_job_parameters:?}) succeeded."
                 );
 
@@ -348,7 +357,7 @@ impl WorkingDirectoryPool {
                 info!(
                     // Do not show error as it might be large; XX
                     // which is a mis-feature!
-                    "process_working_directory {working_directory_id:?} \
+                    "process_working_directory {working_directory_id} \
                      ({context}, {benchmarking_job_parameters:?}) failed."
                 );
 

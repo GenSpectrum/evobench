@@ -209,7 +209,7 @@ impl<'pool> JobRunner<'pool> {
                 working_directory.checkout(commit_id.clone())?;
 
                 if self.dry_run.means(DryRun::DoWorkingDir) {
-                    println!("checked out working directory: {working_directory_id:?}");
+                    println!("checked out working directory: {working_directory_id}");
                     return Ok(());
                 }
 
