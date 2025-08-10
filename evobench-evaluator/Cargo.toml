@@ -2,6 +2,7 @@
 name = "evobench-evaluator"
 version = "0.1.0"
 edition = "2021"
+build = "build.rs"
 
 [lints.clippy]
 collapsible_else_if = "allow"
@@ -9,6 +10,9 @@ collapsible_if = "allow"
 
 [profile.release]
 overflow-checks = true
+
+[features]
+debug_linear = []
 
 [dependencies]
 run-git  = { path = "../../xmlhub-indexer/libs/run-git" }
