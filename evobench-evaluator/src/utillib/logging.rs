@@ -1,24 +1,31 @@
-use std::sync::atomic::{AtomicU8, Ordering};
+// Use logging library instead?
+
+use std::{
+    io::{stderr, StderrLock, Write},
+    sync::atomic::{AtomicU8, Ordering},
+    time::SystemTime,
+};
+
+use crate::serde::date_and_time::system_time_to_rfc3339;
+
+pub fn write_time(file: &str, line: u32, column: u32) -> StderrLock<'static> {
+    let t = SystemTime::now();
+    let t_str = system_time_to_rfc3339(t); // Costs an allocation
+    let mut lock = stderr().lock();
+    write!(&mut lock, "{t_str}\t{file}:{line}:{column}\t").expect("stderr must not fail");
+    lock
+}
 
 #[macro_export]
 macro_rules! info_if {
     { $verbose:expr, $($arg:tt)* } => {
         if $verbose {
-            eprintln!($($arg)*);
+            use std::io::Write;
+            let mut lock = $crate::utillib::logging::write_time(file!(), line!(), column!());
+            writeln!(&mut lock, $($arg)*).expect("stderr must not fail");
         }
     }
 }
-
-#[macro_export]
-macro_rules! info_noln_if {
-    { $verbose:expr, $($arg:tt)* } => {
-        if $verbose {
-            eprint!($($arg)*);
-        }
-    }
-}
-
-// TODO: use logging library?
 
 // Do *not* make the fields public here to force going through `From`/`Into`, OK?
 #[derive(Debug, clap::Args)]
@@ -116,7 +123,9 @@ pub fn log_level() -> LogLevel {
 macro_rules! info {
     { $($arg:tt)* } => {
         if $crate::utillib::logging::log_level() >= $crate::utillib::logging::LogLevel::Info {
-            eprintln!($($arg)*);
+            use std::io::Write;
+            let mut lock = $crate::utillib::logging::write_time(file!(), line!(), column!());
+            writeln!(&mut lock, $($arg)*).expect("stderr must not fail");
         }
     }
 }
@@ -125,7 +134,9 @@ macro_rules! info {
 macro_rules! debug {
     { $($arg:tt)* } => {
         if $crate::utillib::logging::log_level() >= $crate::utillib::logging::LogLevel::Debug {
-            eprintln!($($arg)*);
+            use std::io::Write;
+            let mut lock = $crate::utillib::logging::write_time(file!(), line!(), column!());
+            writeln!(&mut lock, $($arg)*).expect("stderr must not fail");
         }
     }
 }
