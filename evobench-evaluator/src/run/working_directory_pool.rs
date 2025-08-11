@@ -311,7 +311,7 @@ impl WorkingDirectoryPool {
     ///  working directory with the given id doesn't
     ///  exist. `run_parameters` and `context` are only used to be
     ///  stored with the error, if any.
-    pub fn process_working_directory<T>(
+    pub fn process_in_working_directory<T>(
         &mut self,
         working_directory_id: WorkingDirectoryId,
         timestamp: &DateTimeWithOffset,

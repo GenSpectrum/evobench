@@ -202,7 +202,7 @@ impl<'pool> JobRunner<'pool> {
         let _ = std::fs::remove_file(evobench_log.path());
         let _ = std::fs::remove_file(bench_output_log.path());
 
-        self.working_directory_pool.process_working_directory(
+        self.working_directory_pool.process_in_working_directory(
             working_directory_id,
             &self.timestamp,
             |working_directory| -> Result<()> {

@@ -52,7 +52,7 @@ impl PollingPool {
     pub fn commit_is_valid(&mut self, commit: &GitHash) -> Result<bool> {
         self.pool.clear_current_working_directory()?;
         let working_directory_id = self.pool.get_first()?;
-        self.pool.process_working_directory(
+        self.pool.process_in_working_directory(
             working_directory_id,
             &DateTimeWithOffset::now(),
             |working_directory| {
@@ -75,7 +75,7 @@ impl PollingPool {
     pub fn updated_working_dir(&mut self) -> Result<WorkingDirectoryId> {
         self.pool.clear_current_working_directory()?;
         let working_directory_id = self.pool.get_first()?;
-        self.pool.process_working_directory(
+        self.pool.process_in_working_directory(
             working_directory_id,
             &DateTimeWithOffset::now(),
             |working_directory| {
@@ -99,7 +99,7 @@ impl PollingPool {
         Vec<String>,
     )> {
         self.pool.clear_current_working_directory()?;
-        self.pool.process_working_directory(
+        self.pool.process_in_working_directory(
             working_directory_id,
             &DateTimeWithOffset::now(),
             |working_directory| {
