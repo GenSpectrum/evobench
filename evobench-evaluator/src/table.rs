@@ -15,9 +15,9 @@ use crate::{
 };
 
 pub trait TableKind: Clone {
-    fn table_name(&self) -> Cow<str>;
+    fn table_name(&self) -> Cow<'_, str>;
     /// The column title for the *key* field in the rows
-    fn table_key_label(&self) -> Cow<str>;
+    fn table_key_label(&self) -> Cow<'_, str>;
     /// Width of key column in number of characters (as per Excel),
     /// None == automatic.
     fn table_key_column_width(&self) -> Option<f64>;
@@ -44,7 +44,7 @@ impl<'key, K: TableKind, T: TableViewRow<()>> TableView for Table<'key, K, T> {
         Box::new(header)
     }
 
-    fn table_name(&self) -> Cow<str> {
+    fn table_name(&self) -> Cow<'_, str> {
         self.kind.table_name()
     }
 

@@ -58,7 +58,7 @@ pub trait TableViewRow<Context> {
 
 /// A full table. dyn compatible.
 pub trait TableView {
-    fn table_name(&self) -> Cow<str>;
+    fn table_name(&self) -> Cow<'_, str>;
 
     /// Column names and unit.
     fn table_view_header(&self) -> Box<dyn AsRef<[(Cow<'static, str>, Unit, ColumnFormatting)]>>;

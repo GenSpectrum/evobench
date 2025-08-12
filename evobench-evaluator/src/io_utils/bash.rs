@@ -6,7 +6,7 @@ use itertools::Itertools;
 const CHARS_NOT_NEEDING_QUOTING: &str = "_:.-+,/=@[]^";
 
 // Once again. Have a better one somewhere.
-pub fn bash_string_literal(s: &str) -> Cow<str> {
+pub fn bash_string_literal(s: &str) -> Cow<'_, str> {
     if s.chars()
         .all(|c| c.is_ascii_alphanumeric() || CHARS_NOT_NEEDING_QUOTING.contains(c))
     {

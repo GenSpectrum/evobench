@@ -79,7 +79,7 @@ impl TimeKey {
 }
 
 impl AsKey for TimeKey {
-    fn as_filename_str(&self) -> Cow<str> {
+    fn as_filename_str(&self) -> Cow<'_, str> {
         let Self { nanos, pid, id } = self;
         format!("{nanos}-{pid}-{id}").into()
     }
@@ -333,10 +333,10 @@ impl<V: DeserializeOwned + Serialize + 'static> Queue<V> {
         }
     }
 
-    pub fn lock_exclusive(&self) -> Result<ExclusiveFileLock<File>, KeyValError> {
+    pub fn lock_exclusive(&self) -> Result<ExclusiveFileLock<'_, File>, KeyValError> {
         self.0.lock_exclusive()
     }
-    pub fn lock_shared(&self) -> Result<SharedFileLock<File>, KeyValError> {
+    pub fn lock_shared(&self) -> Result<SharedFileLock<'_, File>, KeyValError> {
         self.0.lock_shared()
     }
 

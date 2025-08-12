@@ -148,10 +148,10 @@ macro_rules! def_key_details {
         #[derive(Clone)]
         pub struct $T(KeyRuntimeDetails);
         impl TableKind for $T {
-            fn table_name(&self) -> Cow<str> {
+            fn table_name(&self) -> Cow<'_, str> {
                 $table_name.into()
             }
-            fn table_key_label(&self) -> Cow<str> {
+            fn table_key_label(&self) -> Cow<'_, str> {
                 self.0.key_label().into()
             }
             fn table_key_column_width(&self) -> Option<f64> {

@@ -53,7 +53,7 @@ impl<'t> IndexByCallPath<'t> {
         self.spans_by_call_path.keys().sorted()
     }
 
-    pub fn spans_by_call_path(&self, call_path: &str) -> Option<&Vec<SpanId>> {
+    pub fn spans_by_call_path(&self, call_path: &str) -> Option<&Vec<SpanId<'_>>> {
         self.spans_by_call_path.get(call_path)
     }
 }

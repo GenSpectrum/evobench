@@ -66,19 +66,19 @@ pub struct RunQueuesData<'run_queues> {
 }
 
 impl RunQueues {
-    pub fn pipeline(&self) -> &[RunQueue] {
+    pub fn pipeline(&self) -> &[RunQueue<'_>] {
         self.borrow_pipeline()
     }
 
-    pub fn erroneous_jobs_queue(&self) -> Option<&RunQueue> {
+    pub fn erroneous_jobs_queue(&self) -> Option<&RunQueue<'_>> {
         self.borrow_erroneous_jobs_queue().as_ref()
     }
 
-    pub fn done_jobs_queue(&self) -> Option<&RunQueue> {
+    pub fn done_jobs_queue(&self) -> Option<&RunQueue<'_>> {
         self.borrow_done_jobs_queue().as_ref()
     }
 
-    pub fn first(&self) -> &RunQueue {
+    pub fn first(&self) -> &RunQueue<'_> {
         &self.pipeline()[0]
     }
 
@@ -113,7 +113,7 @@ impl RunQueues {
     pub fn get_run_queue_with_next_by_name(
         &self,
         file_name: &ProperFilename,
-    ) -> Option<RunQueueWithNext> {
+    ) -> Option<RunQueueWithNext<'_, '_>> {
         let mut queues = self.pipeline().iter();
         while let Some(current) = queues.next() {
             if current.file_name == *file_name {

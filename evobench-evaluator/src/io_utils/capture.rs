@@ -16,7 +16,7 @@ use crate::{ctx, serde::date_and_time::DateTimeWithOffset};
 use super::bash::bash_string_from_cmd;
 
 // ETOOCOMPLICATED.
-pub fn get_cmd_and_args(cmd: &Command) -> Vec<Cow<str>> {
+pub fn get_cmd_and_args(cmd: &Command) -> Vec<Cow<'_, str>> {
     let prog_name = cmd.get_program().to_string_lossy();
     let mut args: Vec<_> = cmd
         .get_args()

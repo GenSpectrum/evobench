@@ -91,7 +91,7 @@ impl<'r, 's, V: Display> Row<'r, 's, V> {
 
     /// Adds widths together for spanned columns. The width for the
     /// last column is None.
-    fn string_and_widths(&self, widths: &[usize]) -> Vec<(Cow<str>, Option<usize>)> {
+    fn string_and_widths(&self, widths: &[usize]) -> Vec<(Cow<'_, str>, Option<usize>)> {
         match self {
             Row::WithSpans(terminal_table_titles) => {
                 let mut v: Vec<(Cow<str>, Option<usize>)> = Vec::new();

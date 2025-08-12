@@ -222,7 +222,7 @@ impl From<&BenchmarkingJobParameters> for BenchmarkingJobParametersHash {
 }
 
 impl AsKey for BenchmarkingJobParametersHash {
-    fn as_filename_str(&self) -> std::borrow::Cow<str> {
+    fn as_filename_str(&self) -> std::borrow::Cow<'_, str> {
         (&self.0).into()
     }
 

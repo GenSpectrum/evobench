@@ -25,7 +25,7 @@ impl LogDataAndTree {
         self.borrow_log_data()
     }
 
-    pub fn tree(&self) -> &LogDataTree {
+    pub fn tree(&self) -> &LogDataTree<'_> {
         self.borrow_tree()
     }
 }

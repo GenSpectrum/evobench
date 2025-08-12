@@ -191,7 +191,7 @@ pub enum ConfigDir {
 }
 
 impl ConfigDir {
-    pub fn to_path(&self) -> Result<Cow<Path>, &'static HomeError> {
+    pub fn to_path(&self) -> Result<Cow<'_, Path>, &'static HomeError> {
         match self {
             ConfigDir::Etc => Ok(AsRef::<Path>::as_ref("/etc").into()),
             ConfigDir::Home => home_dir().map(Into::into),

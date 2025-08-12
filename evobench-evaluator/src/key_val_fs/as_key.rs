@@ -12,11 +12,11 @@ pub trait AsKey: Sized {
     /// least 1 and at most 254 bytes long, and *should* never contain
     /// control characters (this could make it a pain for people to
     /// use command line tools to work with the databases).
-    fn as_filename_str(&self) -> Cow<str>;
+    fn as_filename_str(&self) -> Cow<'_, str>;
 
     /// Calls `as_filename_str` and asserts that the result complies
     /// to the rules mentioned above, panics if it does not.
-    fn verified_as_filename_str(&self) -> Cow<str> {
+    fn verified_as_filename_str(&self) -> Cow<'_, str> {
         let s = self.as_filename_str();
         let bytes = s.as_bytes();
         assert!(bytes.len() <= 254);

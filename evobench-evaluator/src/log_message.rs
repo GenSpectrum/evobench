@@ -128,7 +128,7 @@ pub enum DataMessage<'t> {
 }
 
 impl LogMessage {
-    pub fn opt_data_message(&self) -> Option<DataMessage> {
+    pub fn opt_data_message(&self) -> Option<DataMessage<'_>> {
         match self {
             LogMessage::Start {
                 evobench_log_version: _,
@@ -153,7 +153,7 @@ impl LogMessage {
     /// Note: panics for Start and Metadata messages, because those
     /// are not in `LogData::messages` any more (XX type safe?). Use
     /// `opt_data_message()` instead if not accessing those.
-    pub fn data_message(&self) -> DataMessage {
+    pub fn data_message(&self) -> DataMessage<'_> {
         self.opt_data_message()
             .expect("non-DataMessage not contained in LogData::messages")
     }

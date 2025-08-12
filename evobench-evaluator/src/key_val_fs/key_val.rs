@@ -367,11 +367,11 @@ impl<K: AsKey, V: DeserializeOwned + Serialize> KeyVal<K, V> {
         })
     }
 
-    pub fn lock_exclusive(&self) -> Result<ExclusiveFileLock<File>, KeyValError> {
+    pub fn lock_exclusive(&self) -> Result<ExclusiveFileLock<'_, File>, KeyValError> {
         lock_exclusive(&self.lock_file, &self.base_dir)
     }
 
-    pub fn lock_shared(&self) -> Result<SharedFileLock<File>, KeyValError> {
+    pub fn lock_shared(&self) -> Result<SharedFileLock<'_, File>, KeyValError> {
         lock_shared(&self.lock_file, &self.base_dir)
     }
 
@@ -436,7 +436,7 @@ impl<K: AsKey, V: DeserializeOwned + Serialize> KeyVal<K, V> {
     /// Get access to an entry, if it exists. Note: does not lock,
     /// and on Windows might possibly deadlock with the rename calls
     /// of `insert`?  Only tested on Linux (and macOS?)
-    pub fn entry_opt(&self, key: &K) -> Result<Option<Entry<K, V>>, KeyValError> {
+    pub fn entry_opt(&self, key: &K) -> Result<Option<Entry<'_, K, V>>, KeyValError> {
         let key_filename = key.verified_as_filename_str();
         let target_path = (&self.base_dir).append(key_filename.as_ref());
         match File::open(&target_path) {
