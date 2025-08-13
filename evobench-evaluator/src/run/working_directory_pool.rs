@@ -95,27 +95,8 @@ pub struct WorkingDirectoryCleanupToken {
     working_directory_id: WorkingDirectoryId,
     needs_cleanup: bool,
 }
-
-impl WorkingDirectoryCleanupToken {
-    // pub fn force_drop(self) {
-    //     info!(
-    //         "force_drop(): cleanup of working directory {} is being prevented",
-    //         self.working_directory_id
-    //     );
-    //     self.linear_token.bury()
-    // }
-
-    // pub fn prohibiting_cleanup(mut self) -> Self {
-    //     if self.needs_cleanup {
-    //         info!(
-    //             "prohibit_cleanup(): cleanup of working directory {} is being prevented",
-    //             self.working_directory_id
-    //         );
-    //     }
-    //     self.needs_cleanup = false;
-    //     self
-    // }
-}
+// For impl WorkingDirectoryCleanupToken: `force_drop` and
+// `prohibiting_cleanup` methods, see git history.
 
 impl WorkingDirectoryId {
     pub fn to_number_string(self) -> String {
