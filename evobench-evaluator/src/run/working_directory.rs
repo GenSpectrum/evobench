@@ -5,7 +5,7 @@ use std::{
     fs::Permissions,
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
-    time::SystemTime,
+    time::{Duration, SystemTime},
 };
 
 use anyhow::{anyhow, bail, Result};
@@ -22,6 +22,27 @@ use crate::{
     info,
     serde::{date_and_time::DateTimeWithOffset, git_url::GitUrl},
 };
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "WorkingDirectoryAutoClean")]
+pub struct WorkingDirectoryAutoCleanOpts {
+    /// The minimum age a working directory should reach before
+    /// possibly being deleted, in days (recommended: 3)
+    pub min_age_days: u16,
+
+    /// The minimum number of jobs that should be run in a working
+    /// directory before that is possibly being deleted (recommended:
+    /// 80).
+    pub min_num_runs: usize,
+
+    /// If true, directories are not deleted when any job for the same
+    /// commit id is in the queue.  (Directories are deleted when they
+    /// reach both the `min_age_days` and `min_num_runs` numbers, and
+    /// this is false, or the current job just ended and no others for
+    /// the commit id exist.)
+    pub wait_until_commit_done: bool,
+}
 
 const NO_OPTIONS: &[&str] = &[];
 
@@ -253,6 +274,53 @@ impl WorkingDirectory {
             self.commit = commit;
             self.set_and_save_status(Status::CheckedOut)?;
             Ok(())
+        }
+    }
+
+    pub fn needs_cleanup(
+        &self,
+        opts: Option<&WorkingDirectoryAutoCleanOpts>,
+        have_other_jobs_for_same_commit: Option<&dyn Fn() -> bool>,
+    ) -> Result<bool> {
+        if let Some(WorkingDirectoryAutoCleanOpts {
+            min_age_days,
+            min_num_runs,
+            wait_until_commit_done,
+        }) = opts
+        {
+            let is_old_enough = {
+                let min_age_days: u64 = (*min_age_days).into();
+                let min_age = Duration::from_secs(24 * 3600 * min_age_days);
+                let now = SystemTime::now();
+                let creation_time: SystemTime = self
+                    .working_directory_status
+                    .creation_timestamp
+                    .to_systemtime();
+                let age = now.duration_since(creation_time).map_err(ctx!(
+                    "calculating age for working directory {:?}",
+                    self.git_working_dir.working_dir_path_ref()
+                ))?;
+                age >= min_age
+            };
+            let is_used_enough = { self.working_directory_status.num_runs >= *min_num_runs };
+            Ok(is_old_enough
+                && is_used_enough
+                && ((!*wait_until_commit_done) || {
+                    if let Some(have_other_jobs_for_same_commit) = have_other_jobs_for_same_commit {
+                        have_other_jobs_for_same_commit()
+                    } else {
+                        // Could actually short-cut the calls from
+                        // polling_pool.rs to false here. But making those
+                        // configurable may still be good.
+                        true
+                    }
+                }))
+        } else {
+            info!(
+                "never cleaning up working directories since there is no \
+             `auto_clean` configuration"
+            );
+            Ok(false)
         }
     }
 }
