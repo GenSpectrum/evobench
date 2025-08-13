@@ -9,7 +9,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use run_git::path_util::AppendToPath;
 
 use crate::{
-    evaluator::options::TILE_COUNT, excel_table_view::excel_file_write,
+    evaluator::options::TILE_COUNT, excel_table_view::excel_file_write, info,
     io_utils::tempfile_utils::TempfileOpts, join::KeyVal, log_data_tree::LogDataTree,
     stats::StatsField, table_view::TableView, tree::Tree,
 };
@@ -276,7 +276,7 @@ impl<Kind: AllFieldsTableKind> AllOutputsAllFieldsTable<Kind> {
 
                         let target_path = flame_base_dir
                             .append(format!("{flame_base_name}-{}.svg", table.table_name()));
-                        (|| -> Result<()> {
+                        if let Err(e) = (|| -> Result<()> {
                             let tempfile = TempfileOpts {
                                 target_path: target_path.clone(),
                                 retain_tempfile: true,
@@ -328,8 +328,9 @@ impl<Kind: AllFieldsTableKind> AllOutputsAllFieldsTable<Kind> {
                             out.flush()?;
                             tempfile.finish()?;
                             Ok(())
-                        })()
-                        .with_context(|| anyhow!("creating flamegraph file {target_path:?}"))?;
+                        })() {
+                            info!("ignoring error creating flamegraph file {target_path:?}: {e:#}");
+                        }
                     }
                 }
             }
