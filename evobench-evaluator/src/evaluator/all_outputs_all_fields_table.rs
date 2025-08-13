@@ -6,6 +6,7 @@ use std::{
 };
 
 use anyhow::{anyhow, bail, Context, Result};
+use run_git::path_util::AppendToPath;
 
 use crate::{
     evaluator::options::TILE_COUNT, excel_table_view::excel_file_write, join::KeyVal,
@@ -272,8 +273,8 @@ impl<Kind: AllFieldsTableKind> AllOutputsAllFieldsTable<Kind> {
                             continue;
                         }
 
-                        let mut path = flame_base_dir.to_owned();
-                        path.push(format!("{flame_base_name}-{}.svg", table.table_name()));
+                        let path = flame_base_dir
+                            .append(format!("{flame_base_name}-{}.svg", table.table_name()));
                         (|| -> Result<()> {
                             let tree = Tree::from_key_val(
                                 table
