@@ -5,13 +5,13 @@ use std::{
     path::PathBuf,
 };
 
-use anyhow::{anyhow, bail, Context, Result};
-use run_git::path_util::AppendToPath;
+use anyhow::{anyhow, bail, Result};
+use run_git::path_util::{add_extension, AppendToPath};
 
 use crate::{
-    evaluator::options::TILE_COUNT, excel_table_view::excel_file_write, info,
-    io_utils::tempfile_utils::TempfileOpts, join::KeyVal, log_data_tree::LogDataTree,
-    stats::StatsField, table_view::TableView, tree::Tree,
+    config_file::ron_to_file_pretty, evaluator::options::TILE_COUNT,
+    excel_table_view::excel_file_write, info, io_utils::tempfile_utils::TempfileOpts, join::KeyVal,
+    log_data_tree::LogDataTree, stats::StatsField, table_view::TableView, tree::Tree,
 };
 
 use super::{
@@ -274,62 +274,69 @@ impl<Kind: AllFieldsTableKind> AllOutputsAllFieldsTable<Kind> {
                             continue;
                         }
 
-                        let target_path = flame_base_dir
-                            .append(format!("{flame_base_name}-{}.svg", table.table_name()));
-                        if let Err(e) = (|| -> Result<()> {
-                            let tempfile = TempfileOpts {
-                                target_path: target_path.clone(),
-                                retain_tempfile: true,
-                                migrate_access: false,
-                            }
-                            .tempfile()?;
+                        let lines: Vec<String> = {
                             let tree = Tree::from_key_val(
                                 table
                                     .table_key_vals(flame_field)
                                     .map(|KeyVal { key, val }| (key.split(';'), val)),
                             );
-                            // dbg!(&tree);
 
                             let fixed_tree = fix_tree(tree);
-                            // dbg!(&fixed_tree);
 
-                            let lines: Vec<String> = fixed_tree
+                            fixed_tree
                                 .into_joined_key_val(";")
                                 .into_iter()
                                 .map(|(path, val)| format!("{path} {val}"))
-                                .collect();
+                                .collect()
+                        };
 
-                            // dbg!((table.table_name(), &lines));
+                        // inferno is really fussy, apparently it
+                        // gives a "No stack counts found" error
+                        // whenever it's missing any line with a
+                        // ";" in it, thus check:
+                        if !lines.iter().any(|s| s.contains(';')) {
+                            eprintln!(
+                                "note: there are no lines with ';' to be fed to inferno, \
+                                 thus do not attempt to generate flame graph"
+                            );
+                        } else {
+                            let target_path = flame_base_dir
+                                .append(format!("{flame_base_name}-{}.svg", table.table_name()));
+                            if let Err(e) = (|| -> Result<()> {
+                                let tempfile = TempfileOpts {
+                                    target_path: target_path.clone(),
+                                    retain_tempfile: true,
+                                    migrate_access: false,
+                                }
+                                .tempfile()?;
 
-                            // inferno is really fussy, apparently it
-                            // gives a "No stack counts found" error
-                            // whenever it's missing any line with a
-                            // ";" in it, thus check:
-                            if !lines.iter().any(|s| s.contains(';')) {
-                                eprintln!(
-                                    "note: there are no lines with ';' to be fed to inferno, \
-                                     thus do not attempt to generate flame graph"
+                                let mut options = inferno::flamegraph::Options::default();
+                                options.count_name = table.resolution_unit();
+                                options.title = table.table_name().into();
+                                // options.subtitle = Some("foo".into()); XX show inputs key
+
+                                let mut out = BufWriter::new(File::create(&tempfile.temp_path)?);
+                                inferno::flamegraph::from_lines(
+                                    // why mut ??
+                                    &mut options,
+                                    lines.iter().map(|s| -> &str { s }),
+                                    &mut out,
+                                )?;
+                                out.flush()?;
+                                tempfile.finish()?;
+                                Ok(())
+                            })() {
+                                info!(
+                                    "ignoring error creating flamegraph file \
+                                     {target_path:?}: {e:#}"
                                 );
-                                return Ok(());
+                                let dump_path = add_extension(&target_path, "data")
+                                    .expect("guaranteed to have file name");
+                                ron_to_file_pretty(&lines, &dump_path, false, None)?;
+                                info!(
+                                    "wrote data to be used in {target_path:?} here: {dump_path:?}"
+                                );
                             }
-
-                            let mut options = inferno::flamegraph::Options::default();
-                            options.count_name = table.resolution_unit();
-                            options.title = table.table_name().into();
-                            // options.subtitle = Some("foo".into()); XX show inputs key
-
-                            let mut out = BufWriter::new(File::create(&tempfile.temp_path)?);
-                            inferno::flamegraph::from_lines(
-                                // why mut ??
-                                &mut options,
-                                lines.iter().map(|s| -> &str { s }),
-                                &mut out,
-                            )?;
-                            out.flush()?;
-                            tempfile.finish()?;
-                            Ok(())
-                        })() {
-                            info!("ignoring error creating flamegraph file {target_path:?}: {e:#}");
                         }
                     }
                 }
