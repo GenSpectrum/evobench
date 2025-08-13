@@ -277,7 +277,7 @@ fn run_queues(
                     // if new_mtime > *mtime {  ? or allow downgrades, too:
                     if new_mtime != *mtime {
                         info!(
-                            "evobench-run: this binary at {binary:?} has updated, \
+                            "this binary at {binary:?} has updated, \
                              from {} to {}, going to re-exec",
                             SystemTimeWithDisplay(*mtime),
                             SystemTimeWithDisplay(new_mtime)
