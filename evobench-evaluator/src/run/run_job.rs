@@ -244,7 +244,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             .process_in_working_directory(
                 working_directory_id,
                 &self.job_runner.timestamp,
-                |working_directory| -> Result<()> {
+                &|working_directory| -> Result<()> {
                     working_directory.checkout(commit_id.clone())?;
 
                     if self.job_runner.dry_run.means(DryRun::DoWorkingDir) {
