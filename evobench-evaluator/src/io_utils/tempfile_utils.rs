@@ -79,6 +79,14 @@ impl TryFrom<TempfileOpts> for Tempfile {
 }
 
 impl Tempfile {
+    pub fn temp_path(&self) -> &Path {
+        &self.temp_path
+    }
+
+    pub fn target_path(&self) -> &Path {
+        &self.opts.target_path
+    }
+
     pub fn finish(mut self) -> Result<(), TempfileError> {
         self.opts.retain_tempfile = true; // tell Drop that it should do nothing
         let Self {

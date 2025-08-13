@@ -9,8 +9,9 @@ use anyhow::{anyhow, bail, Context, Result};
 use run_git::path_util::AppendToPath;
 
 use crate::{
-    evaluator::options::TILE_COUNT, excel_table_view::excel_file_write, join::KeyVal,
-    log_data_tree::LogDataTree, stats::StatsField, table_view::TableView, tree::Tree,
+    evaluator::options::TILE_COUNT, excel_table_view::excel_file_write,
+    io_utils::tempfile_utils::TempfileOpts, join::KeyVal, log_data_tree::LogDataTree,
+    stats::StatsField, table_view::TableView, tree::Tree,
 };
 
 use super::{
@@ -273,9 +274,15 @@ impl<Kind: AllFieldsTableKind> AllOutputsAllFieldsTable<Kind> {
                             continue;
                         }
 
-                        let path = flame_base_dir
+                        let target_path = flame_base_dir
                             .append(format!("{flame_base_name}-{}.svg", table.table_name()));
                         (|| -> Result<()> {
+                            let tempfile = TempfileOpts {
+                                target_path: target_path.clone(),
+                                retain_tempfile: true,
+                                migrate_access: false,
+                            }
+                            .tempfile()?;
                             let tree = Tree::from_key_val(
                                 table
                                     .table_key_vals(flame_field)
@@ -311,7 +318,7 @@ impl<Kind: AllFieldsTableKind> AllOutputsAllFieldsTable<Kind> {
                             options.title = table.table_name().into();
                             // options.subtitle = Some("foo".into()); XX show inputs key
 
-                            let mut out = BufWriter::new(File::create(&path)?);
+                            let mut out = BufWriter::new(File::create(&tempfile.temp_path)?);
                             inferno::flamegraph::from_lines(
                                 // why mut ??
                                 &mut options,
@@ -319,9 +326,10 @@ impl<Kind: AllFieldsTableKind> AllOutputsAllFieldsTable<Kind> {
                                 &mut out,
                             )?;
                             out.flush()?;
+                            tempfile.finish()?;
                             Ok(())
                         })()
-                        .with_context(|| anyhow!("creating flamegraph file {path:?}"))?;
+                        .with_context(|| anyhow!("creating flamegraph file {target_path:?}"))?;
                     }
                 }
             }
