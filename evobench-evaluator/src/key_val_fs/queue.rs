@@ -415,23 +415,25 @@ impl<V: DeserializeOwned + Serialize + 'static> Queue<V> {
                 }
                 if let Some(entry) = entries.as_mut().expect("set 2 lines above").next() {
                     match entry {
-                        Ok(mut entry) => {
-                            let value = entry
-                                .get()
-                                .expect("version of serialized ds has not changed");
-
-                            match QueueItem::from_entry(entry, &base_dir, get_item_opts) {
-                                Ok(item) => {
-                                    if !item.borrow_perhaps_lock().1.is_gone() {
-                                        co.yield_(Ok((item, value))).await;
+                        Ok(mut entry) => match entry.get() {
+                            Ok(value) => {
+                                match QueueItem::from_entry(entry, &base_dir, get_item_opts) {
+                                    Ok(item) => {
+                                        if !item.borrow_perhaps_lock().1.is_gone() {
+                                            co.yield_(Ok((item, value))).await;
+                                        }
+                                    }
+                                    Err(e) => {
+                                        co.yield_(Err(e)).await;
+                                        return;
                                     }
                                 }
-                                Err(e) => {
-                                    co.yield_(Err(e)).await;
-                                    return;
-                                }
                             }
-                        }
+                            Err(e) => {
+                                co.yield_(Err(e)).await;
+                                return;
+                            }
+                        },
                         Err(e) => {
                             co.yield_(Err(e)).await;
                             return;
