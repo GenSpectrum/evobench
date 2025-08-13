@@ -78,6 +78,53 @@ pub struct WorkingDirectoryPoolOpts {
     pub auto_clean: Option<WorkingDirectoryAutoCleanOpts>,
 }
 
+fn needs_cleanup(
+    opts: Option<&WorkingDirectoryAutoCleanOpts>,
+    wd: &WorkingDirectory,
+    have_other_jobs_for_same_commit: Option<&dyn Fn() -> bool>,
+) -> Result<bool> {
+    if let Some(WorkingDirectoryAutoCleanOpts {
+        min_age_days,
+        min_num_runs,
+        wait_until_commit_done,
+    }) = opts
+    {
+        let is_old_enough = {
+            let min_age_days: u64 = (*min_age_days).into();
+            let min_age = Duration::from_secs(24 * 3600 * min_age_days);
+            let now = SystemTime::now();
+            let creation_time: SystemTime = wd
+                .working_directory_status
+                .creation_timestamp
+                .to_systemtime();
+            let age = now.duration_since(creation_time).map_err(ctx!(
+                "calculating age for working directory {:?}",
+                wd.git_working_dir.working_dir_path_ref()
+            ))?;
+            age >= min_age
+        };
+        let is_used_enough = { wd.working_directory_status.num_runs >= *min_num_runs };
+        Ok(is_old_enough
+            && is_used_enough
+            && ((!*wait_until_commit_done) || {
+                if let Some(have_other_jobs_for_same_commit) = have_other_jobs_for_same_commit {
+                    have_other_jobs_for_same_commit()
+                } else {
+                    // Could actually short-cut the calls from
+                    // polling_pool.rs to false here. But making those
+                    // configurable may still be good.
+                    true
+                }
+            }))
+    } else {
+        info!(
+            "never cleaning up working directories since there is no \
+             `auto_clean` configuration"
+        );
+        Ok(false)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct WorkingDirectoryId(u64);
 
@@ -406,50 +453,11 @@ impl WorkingDirectoryPool {
                     benchmarking_job_parameters.map(BenchmarkingJobParameters::slow_hash)
                 );
 
-                let needs_cleanup = if let Some(WorkingDirectoryAutoCleanOpts {
-                    min_age_days,
-                    min_num_runs,
-                    wait_until_commit_done,
-                }) = self.opts.auto_clean.as_ref()
-                {
-                    let is_old_enough = {
-                        let min_age_days: u64 = (*min_age_days).into();
-                        let min_age = Duration::from_secs(24 * 3600 * min_age_days);
-                        let now = SystemTime::now();
-                        let creation_time: SystemTime = wd
-                            .working_directory_status
-                            .creation_timestamp
-                            .to_systemtime();
-                        let age = now.duration_since(creation_time).map_err(ctx!(
-                            "calculating age for working directory {:?}",
-                            wd.git_working_dir.working_dir_path_ref()
-                        ))?;
-                        age >= min_age
-                    };
-                    let is_used_enough = { wd.working_directory_status.num_runs >= *min_num_runs };
-                    is_old_enough
-                        && is_used_enough
-                        && ((!*wait_until_commit_done) || {
-                            if let Some(have_other_jobs_for_same_commit) =
-                                have_other_jobs_for_same_commit
-                            {
-                                have_other_jobs_for_same_commit()
-                            } else {
-                                // Could actually short-cut the calls from
-                                // polling_pool.rs to false here. But
-                                // making those configurable may still be
-                                // good.
-                                true
-                            }
-                        })
-                } else {
-                    info!(
-                        "never cleaning up working directories since there is no \
-                         `auto_clean` configuration"
-                    );
-                    false
-                };
-
+                let needs_cleanup = needs_cleanup(
+                    self.opts.auto_clean.as_ref(),
+                    wd,
+                    have_other_jobs_for_same_commit,
+                )?;
                 let token = WorkingDirectoryCleanupToken {
                     working_directory_id,
                     needs_cleanup,
