@@ -69,7 +69,7 @@ impl PollingPool {
         let (res, cleanup) = self.pool.process_in_working_directory(
             working_directory_id,
             &DateTimeWithOffset::now(),
-            &|working_directory| {
+            |working_directory| {
                 // Check for the commit first, then if it fails, try
                 // to update; both for performance, but also to
                 // minimize contact with issues with remote server.
@@ -95,7 +95,7 @@ impl PollingPool {
         let (res, cleanup) = self.pool.process_in_working_directory(
             working_directory_id,
             &DateTimeWithOffset::now(),
-            &|working_directory| {
+            |working_directory| {
                 let git_working_dir = &working_directory.git_working_dir;
                 git_working_dir.git(&["remote", "update"], true)?;
                 Ok(working_directory_id)
@@ -122,7 +122,7 @@ impl PollingPool {
         let (res, cleanup) = self.pool.process_in_working_directory(
             working_directory_id,
             &DateTimeWithOffset::now(),
-            &|working_directory| {
+            |working_directory| {
                 let mut non_resolving = Vec::new();
                 let git_working_dir = &working_directory.git_working_dir;
                 let mut ids = Vec::new();

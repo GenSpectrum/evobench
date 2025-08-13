@@ -342,7 +342,7 @@ impl WorkingDirectoryPool {
         &mut self,
         working_directory_id: WorkingDirectoryId,
         timestamp: &DateTimeWithOffset,
-        action: &dyn Fn(&mut WorkingDirectory) -> Result<T>,
+        action: impl FnOnce(&mut WorkingDirectory) -> Result<T>,
         benchmarking_job_parameters: Option<&BenchmarkingJobParameters>,
         context: &str,
         have_other_jobs_for_same_commit: Option<&dyn Fn() -> bool>,
