@@ -5,7 +5,13 @@
 //! names that are parseable as u64 are treated as usable entries.)
 
 use std::{
-    collections::BTreeMap, fmt::Display, num::NonZeroU8, path::PathBuf, str::FromStr, sync::Arc,
+    collections::BTreeMap,
+    fmt::Display,
+    num::NonZeroU8,
+    path::PathBuf,
+    str::FromStr,
+    sync::Arc,
+    time::{Duration, SystemTime},
     u64,
 };
 
@@ -14,7 +20,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     config_file::load_ron_file,
-    ctx,
+    ctx, def_linear,
     git::GitHash,
     info, io_utils,
     key::{BenchmarkingJobParameters, RunParameters},
@@ -28,9 +34,31 @@ use super::{
     working_directory::{Status, WorkingDirectory, WorkingDirectoryStatus},
 };
 
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "WorkingDirectoryAutoClean")]
+pub struct WorkingDirectoryAutoCleanOpts {
+    /// The minimum age a working directory should reach before
+    /// possibly being deleted, in days (recommended: 3)
+    pub min_age_days: u16,
+
+    /// The minimum number of jobs that should be run in a working
+    /// directory before that is possibly being deleted (recommended:
+    /// 80).
+    pub min_num_runs: usize,
+
+    /// If true, directories are not deleted when any job for the same
+    /// commit id is in the queue.  (Directories are deleted when they
+    /// reach both the `min_age_days` and `min_num_runs` numbers, and
+    /// this is false, or the current job just ended and no others for
+    /// the commit id exist.)
+    pub wait_until_commit_done: bool,
+}
+
 // clap::Args?
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
+#[serde(rename = "WorkingDirectoryPool")]
 pub struct WorkingDirectoryPoolOpts {
     /// Path to a directory where clones of the project to be
     /// benchmarked should be kept. By default at
@@ -42,10 +70,52 @@ pub struct WorkingDirectoryPoolOpts {
     /// alternatively, to avoid needing a rebuild (and input
     /// re-preparation), but costing disk space.
     pub capacity: NonZeroU8,
+
+    /// To enable working directory auto-cleaning, give the
+    /// cleaning options. Currently "cleaning" just means full
+    /// deletion by the runner with no involvement of the target
+    /// project.
+    pub auto_clean: Option<WorkingDirectoryAutoCleanOpts>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct WorkingDirectoryId(u64);
+
+def_linear!(Linear in WorkingDirectoryCleanupToken);
+
+/// This is a linear type (i.e. it cannot be dropped) and has to be
+/// passed to `working_directory_cleanup`, which will potentially
+/// clean up or delete the working directory that this represents. If
+/// you want to prevent that, call `prohibit_cleanup()` on it before
+/// passing it, or call its `force_drop()` method (easier to do in
+/// error handlers).
+#[must_use]
+pub struct WorkingDirectoryCleanupToken {
+    linear_token: Linear,
+    working_directory_id: WorkingDirectoryId,
+    needs_cleanup: bool,
+}
+
+impl WorkingDirectoryCleanupToken {
+    // pub fn force_drop(self) {
+    //     info!(
+    //         "force_drop(): cleanup of working directory {} is being prevented",
+    //         self.working_directory_id
+    //     );
+    //     self.linear_token.bury()
+    // }
+
+    // pub fn prohibiting_cleanup(mut self) -> Self {
+    //     if self.needs_cleanup {
+    //         info!(
+    //             "prohibit_cleanup(): cleanup of working directory {} is being prevented",
+    //             self.working_directory_id
+    //         );
+    //     }
+    //     self.needs_cleanup = false;
+    //     self
+    // }
+}
 
 impl WorkingDirectoryId {
     pub fn to_number_string(self) -> String {
@@ -310,15 +380,19 @@ impl WorkingDirectoryPool {
     ///  directory and remove it from the pool. Returns an error if a
     ///  working directory with the given id doesn't
     ///  exist. `run_parameters` and `context` are only used to be
-    ///  stored with the error, if any.
+    ///  stored with the error, if any. The returned
+    ///  `WorkingDirectoryCleanupToken` must be passed to
+    ///  `working_directory_cleanup`.
     pub fn process_in_working_directory<T>(
         &mut self,
         working_directory_id: WorkingDirectoryId,
         timestamp: &DateTimeWithOffset,
+        // XX: change to &dyn Fn to save on code size?
         action: impl FnOnce(&mut WorkingDirectory) -> Result<T>,
         benchmarking_job_parameters: Option<&BenchmarkingJobParameters>,
         context: &str,
-    ) -> Result<T> {
+        have_other_jobs_for_same_commit: Option<&dyn Fn() -> bool>,
+    ) -> Result<(T, WorkingDirectoryCleanupToken)> {
         self.set_current_working_directory(working_directory_id)?;
 
         let wd = self
@@ -330,7 +404,7 @@ impl WorkingDirectoryPool {
             .ok_or_else(|| anyhow!("working directory id must still exist"))?;
 
         if wd.working_directory_status.status.is_set_aside() {
-            bail!("working directory {working_directory_id} is set aside (error state)")
+            bail!("working directory {working_directory_id} is set aside (in error state)")
         }
 
         wd.set_and_save_status(Status::Processing)?;
@@ -351,7 +425,56 @@ impl WorkingDirectoryPool {
                     benchmarking_job_parameters.map(BenchmarkingJobParameters::slow_hash)
                 );
 
-                Ok(v)
+                let needs_cleanup = if let Some(WorkingDirectoryAutoCleanOpts {
+                    min_age_days,
+                    min_num_runs,
+                    wait_until_commit_done,
+                }) = self.opts.auto_clean.as_ref()
+                {
+                    let is_old_enough = {
+                        let min_age_days: u64 = (*min_age_days).into();
+                        let min_age = Duration::from_secs(24 * 3600 * min_age_days);
+                        let now = SystemTime::now();
+                        let creation_time: SystemTime = wd
+                            .working_directory_status
+                            .creation_timestamp
+                            .to_systemtime();
+                        let age = now.duration_since(creation_time).map_err(ctx!(
+                            "calculating age for working directory {:?}",
+                            wd.git_working_dir.working_dir_path_ref()
+                        ))?;
+                        age >= min_age
+                    };
+                    let is_used_enough = { wd.working_directory_status.num_runs >= *min_num_runs };
+                    is_old_enough
+                        && is_used_enough
+                        && ((!*wait_until_commit_done) || {
+                            if let Some(have_other_jobs_for_same_commit) =
+                                have_other_jobs_for_same_commit
+                            {
+                                have_other_jobs_for_same_commit()
+                            } else {
+                                // Could actually short-cut the calls from
+                                // polling_pool.rs to false here. But
+                                // making those configurable may still be
+                                // good.
+                                true
+                            }
+                        })
+                } else {
+                    info!(
+                        "never cleaning up working directories since there is no \
+                         `auto_clean` configuration"
+                    );
+                    false
+                };
+
+                let token = WorkingDirectoryCleanupToken {
+                    working_directory_id,
+                    needs_cleanup,
+                    linear_token: Linear::new(false),
+                };
+                Ok((v, token))
             }
             Err(error) => {
                 wd.set_and_save_status(Status::Error)?;
@@ -378,6 +501,29 @@ impl WorkingDirectoryPool {
                 Err(error)
             }
         }
+    }
+
+    pub fn working_directory_cleanup(
+        &mut self,
+        cleanup: WorkingDirectoryCleanupToken,
+    ) -> Result<()> {
+        let WorkingDirectoryCleanupToken {
+            linear_token,
+            working_directory_id,
+            needs_cleanup,
+        } = cleanup;
+        linear_token.bury();
+        if needs_cleanup {
+            let wd = self
+                .all_entries
+                .get_mut(&working_directory_id)
+                .ok_or_else(|| anyhow!("working directory id must still exist"))?;
+            let path = wd.git_working_dir.working_dir_path_arc();
+            info!("working_directory_cleanup: deleting directory {path:?}");
+            self.all_entries.remove(&working_directory_id);
+            std::fs::remove_dir_all(&*path).map_err(ctx!("deleting directory {path:?}"))?;
+        }
+        Ok(())
     }
 
     fn next_id(&mut self) -> WorkingDirectoryId {
@@ -416,7 +562,7 @@ impl WorkingDirectoryPool {
         // and todo: similar parameters
         if let Some((id, _dir)) = self
             .active_entries()
-            .filter(|(_, dir)| !run_queues_data.have_entry_with_commit_id(&dir.commit))
+            .filter(|(_, dir)| !run_queues_data.have_job_with_commit_id(&dir.commit))
             .max_by_key(|(_, dir)| dir.working_directory_status.status)
         {
             info!("try_get_best_working_directory_for: found as obsolete");

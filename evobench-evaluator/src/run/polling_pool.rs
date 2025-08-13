@@ -9,6 +9,7 @@ use run_git::git::GitWorkingDir;
 
 use crate::{
     git::GitHash,
+    run::working_directory_pool::WorkingDirectoryAutoCleanOpts,
     serde::{date_and_time::DateTimeWithOffset, git_branch_name::GitBranchName, git_url::GitUrl},
     utillib::arc::CloneArc,
 };
@@ -35,6 +36,19 @@ impl PollingPool {
         let opts = WorkingDirectoryPoolOpts {
             base_dir: Some(polling_pool_base.to_owned()),
             capacity: 1.try_into().unwrap(),
+            // Provide auto_clean really just to silence the info
+            // message--basically infinite, since we're just using Git
+            // operations, and those should never leark (OK, assuming
+            // git gc runs.)
+            auto_clean: {
+                let min_age_days = 60; // short enough so that I learn about issues
+                Some(WorkingDirectoryAutoCleanOpts {
+                    min_age_days,
+                    min_num_runs: 3 * 60 * 24 * usize::from(min_age_days),
+                    // Uh, we're not using jobs here anyway.
+                    wait_until_commit_done: false,
+                })
+            },
         };
         let base_dir =
             WorkingDirectoryPoolBaseDir::new(&opts, &|| unreachable!("already given in opts"))?;
@@ -52,7 +66,7 @@ impl PollingPool {
     pub fn commit_is_valid(&mut self, commit: &GitHash) -> Result<bool> {
         self.pool.clear_current_working_directory()?;
         let working_directory_id = self.pool.get_first()?;
-        self.pool.process_in_working_directory(
+        let (res, cleanup) = self.pool.process_in_working_directory(
             working_directory_id,
             &DateTimeWithOffset::now(),
             |working_directory| {
@@ -67,7 +81,10 @@ impl PollingPool {
             },
             None,
             &format!("verifying commit {commit}"),
-        )
+            None,
+        )?;
+        self.pool.working_directory_cleanup(cleanup)?;
+        Ok(res)
     }
 
     /// Get working dir, git remote update it, and return its id for
@@ -75,7 +92,7 @@ impl PollingPool {
     pub fn updated_working_dir(&mut self) -> Result<WorkingDirectoryId> {
         self.pool.clear_current_working_directory()?;
         let working_directory_id = self.pool.get_first()?;
-        self.pool.process_in_working_directory(
+        let (res, cleanup) = self.pool.process_in_working_directory(
             working_directory_id,
             &DateTimeWithOffset::now(),
             |working_directory| {
@@ -85,7 +102,10 @@ impl PollingPool {
             },
             None,
             "updated_working_dir()",
-        )
+            None,
+        )?;
+        self.pool.working_directory_cleanup(cleanup)?;
+        Ok(res)
     }
 
     /// Returns the resolved commit ids for the requested names, and
@@ -99,7 +119,7 @@ impl PollingPool {
         Vec<String>,
     )> {
         self.pool.clear_current_working_directory()?;
-        self.pool.process_in_working_directory(
+        let (res, cleanup) = self.pool.process_in_working_directory(
             working_directory_id,
             &DateTimeWithOffset::now(),
             |working_directory| {
@@ -118,6 +138,9 @@ impl PollingPool {
             },
             None,
             &format!("resolving branch names {}", branch_names.keys().join(", ")),
-        )
+            None,
+        )?;
+        self.pool.working_directory_cleanup(cleanup)?;
+        Ok(res)
     }
 }

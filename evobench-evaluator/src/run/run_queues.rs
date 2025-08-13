@@ -20,6 +20,7 @@ use crate::{
         queue::{Queue, QueueGetItemOpts, QueueItem, TimeKey},
     },
     path_util::AppendToPath,
+    run::run_job::{JobRunnerJobData, JobRunnerWithJob},
     serde::{priority::Priority, proper_filename::ProperFilename},
     utillib::logging::{log_level, LogLevel},
 };
@@ -436,22 +437,29 @@ impl RunQueues {
 }
 
 impl<'run_queues> RunQueuesData<'run_queues> {
-    pub fn entries_by_commit_id(
+    /// Values are (index in pipeline_data, index within its queue_data)
+    pub fn jobs_by_commit_id(&self, commit_id: &GitHash) -> &[(usize, usize)] {
+        self.jobs_by_commit_id
+            .get(commit_id)
+            .map(|v| v.as_slice())
+            .unwrap_or([].as_slice())
+    }
+
+    pub fn have_job_with_commit_id(&self, commit_id: &GitHash) -> bool {
+        !self.jobs_by_commit_id(commit_id).is_empty()
+    }
+
+    /// Iterator over all entries for that commit id. Still efficient,
+    /// since it just returns references to existing tuples.--Not
+    /// actually used, might it be useful in the future?
+    #[allow(unused)]
+    fn entries_by_commit_id(
         &self,
         commit_id: &GitHash,
     ) -> impl Iterator<Item = &(TimeKey, BenchmarkingJob, Priority)> {
-        let slice = self
-            .jobs_by_commit_id
-            .get(commit_id)
-            .map(|v| v.as_slice())
-            .unwrap_or([].as_slice());
-        slice
+        self.jobs_by_commit_id(commit_id)
             .iter()
-            .copied()
-            .map(|(i, j)| self.pipeline_data[i].entry(j))
-    }
-    pub fn have_entry_with_commit_id(&self, commit_id: &GitHash) -> bool {
-        self.entries_by_commit_id(commit_id).next().is_some()
+            .map(|(i, j)| self.pipeline_data[*i].entry(*j))
     }
 
     /// The `RunQueueData`s paired with their successor (still in the
@@ -619,10 +627,15 @@ impl<'run_queues> RunQueuesData<'run_queues> {
 
             rqdwn.run_queue_with_next().run_job(
                 &item,
-                job.clone(),
+                &mut JobRunnerWithJob {
+                    job_runner: job_runner,
+                    job_data: JobRunnerJobData {
+                        job,
+                        run_queues_data: self,
+                    },
+                },
                 self.run_queues.erroneous_jobs_queue(),
                 self.run_queues.done_jobs_queue(),
-                job_runner,
                 working_directory_id,
             )?;
 

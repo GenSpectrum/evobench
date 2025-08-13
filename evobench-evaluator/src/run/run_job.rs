@@ -27,6 +27,7 @@ use crate::{
     },
     key::{BenchmarkingJobParameters, RunParameters},
     path_util::rename_tmp_path,
+    run::{benchmarking_job::BenchmarkingJob, run_queues::RunQueuesData},
     serde::{
         allowed_env_var::AllowEnvVar, date_and_time::DateTimeWithOffset,
         proper_filename::ProperFilename,
@@ -167,22 +168,57 @@ impl<'pool> JobRunner<'pool> {
         // XX ~costly
         self.timestamp.to_datetime().into()
     }
+}
 
+pub struct JobRunnerJobData<'run_queues, 'j, 's> {
+    pub job: &'j BenchmarkingJob,
+    pub run_queues_data: &'s RunQueuesData<'run_queues>,
+}
+
+pub struct JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
+    pub job_runner: JobRunner<'pool>,
+    pub job_data: JobRunnerJobData<'run_queues, 'j, 's>,
+}
+
+impl<'run_queues, 'j, 's> JobRunnerJobData<'run_queues, 'j, 's> {
+    /// Whether more job runs need to be done for the same commit, be
+    /// it for the same job, or others.
+    pub fn have_more_job_runs_for_same_commit(&self) -> bool {
+        // Check if this the last run for the current job. `job` still
+        // contains the count from before running it this time.
+        if self.job.benchmarking_job_state.remaining_count > 1 {
+            return true;
+        }
+
+        // Otherwise, look for *other* jobs than the current one. Not
+        // so easy since jobs still don't contain an id? Except,
+        // simply check if there is more than 1 entry.
+        self.run_queues_data
+            .jobs_by_commit_id(&self.job.benchmarking_job_public.run_parameters.commit_id)
+            .len()
+            > 1
+    }
+}
+
+impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
     pub fn run_job(
-        self,
+        &mut self,
         working_directory_id: WorkingDirectoryId,
         reason: &Option<String>,
-        benchmarking_job_parameters: &BenchmarkingJobParameters,
         schedule_condition: &ScheduleCondition,
     ) -> Result<()> {
-        if self.dry_run.means(DryRun::DoNothing) {
+        // XX put that here, "for backwards compat", but could now use
+        // something else for logging?
+        let benchmarking_job_parameters = self.job_data.job.benchmarking_job_parameters();
+
+        if self.job_runner.dry_run.means(DryRun::DoNothing) {
             println!("dry-run: would run {benchmarking_job_parameters:?}");
             return Ok(());
         }
         let BenchmarkingJobParameters {
             run_parameters,
             command,
-        } = benchmarking_job_parameters;
+        } = &benchmarking_job_parameters;
         let RunParameters {
             commit_id,
             custom_parameters,
@@ -202,111 +238,127 @@ impl<'pool> JobRunner<'pool> {
         let _ = std::fs::remove_file(evobench_log.path());
         let _ = std::fs::remove_file(bench_output_log.path());
 
-        self.working_directory_pool.process_in_working_directory(
-            working_directory_id,
-            &self.timestamp,
-            |working_directory| -> Result<()> {
-                working_directory.checkout(commit_id.clone())?;
+        let ((), cleanup) = self
+            .job_runner
+            .working_directory_pool
+            .process_in_working_directory(
+                working_directory_id,
+                &self.job_runner.timestamp,
+                |working_directory| -> Result<()> {
+                    working_directory.checkout(commit_id.clone())?;
 
-                if self.dry_run.means(DryRun::DoWorkingDir) {
-                    println!("checked out working directory: {working_directory_id}");
-                    return Ok(());
-                }
-
-                let BenchmarkingCommand {
-                    target_name: _,
-                    subdir,
-                    command,
-                    arguments,
-                } = command.deref();
-
-                let dir = working_directory
-                    .git_working_dir
-                    .working_dir_path_ref()
-                    .append(subdir);
-
-                // for debugging info only:
-                let cmd_in_dir = {
-                    let cmd =
-                        bash_string_from_program_and_args(command.to_string_lossy(), arguments);
-                    format!("command {cmd:?} in directory {dir:?}")
-                };
-
-                info!(
-                    "running {cmd_in_dir}, EVOBENCH_LOG={:?}...",
-                    evobench_log.path()
-                );
-
-                let mut command = Command::new(command);
-                let check = assert_evobench_env_var;
-                command
-                    .envs(custom_parameters.btree_map())
-                    .env(check("EVOBENCH_LOG"), evobench_log.path())
-                    .env(check("BENCH_OUTPUT_LOG"), bench_output_log.path())
-                    .env(check("COMMIT_ID"), commit_id.to_string())
-                    .args(arguments)
-                    .current_dir(&dir);
-
-                let command_output_file = OutFile::create(
-                    &add_extension(
-                        working_directory.git_working_dir.working_dir_path_ref(),
-                        format!("output_of_benchmarking_command_at_{}", self.timestamp),
-                    )
-                    .expect("has filename"),
-                )?;
-
-                // Add info header in YAML
-                command_output_file
-                    .write_str(&serde_yml::to_string(benchmarking_job_parameters)?)?;
-
-                let status = {
-                    let mut other_files: Vec<Box<dyn Write + Send + 'static>> = vec![];
-                    // Is it evil to use log_level() for this and not a
-                    // function argument?
-                    if log_level() >= LogLevel::Info {
-                        other_files.push(Box::new(stderr()));
+                    if self.job_runner.dry_run.means(DryRun::DoWorkingDir) {
+                        println!("checked out working directory: {working_directory_id}");
+                        return Ok(());
                     }
-                    let other_files = Arc::new(Mutex::new(other_files));
 
-                    command_output_file.run_with_capture(
+                    let BenchmarkingCommand {
+                        target_name: _,
+                        subdir,
                         command,
-                        other_files,
-                        CaptureOpts {
-                            add_source_indicator: true,
-                            add_timestamp: true,
-                        },
-                    )?
-                };
+                        arguments,
+                    } = command.deref();
 
-                if status.success() {
-                    info!("running {cmd_in_dir} succeeded");
+                    let dir = working_directory
+                        .git_working_dir
+                        .working_dir_path_ref()
+                        .append(subdir);
 
-                    Ok(())
-                } else {
-                    info!("running {cmd_in_dir} failed.");
-                    let last_part = command_output_file.last_part(3000)?;
-                    if log_level() < LogLevel::Info {
-                        let mut err = stderr().lock();
-                        writeln!(err, "---- run_job: error in dir {dir:?}: -------")?;
-                        err.write_all(last_part.as_bytes())?;
-                        writeln!(err, "---- /run_job: error in dir {dir:?} -------")?;
-                    }
+                    // for debugging info only:
+                    let cmd_in_dir = {
+                        let cmd =
+                            bash_string_from_program_and_args(command.to_string_lossy(), arguments);
+                        format!("command {cmd:?} in directory {dir:?}")
+                    };
 
-                    bail!(
-                        "benchmarking command {cmd_in_dir} gave \
+                    info!(
+                        "running {cmd_in_dir}, EVOBENCH_LOG={:?}...",
+                        evobench_log.path()
+                    );
+
+                    let mut command = Command::new(command);
+                    let check = assert_evobench_env_var;
+                    command
+                        .envs(custom_parameters.btree_map())
+                        .env(check("EVOBENCH_LOG"), evobench_log.path())
+                        .env(check("BENCH_OUTPUT_LOG"), bench_output_log.path())
+                        .env(check("COMMIT_ID"), commit_id.to_string())
+                        .args(arguments)
+                        .current_dir(&dir);
+
+                    let command_output_file = OutFile::create(
+                        &add_extension(
+                            working_directory.git_working_dir.working_dir_path_ref(),
+                            format!(
+                                "output_of_benchmarking_command_at_{}",
+                                self.job_runner.timestamp
+                            ),
+                        )
+                        .expect("has filename"),
+                    )?;
+
+                    // Add info header in YAML
+                    command_output_file
+                        .write_str(&serde_yml::to_string(&benchmarking_job_parameters)?)?;
+
+                    let status = {
+                        let mut other_files: Vec<Box<dyn Write + Send + 'static>> = vec![];
+                        // Is it evil to use log_level() for this and not a
+                        // function argument?
+                        if log_level() >= LogLevel::Info {
+                            other_files.push(Box::new(stderr()));
+                        }
+                        let other_files = Arc::new(Mutex::new(other_files));
+
+                        command_output_file.run_with_capture(
+                            command,
+                            other_files,
+                            CaptureOpts {
+                                add_source_indicator: true,
+                                add_timestamp: true,
+                            },
+                        )?
+                    };
+
+                    if status.success() {
+                        info!("running {cmd_in_dir} succeeded");
+
+                        Ok(())
+                    } else {
+                        info!("running {cmd_in_dir} failed.");
+                        let last_part = command_output_file.last_part(3000)?;
+                        if log_level() < LogLevel::Info {
+                            let mut err = stderr().lock();
+                            writeln!(err, "---- run_job: error in dir {dir:?}: -------")?;
+                            err.write_all(last_part.as_bytes())?;
+                            writeln!(err, "---- /run_job: error in dir {dir:?} -------")?;
+                        }
+
+                        bail!(
+                            "benchmarking command {cmd_in_dir} gave \
                          error status {status}, last_part {last_part:?}"
-                    )
-                }
-            },
-            Some(benchmarking_job_parameters),
-            "run_job",
-        )?;
+                        )
+                    }
+                },
+                Some(&benchmarking_job_parameters),
+                "run_job",
+                Some(&|| self.job_data.have_more_job_runs_for_same_commit()),
+            )?;
+
+        // Can clean up right away, we're not currently accessing the
+        // working directory any longer, OK?
+        self.job_runner
+            .working_directory_pool
+            .working_directory_cleanup(cleanup)?;
 
         // The directory holding the full key information
-        let key_dir =
-            run_parameters.extend_path(self.output_base_dir.append(command.target_name.as_str()));
+        let key_dir = run_parameters.extend_path(
+            self.job_runner
+                .output_base_dir
+                .append(command.target_name.as_str()),
+        );
         // Below that, we make a dir for this particular run
-        let result_dir = (&key_dir).append(self.timestamp.as_str());
+        let result_dir = (&key_dir).append(self.job_runner.timestamp.as_str());
         std::fs::create_dir_all(&result_dir).map_err(ctx!("create_dir_all {result_dir:?}"))?;
 
         info!("moving files to {result_dir:?}");
