@@ -331,7 +331,7 @@ fn run() -> Result<Option<PathBuf>> {
         subcommand,
     } = Opts::parse();
 
-    set_log_level(log_level.into());
+    set_log_level(log_level.try_into()?);
 
     // COPY-PASTE from List action in jobqueue.rs
     let get_filename = |entry: &Entry<_, _>| -> Result<String> {

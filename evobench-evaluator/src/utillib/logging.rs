@@ -6,6 +6,8 @@ use std::{
     time::SystemTime,
 };
 
+use anyhow::{bail, Result};
+
 use crate::serde::date_and_time::system_time_to_rfc3339;
 
 pub fn write_time(file: &str, line: u32, column: u32) -> StderrLock<'static> {
@@ -38,23 +40,42 @@ pub struct LogLevelOpt {
     /// `--verbose`)
     #[clap(short, long)]
     debug: bool,
+
+    /// Disable warnings. Conflicts with `--verbose` and `--debug`.
+    #[clap(short, long)]
+    quiet: bool,
 }
 
-impl From<LogLevelOpt> for LogLevel {
-    fn from(value: LogLevelOpt) -> Self {
+impl TryFrom<LogLevelOpt> for LogLevel {
+    type Error = anyhow::Error;
+
+    fn try_from(value: LogLevelOpt) -> Result<Self> {
         match value {
             LogLevelOpt {
                 verbose: false,
                 debug: false,
-            } => LogLevel::None,
+                quiet: false,
+            } => Ok(LogLevel::Warn),
             LogLevelOpt {
                 verbose: true,
                 debug: false,
-            } => LogLevel::Info,
+                quiet: false,
+            } => Ok(LogLevel::Info),
             LogLevelOpt {
                 verbose: _,
                 debug: true,
-            } => LogLevel::Debug,
+                quiet: false,
+            } => Ok(LogLevel::Debug),
+            LogLevelOpt {
+                verbose: false,
+                debug: false,
+                quiet: true,
+            } => Ok(LogLevel::Quiet),
+            LogLevelOpt {
+                verbose: _,
+                debug: _,
+                quiet: true,
+            } => bail!("option `--quiet` conflicts with the options `--verbose` and `--debug`"),
         }
     }
 }
@@ -62,7 +83,9 @@ impl From<LogLevelOpt> for LogLevel {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum LogLevel {
     /// Do not log anything
-    None,
+    Quiet,
+    /// The default, only "warn!" statements are outputting anythingö.
+    Warn,
     /// Verbose execution, not for debugging this program but for
     /// giving the user information about what is going on
     Info,
@@ -78,9 +101,10 @@ impl LogLevel {
 
     fn from_level(level: u8) -> Option<Self> {
         let slf = match level {
-            0 => Some(LogLevel::None),
-            1 => Some(LogLevel::Info),
-            2 => Some(LogLevel::Debug),
+            0 => Some(LogLevel::Quiet),
+            1 => Some(LogLevel::Warn),
+            2 => Some(LogLevel::Info),
+            3 => Some(LogLevel::Debug),
             _ => None,
         }?;
         assert_eq!(slf.level(), level);
@@ -117,6 +141,17 @@ pub fn set_log_level(val: LogLevel) {
 pub fn log_level() -> LogLevel {
     let level = LOGLEVEL.load(Ordering::Relaxed);
     LogLevel::from_level(level).expect("no possibility to store invalid u8")
+}
+
+#[macro_export]
+macro_rules! warn {
+    { $($arg:tt)* } => {
+        if $crate::utillib::logging::log_level() >= $crate::utillib::logging::LogLevel::Warn {
+            use std::io::Write;
+            let mut lock = $crate::utillib::logging::write_time(file!(), line!(), column!());
+            writeln!(&mut lock, $($arg)*).expect("stderr must not fail");
+        }
+    }
 }
 
 #[macro_export]
