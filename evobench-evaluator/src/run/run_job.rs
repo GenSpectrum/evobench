@@ -389,6 +389,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
         // without checking its existence.
         if bench_output_log.path().exists() {
             compress_file_as(&bench_output_log, "bench_output.log", false)?;
+            drop(bench_output_log);
         }
         let evobench_log_tmp = compress_file_as(&evobench_log, "evobench.log", true)?;
 
@@ -417,6 +418,8 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
         ])?;
 
         info!("evaluating the benchmark file succeeded");
+
+        drop(evobench_log);
 
         rename_tmp_path(evobench_log_tmp)?;
 
