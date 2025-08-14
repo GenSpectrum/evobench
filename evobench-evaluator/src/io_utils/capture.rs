@@ -56,12 +56,12 @@ where
             while child_output.read_line(&mut input_line)? > 0 {
                 {
                     line.clear();
-                    if let Some(source_indicator) = source_indicator.as_ref() {
-                        line.push_str(source_indicator);
-                        line.push_str("\t");
-                    }
                     if add_timestamp {
                         line.push_str(&DateTimeWithOffset::now().into_string());
+                        line.push_str("\t");
+                    }
+                    if let Some(source_indicator) = source_indicator.as_ref() {
+                        line.push_str(source_indicator);
                         line.push_str("\t");
                     }
                     line.push_str(&input_line);
