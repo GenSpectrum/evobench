@@ -11,7 +11,7 @@ use run_git::path_util::{add_extension, AppendToPath};
 use crate::{
     config_file::ron_to_file_pretty, evaluator::options::TILE_COUNT,
     excel_table_view::excel_file_write, info, io_utils::tempfile_utils::TempfileOpts, join::KeyVal,
-    log_data_tree::LogDataTree, stats::StatsField, table_view::TableView, tree::Tree,
+    log_data_tree::LogDataTree, stats::StatsField, table_view::TableView, tree::Tree, warn,
 };
 
 use super::{
@@ -326,7 +326,7 @@ impl<Kind: AllFieldsTableKind> AllOutputsAllFieldsTable<Kind> {
                                 tempfile.finish()?;
                                 Ok(())
                             })() {
-                                info!(
+                                warn!(
                                     "ignoring error creating flamegraph file \
                                      {target_path:?}: {e:#}"
                                 );

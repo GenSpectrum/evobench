@@ -12,6 +12,7 @@ use evobench_evaluator::evaluator::options::{
 use evobench_evaluator::get_terminal_width::get_terminal_width;
 use evobench_evaluator::log_data_and_tree::LogDataAndTree;
 use evobench_evaluator::stats::StatsField;
+use evobench_evaluator::utillib::logging::{set_log_level, LogLevelOpt};
 use mimalloc::MiMalloc;
 
 #[global_allocator]
@@ -25,6 +26,9 @@ const PROGRAM_NAME: &str = "evobench-evaluator";
 #[clap(next_line_help = true)]
 #[clap(set_term_width = get_terminal_width(4))]
 struct Opts {
+    #[clap(flatten)]
+    log_level: LogLevelOpt,
+
     /// The subcommand to run. Use `--help` after the sub-command to
     /// get a list of the allowed options there.
     #[clap(subcommand)]
@@ -84,7 +88,10 @@ enum Command {
 }
 
 fn main() -> Result<()> {
-    let Opts { command } = Opts::parse();
+    let Opts { log_level, command } = Opts::parse();
+
+    set_log_level(log_level.try_into()?);
+
     match command {
         Command::Version => println!("{PROGRAM_NAME} version {EVOBENCH_VERSION}"),
 
