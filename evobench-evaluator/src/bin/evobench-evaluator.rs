@@ -13,8 +13,6 @@ use evobench_evaluator::get_terminal_width::get_terminal_width;
 use evobench_evaluator::log_data_and_tree::LogDataAndTree;
 use evobench_evaluator::stats::StatsField;
 use mimalloc::MiMalloc;
-use rayon::iter::IntoParallelRefIterator;
-use rayon::prelude::ParallelIterator;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -121,7 +119,7 @@ fn main() -> Result<()> {
         } => {
             let CheckedOutputOpts { variants } = output_opts.check()?;
             let afts: Vec<AllOutputsAllFieldsTable<SingleRunStats>> = paths
-                .par_iter()
+                .iter()
                 .map(|source_path| {
                     let ldat = LogDataAndTree::read_file(source_path)?;
                     AllOutputsAllFieldsTable::from_log_data_tree(
