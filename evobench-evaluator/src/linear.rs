@@ -73,7 +73,7 @@ impl<T, IN> Drop for UndroppableWithin<T, IN> {
                 std::any::type_name::<IN>(),
             );
         } else {
-            crate::info!(
+            crate::warn!(
                 "WARNING: attempt to Drop an instance of the linear type {} \
                  contained inside the type {}. \
                  Instances of the latter type need to be passed to a cleanup function, \
