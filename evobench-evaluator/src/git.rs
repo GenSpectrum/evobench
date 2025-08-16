@@ -10,6 +10,7 @@ use std::{
 use anyhow::{anyhow, Context, Result};
 use itertools::Itertools;
 use kstring::KString;
+use smallvec::SmallVec;
 
 pub use crate::serde::git_hash::GitHash;
 use crate::{date_and_time::unixtime::Unixtime, debug};
@@ -19,7 +20,7 @@ pub struct GitCommit<RefType> {
     pub commit_hash: GitHash,
     pub author_time: Unixtime,
     pub committer_time: Unixtime,
-    pub parents: Vec<RefType>,
+    pub parents: SmallVec<[RefType; 1]>,
 }
 
 impl GitCommit<Id<ToCommit>> {
@@ -262,7 +263,7 @@ pub fn git_log_commits<D: AsRef<Path>>(
                 let author_time = Unixtime(u64::from_str_radix(str_from_bytes(author_time), 10)?);
                 let committer_time =
                     Unixtime(u64::from_str_radix(str_from_bytes(committer_time), 10)?);
-                let parents: Vec<_> = parents
+                let parents: SmallVec<_> = parents
                     .split(|b| *b == b' ')
                     .into_iter()
                     .filter(|bs| !bs.is_empty())
