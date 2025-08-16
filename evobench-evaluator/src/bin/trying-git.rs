@@ -1,4 +1,5 @@
 use std::io::stdout;
+use std::io::BufWriter;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
@@ -35,11 +36,12 @@ fn graph(directory: &Path, branch: &GitBranchName) -> Result<()> {
     {
         let graph_lock = graph.lock();
         let commits = graph_lock.ids_as_commits(&sorted_ids);
-        let mut out = stdout().lock();
+        let mut out = BufWriter::new(stdout().lock());
         for commit in commits {
             let commit = commit.to_hashes(&graph_lock);
             writeln!(&mut out, "{commit}")?;
         }
+        out.flush()?;
     }
 
     Ok(())
