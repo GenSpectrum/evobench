@@ -38,6 +38,7 @@ sha2 = "0.10.8"
 base64 = "0.21.7"
 
 kstring = "1.0"
+smallvec = "1.13.2"
 num-traits = "0.2.15"
 rand = "0.8.5"
 ruzstd = { version = "0.7.3", default-features = false, features = ["std"] }
