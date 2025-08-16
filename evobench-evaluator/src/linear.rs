@@ -111,11 +111,12 @@ macro_rules! def_linear {
 
 #[test]
 fn t_size() {
-    assert_eq!(std::mem::size_of::<UndroppableWithin<u32, bool>>(), 0);
+    assert_eq!(std::mem::size_of::<UndroppableWithin<u32, bool>>(), 1);
+    #[allow(unused)]
     struct Bar(Foo);
     def_linear!(Foo in Bar);
-    assert_eq!(std::mem::size_of::<Foo>(), 0);
-    assert_eq!(std::mem::size_of::<Bar>(), 0);
+    assert_eq!(std::mem::size_of::<Foo>(), 1);
+    assert_eq!(std::mem::size_of::<Bar>(), 1);
     let x = Foo::new(true);
     x.bury();
 }
