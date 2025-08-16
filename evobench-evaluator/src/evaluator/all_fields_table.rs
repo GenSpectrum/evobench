@@ -9,11 +9,13 @@ use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterato
 
 use crate::{
     dynamic_typing::{StatsOrCount, StatsOrCountOrSubStats},
+    evaluator::data::{
+        log_data_tree::{LogDataTree, PathStringOptions, SpanId},
+        log_message::Timing,
+    },
     evaluator::options::TILE_COUNT,
     index_by_call_path::IndexByCallPath,
     join::{keyval_inner_join, KeyVal},
-    log_data_tree::{LogDataTree, PathStringOptions, SpanId},
-    log_message::Timing,
     rayon_util::ParRun,
     stats::{Stats, StatsError, StatsField, ToStatsString},
     table::{Table, TableKind},

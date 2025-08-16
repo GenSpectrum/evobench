@@ -7,7 +7,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use kstring::KString;
 
 use crate::{
-    log_message::{LogMessage, Metadata},
+    evaluator::data::log_message::{LogMessage, Metadata},
     zstd_file::decompressed_file,
 };
 

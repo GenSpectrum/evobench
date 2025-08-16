@@ -5,12 +5,12 @@ use anyhow::Result;
 use clap::Parser;
 use evobench_evaluator::evaluator::all_fields_table::{SingleRunStats, SummaryStats};
 use evobench_evaluator::evaluator::all_outputs_all_fields_table::AllOutputsAllFieldsTable;
+use evobench_evaluator::evaluator::data::log_data_and_tree::LogDataAndTree;
 use evobench_evaluator::evaluator::options::{
     CheckedOutputOpts, EvaluationAndOutputOpts, FieldSelectorDimension3, FieldSelectorDimension4,
     FlameField,
 };
 use evobench_evaluator::get_terminal_width::get_terminal_width;
-use evobench_evaluator::log_data_and_tree::LogDataAndTree;
 use evobench_evaluator::stats::StatsField;
 use evobench_evaluator::utillib::logging::{set_log_level, LogLevelOpt};
 use mimalloc::MiMalloc;

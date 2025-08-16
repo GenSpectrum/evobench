@@ -3,7 +3,7 @@ use std::path::Path;
 use anyhow::Result;
 use ouroboros::self_referencing;
 
-use crate::{log_data_tree::LogDataTree, log_file::LogData};
+use crate::evaluator::data::{log_data_tree::LogDataTree, log_file::LogData};
 
 #[self_referencing]
 pub struct LogDataAndTree {

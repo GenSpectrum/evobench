@@ -9,9 +9,10 @@ use anyhow::{anyhow, bail, Result};
 use run_git::path_util::{add_extension, AppendToPath};
 
 use crate::{
-    config_file::ron_to_file_pretty, evaluator::options::TILE_COUNT,
-    excel_table_view::excel_file_write, info, io_utils::tempfile_utils::TempfileOpts, join::KeyVal,
-    log_data_tree::LogDataTree, stats::StatsField, table_view::TableView, tree::Tree, warn,
+    config_file::ron_to_file_pretty, evaluator::data::log_data_tree::LogDataTree,
+    evaluator::options::TILE_COUNT, excel_table_view::excel_file_write, info,
+    io_utils::tempfile_utils::TempfileOpts, join::KeyVal, stats::StatsField, table_view::TableView,
+    tree::Tree, warn,
 };
 
 use super::{

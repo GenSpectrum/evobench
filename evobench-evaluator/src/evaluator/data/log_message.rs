@@ -93,7 +93,7 @@ pub struct KeyValue {
     pub v: KString,
 }
 
-include! {"../include/evobench_point_kind.rs"}
+include! {"../../../include/evobench_point_kind.rs"}
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
