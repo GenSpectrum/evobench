@@ -14,9 +14,7 @@ use kstring::KString;
 
 fn graph(directory: &Path, branch: &GitBranchName) -> Result<()> {
     let commits = git_log_commits(directory, branch.as_str())?;
-    dbg!(&commits);
     let graph = GitGraph::new();
-    dbg!(&graph);
     let history = GitHistory::from_commits(
         KString::from_ref(branch.as_str()),
         commits.iter().rev(),
