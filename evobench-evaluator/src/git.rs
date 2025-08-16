@@ -257,7 +257,7 @@ pub fn git_log_commits<D: AsRef<Path>>(
         .split(|b| *b == b'\n')
         .filter(|line| !line.is_empty())
         .map(|line| -> Result<GitCommit<GitHash>> {
-            let items: Vec<_> = line.split(|b| *b == b',').collect();
+            let items: SmallVec<[_; 4]> = line.split(|b| *b == b',').collect();
             if let [commit_hash, author_time, committer_time, parents] = items.as_slice() {
                 let commit_hash = GitHash::try_from(*commit_hash)?;
                 let author_time = Unixtime(u64::from_str_radix(str_from_bytes(author_time), 10)?);
