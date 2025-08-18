@@ -1,5 +1,5 @@
 
-FLAGS=-std=c++17 -O2 -Wall -Wextra -I../include
+FLAGS=-std=c++20 -O2 -Wall -Wextra -I../include
 OBJS=evobench.o sum_of_fibs.o
 
 sum_of_fibs: $(OBJS)
