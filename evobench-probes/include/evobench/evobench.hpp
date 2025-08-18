@@ -1,6 +1,7 @@
 #pragma once
 
 #include <mutex>
+#include <string>
 #include <string_view>
 
 #include "evobench_version.hpp"
