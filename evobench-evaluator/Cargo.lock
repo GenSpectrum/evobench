@@ -1107,6 +1107,8 @@ dependencies = [
 [[package]]
 name = "run-git"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3860d7946d4f3fb3ed1aa8992cb3addd865463c2c91511f4e4df384519b47cd"
 dependencies = [
  "anyhow",
 ]

@@ -11,7 +11,7 @@ collapsible_if = "allow"
 overflow-checks = true
 
 [dependencies]
-run-git  = { path = "../../xmlhub-indexer/libs/run-git" }
+run-git  = "0.1.0"
 
 anyhow = { version = "1.0.65", features = ["backtrace"]}
 clap = { version = "3", features = ["derive"] }
