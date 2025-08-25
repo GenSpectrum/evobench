@@ -1,3 +1,5 @@
 *.o
 sum_of_fibs
 bench.log
+*.xlsx
+*.svg
