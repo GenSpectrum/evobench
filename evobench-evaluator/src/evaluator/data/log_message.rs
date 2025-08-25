@@ -50,6 +50,7 @@ pub struct Timing {
     pub pn: KString,
     pub pid: ProcessId,
     pub tid: ThreadId,
+    pub n: Option<u32>,
     pub r: NanoTime,
     pub u: MicroTime,
     pub s: MicroTime,
@@ -66,6 +67,14 @@ pub struct Timing {
 }
 
 impl Timing {
+    /// Is generally 0 for scope end timings!
+    #[inline]
+    pub fn n(&self) -> u32 {
+        // Backwards compatibility: field was not present, and the
+        // count was always 1.
+        self.n.unwrap_or(1)
+    }
+
     #[inline]
     pub fn nvcsw(&self) -> Option<u64> {
         Some(

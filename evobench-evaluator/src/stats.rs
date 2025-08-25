@@ -1,9 +1,12 @@
+pub mod weighted;
+
 use std::marker::PhantomData;
 use std::{borrow::Cow, str::FromStr};
 
 use anyhow::bail;
 use num_traits::{Pow, Zero};
 
+use crate::stats::weighted::{IndexedNumbers, WeightedValue};
 use crate::{
     average::Average,
     table_view::{ColumnFormatting, Highlight, TableViewRow, Unit},
@@ -117,6 +120,8 @@ pub enum StatsError {
     NoInputs,
     #[error("u128 saturated -- u64::MAX values summing up to near u128::MAX")]
     SaturatedU128,
+    #[error("the virtual count (a u64) does not fit the usize range on this machine")]
+    VirtualCountDoesNotFitUSize,
 }
 
 impl<ViewType, const TILE_COUNT: usize> Stats<ViewType, TILE_COUNT> {
@@ -179,7 +184,7 @@ impl<ViewType, const TILE_COUNT: usize> Stats<ViewType, TILE_COUNT> {
     /// ViewType of the resulting `Stats` struct: count or ViewType.
     pub fn from_values_from_field(
         field: StatsField<TILE_COUNT>,
-        vals: Vec<u64>,
+        vals: Vec<WeightedValue>,
     ) -> Result<SubStats<ViewType, TILE_COUNT>, StatsError> {
         if Self::field_type_is_count(field) {
             Ok(SubStats::Count(Stats::from_values(vals)?))
@@ -191,39 +196,67 @@ impl<ViewType, const TILE_COUNT: usize> Stats<ViewType, TILE_COUNT> {
     /// `tiles_count` is how many 'tiles' to build, for percentiles
     /// give the number 101. (Needs to own `vals` for sorting,
     /// internally.)
-    pub fn from_values(mut vals: Vec<u64>) -> Result<Self, StatsError> {
-        let num_values = vals.len();
-        if num_values.is_zero() {
-            return Err(StatsError::NoInputs);
+    pub fn from_values(mut vals: Vec<WeightedValue>) -> Result<Self, StatsError> {
+        {
+            let num_weights = vals.len();
+            if num_weights.is_zero() {
+                return Err(StatsError::NoInputs);
+            }
         }
-        let sum: u128 = vals.iter().map(|v| u128::from(*v)).sum();
+
+        let (virtual_count, virtual_sum): (u64, u128) =
+            vals.iter()
+                .fold((0, 0), |(count, sum), WeightedValue { value, weight }| {
+                    let weight = u64::from(u32::from(*weight));
+                    (
+                        count + weight,
+                        sum + u128::from(*value) * u128::from(weight),
+                    )
+                });
 
         let average = {
-            let num_values = num_values as u128;
-            sum.checked_add(num_values / 2)
+            let virtual_count = u128::from(virtual_count);
+            virtual_sum
+                .checked_add(virtual_count / 2)
                 .ok_or(StatsError::SaturatedU128)?
-                / num_values
+                / virtual_count
         };
 
         let variance = {
-            let num_values = num_values as f64;
-            let average: f64 = sum as f64 / num_values;
-            let sum_squared_error: f64 = vals.iter().map(|v| (*v as f64 - average).pow(2)).sum();
-            sum_squared_error / num_values
+            // XX is there any *good* reason to use f64 here (other
+            // than "average might lie inbetween integer steps"; but
+            // could downscale for the average, i.e. average is u128
+            // but with the lower half being parts--use
+            // https://crates.io/crates/fixed ?)?
+            let virtual_count = virtual_count as f64;
+            let average: f64 = virtual_sum as f64 / virtual_count;
+            let sum_squared_error: f64 = vals
+                .iter()
+                .map(|WeightedValue { value, weight }| {
+                    // Do the same as if `value` would be copied `weight` times
+                    let weight = u64::from(u32::from(*weight));
+                    (*value as f64 - average).pow(2) * (weight as f64)
+                })
+                .sum();
+            sum_squared_error / virtual_count
         };
 
-        vals.sort();
+        let indexed_vals = IndexedNumbers::from_unsorted_weighted_value_vec(&mut vals)
+            .expect("virtual_count is limited to u64 range above");
+        // Don't need vals any more, avoid accidental use
+        drop(vals);
+        assert_eq!(indexed_vals.virtual_len(), virtual_count);
 
         // Calculate the median before making tiles, because for
         // uneven lengths, tiles do not precisely contain the median.
         let median = {
-            let mid = vals.len() / 2;
-            if 0 == vals.len() % 2 {
+            let mid = indexed_vals.virtual_len() / 2;
+            if 0 == indexed_vals.virtual_len() % 2 {
                 // len is checked to be > 0, so we
                 // must have at least 2 values here.
-                (vals[mid - 1], vals[mid]).average()
+                (indexed_vals[mid - 1], indexed_vals[mid]).average()
             } else {
-                vals[mid]
+                indexed_vals[mid]
             }
         };
 
@@ -233,22 +266,26 @@ impl<ViewType, const TILE_COUNT: usize> Stats<ViewType, TILE_COUNT> {
         // distances. If `vals` has 4 elements, that's 3 distances to
         // go. The tile position 2 needs to go to vals index 3, the
         // tile position 1 to vals index 1.5 -> round up to index 2.
-        let vals_distances = (num_values - 1) as f64;
+        //
+        // XX Why does this not do the averages any more?? Unlike
+        // median above.
+        let vals_distances = (virtual_count - 1) as f64;
         let tiles_distances = (TILE_COUNT - 1) as f64;
         let mut tiles = Vec::new();
         for i in 0..TILE_COUNT {
             let index = i as f64 / tiles_distances * vals_distances + 0.5;
-            let val = vals[index as usize];
+            let val = indexed_vals[index as u64];
             tiles.push(val);
         }
 
-        assert_eq!(vals.first(), tiles.first());
-        assert_eq!(vals.last(), tiles.last());
+        assert_eq!(indexed_vals.first(), tiles.first());
+        assert_eq!(indexed_vals.last(), tiles.last());
 
         Ok(Stats {
             view_type: PhantomData::default(),
-            num_values,
-            sum,
+            num_values: usize::try_from(virtual_count)
+                .map_err(|_| StatsError::VirtualCountDoesNotFitUSize)?,
+            sum: virtual_sum,
             average: average.try_into().expect("always fits"),
             median,
             variance,
@@ -384,11 +421,23 @@ impl<ViewType: From<u64> + ToStatsString, const TILE_COUNT: usize> TableViewRow<
 mod tests {
     use anyhow::Result;
 
+    use crate::stats::weighted::WEIGHT_ONE;
+
     use super::*;
+
+    fn weighted(vals: &[u64]) -> Vec<WeightedValue> {
+        vals.iter()
+            .copied()
+            .map(|value| WeightedValue {
+                value,
+                weight: WEIGHT_ONE,
+            })
+            .collect()
+    }
 
     #[test]
     fn t_average_and_tiles_and_median() -> Result<()> {
-        let data = vec![23, 4, 8, 30, 7];
+        let data = weighted(&[23, 4, 8, 30, 7]);
         let stats = Stats::<u64, 4>::from_values(data)?;
         assert_eq!(stats.average, 14); // 14.4
         assert_eq!(stats.tiles, [4, 7, 23, 30]); // 8 skipped
@@ -396,7 +445,7 @@ mod tests {
         assert_eq!(stats.variance, 104.24000000000001);
         assert_eq!(stats.standard_deviation_u64(), 10); // 10.2097992144802
 
-        let data = vec![23, 4, 8, 31, 7];
+        let data = weighted(&[23, 4, 8, 31, 7]);
         let stats = Stats::<u64, 4>::from_values(data)?;
         assert_eq!(stats.average, 15); // 14.6
         assert_eq!(stats.tiles[0], 4);
@@ -407,13 +456,13 @@ mod tests {
         assert_eq!(stats.variance, 110.64000000000001);
         assert_eq!(stats.standard_deviation_u64(), 11); // 10.5185550338438
 
-        let data = vec![23, 4, 8, 7];
+        let data = weighted(&[23, 4, 8, 7]);
         let stats = Stats::<u64, 4>::from_values(data)?;
         assert_eq!(stats.average, 11); // 10.5
         assert_eq!(stats.tiles, [4, 7, 8, 23]);
         assert_eq!(stats.median, 8); // 7.5 rounded up ? XX
 
-        let data = vec![23, 8, 7];
+        let data = weighted(&[23, 8, 7]);
         let stats = Stats::<u64, 4>::from_values(data)?;
         assert_eq!(stats.average, 13); // 12.6666666666667
         assert_eq!(stats.median, 8);
@@ -424,39 +473,58 @@ mod tests {
 
     #[test]
     fn t_median() -> Result<()> {
-        let data = vec![23, 4, 8, 7];
+        let data = weighted(&[23, 4, 8, 7]);
         let stats = Stats::<u64, 4>::from_values(data)?;
         assert_eq!(stats.median, 8); // 7.5 rounded up
 
-        let data = vec![23, 4, 9, 7];
+        let data = weighted(&[23, 4, 9, 7]);
         let stats = Stats::<u64, 4>::from_values(data)?;
         assert_eq!(stats.median, 8); // 8.0
 
-        let data = vec![23, 4, 10, 7];
+        let data = weighted(&[23, 4, 10, 7]);
         let stats = Stats::<u64, 4>::from_values(data)?;
         assert_eq!(stats.median, 9); // 8.5
 
-        let data = vec![23, 4, 10, 7];
+        let data = weighted(&[23, 4, 10, 7]);
         let stats = Stats::<u64, 2>::from_values(data)?;
         assert_eq!(stats.tiles, [4, 23]);
         // Calculated from original values, not tiles:
         assert_eq!(stats.median, 9); // 8.5
 
-        let data = vec![23, 4, 7];
+        let data = weighted(&[23, 4, 7]);
         let stats = Stats::<u64, 2>::from_values(data)?;
         assert_eq!(stats.median, 7);
 
-        let data = vec![23, 4, 7];
+        let data = weighted(&[23, 4, 7]);
         let stats = Stats::<u64, 3>::from_values(data)?;
         assert_eq!(stats.median, 7);
 
-        let data = vec![23, 4, 7];
+        let data = weighted(&[23, 4, 7]);
         let stats = Stats::<u64, 4>::from_values(data)?;
         assert_eq!(stats.median, 7);
 
-        let data = vec![23, 4];
+        let data = weighted(&[23, 4]);
         let stats = Stats::<u64, 4>::from_values(data)?;
         assert_eq!(stats.median, 14); // 13.5
+
+        Ok(())
+    }
+
+    #[test]
+    fn t_weights() -> Result<()> {
+        let data = weighted(&[23, 4, 9, 4, 4, 7]); // 4 4 4 7 9 23
+        let stats = Stats::<u64, 4>::from_values(data)?;
+        assert_eq!(stats.median, 6); // 5.5
+        assert_eq!(stats.variance, 45.583333333333336);
+
+        let mut data = weighted(&[23, 4, 9, 7]);
+        data.push(WeightedValue {
+            value: 4,
+            weight: 2.try_into().unwrap(),
+        });
+        let stats = Stats::<u64, 4>::from_values(data)?;
+        assert_eq!(stats.median, 6); // 5.5
+        assert_eq!(stats.variance, 45.583333333333336);
 
         Ok(())
     }

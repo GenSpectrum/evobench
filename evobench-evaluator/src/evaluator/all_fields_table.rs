@@ -1,6 +1,7 @@
 use std::{
     borrow::Cow,
     fmt::{Debug, Display},
+    num::NonZeroU32,
     path::PathBuf,
 };
 
@@ -9,15 +10,20 @@ use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterato
 
 use crate::{
     dynamic_typing::{StatsOrCount, StatsOrCountOrSubStats},
-    evaluator::data::{
-        log_data_tree::{LogDataTree, PathStringOptions, SpanId},
-        log_message::Timing,
+    evaluator::{
+        data::{
+            log_data_tree::{LogDataTree, PathStringOptions, SpanId},
+            log_message::Timing,
+        },
+        options::TILE_COUNT,
     },
-    evaluator::options::TILE_COUNT,
     index_by_call_path::IndexByCallPath,
     join::{keyval_inner_join, KeyVal},
     rayon_util::ParRun,
-    stats::{Stats, StatsError, StatsField, ToStatsString},
+    stats::{
+        weighted::{WeightedValue, WEIGHT_ONE},
+        Stats, StatsError, StatsField, ToStatsString,
+    },
     table::{Table, TableKind},
     table_field_view::TableFieldView,
     times::{MicroTime, NanoTime},
@@ -27,12 +33,16 @@ fn scopestats<K: KeyDetails>(
     log_data_tree: &LogDataTree,
     spans: &[SpanId],
 ) -> Result<Stats<K::ViewType, TILE_COUNT>, StatsError> {
-    let vals: Vec<u64> = spans
+    let vals: Vec<WeightedValue> = spans
         .into_iter()
-        .filter_map(|span_id| -> Option<u64> {
+        .filter_map(|span_id| -> Option<_> {
             let span = span_id.get_from_db(log_data_tree);
             let (start, end) = span.start_and_end()?;
-            Some(K::timing_extract(end)?.into() - K::timing_extract(start)?.into())
+            let value: u64 = K::timing_extract(end)?.into() - K::timing_extract(start)?.into();
+            // Handle `EVOBENCH_SCOPE_EVERY` with `every_n > 1`
+            let weight = NonZeroU32::try_from(start.n())
+                .expect("num_runs is always at least 1 in the start Timing");
+            Some(WeightedValue { value, weight })
         })
         .collect();
     Stats::from_values(vals)
@@ -426,7 +436,9 @@ where
     let rows: Vec<_> = rows_merged
         .into_par_iter()
         .filter_map(|KeyVal { key, val }| {
-            let vals: Vec<u64> = val
+            // XX using WeightedValue here just because Stats requires
+            // it now! Kinda ugly? Make separate Stats methods?
+            let vals: Vec<WeightedValue> = val
                 .iter()
                 .filter_map(|s| match s {
                     StatsOrCountOrSubStats::StatsOrCount(stats_or_count) => match stats_or_count {
@@ -443,6 +455,10 @@ where
                         unreachable!("SingleRunStats cannot contain SubStats")
                     }
                 })
+                .map(|value| WeightedValue {
+                    value,
+                    weight: WEIGHT_ONE,
+                })
                 .collect();
             let maybe_val = match Stats::<K::ViewType, TILE_COUNT>::from_values_from_field(
                 extract_stats_field,
@@ -458,6 +474,7 @@ where
                 Err(StatsError::SaturatedU128) => {
                     unreachable!("expecting to never see values > u64")
                 }
+                Err(StatsError::VirtualCountDoesNotFitUSize) => unreachable!("on 64bit archs"),
             };
             let val = maybe_val?;
             Some(KeyVal { key, val })
