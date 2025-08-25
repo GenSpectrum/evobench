@@ -16,21 +16,21 @@ pub struct IndexByCallPath<'t> {
 
 impl<'t> IndexByCallPath<'t> {
     pub fn from_logdataindex(
-        db: &LogDataTree<'t>,
+        log_data_tree: &LogDataTree<'t>,
         path_string_optss: &[PathStringOptions],
     ) -> Self {
         let mut slf = Self::default();
         let mut out_prefix = String::new();
         let mut out_main = String::new();
-        for span_id in db.span_ids() {
-            let span = span_id.get_from_db(db);
+        for span_id in log_data_tree.span_ids() {
+            let span = span_id.get_from_db(log_data_tree);
             for opts in path_string_optss {
                 let path = {
                     // Calculate the path efficiently by reusing
                     // buffers
                     out_prefix.clear();
                     out_main.clear();
-                    span.path_string(&opts, db, &mut out_prefix, &mut out_main);
+                    span.path_string(&opts, log_data_tree, &mut out_prefix, &mut out_main);
                     out_prefix.push_str(&out_main);
                     &*out_prefix
                 };
