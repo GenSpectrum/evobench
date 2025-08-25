@@ -5,7 +5,7 @@
 #include "evobench/evobench.hpp"
 
 long long fib(long long n) {
-   // EVOBENCH_SCOPE("fib", "fib");
+   EVOBENCH_SCOPE_EVERY(100000, "fib", "fib");
    if (n <= 2) {
       return n;
    }
