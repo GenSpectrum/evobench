@@ -2,7 +2,9 @@
 
 Also see the [overview](overview.md).
 
-## Style / details
+## General
+
+### Style / details
 
 * Types with names ending in "Opts" (or also "Opt" XX) are generally
   (XX?) precursor types (at least if a sister type without the "Opts"
@@ -17,24 +19,10 @@ Also see the [overview](overview.md).
   `Arc` is cloned, for clarity and easy searching when interested
   where it happens. Please keep this up.
 
-## State
 
-Filesystem-based state is immediately updated on the file system to
-reflect the in-memory representation, but currently not necessarily
-the other way around. Filesystem-based state is:
+## Specifics
 
-- The set of queues (dirs created as necessary according to config)
+* [internals/evaluator/](internals/evaluator/index.md) -- how evobench-evaluator works internally
 
-- The jobs in the queues: bidirectionally, re-read on every job
-  selection iteration. Job changes (moves between queues, failure and
-  run counts, priority boost) are immediately synchronized to the file
-  system.
-
-- Working directory changes are immediately synchronized to the file
-  system, but currently changes in the file system are not picked up
-  (this is a todo).
-
-The state about which is the currently executed queue (for queue
-actions) is currently maintained in memory only, and also not
-currently passed on re-exec of the binary--this is an open bug.
+* [internals/runner/](internals/runner/index.md) -- how evobench-run works internally
 
