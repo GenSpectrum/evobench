@@ -146,7 +146,7 @@ impl AllOutputsAllFieldsTable<SummaryStats> {
                         .as_ref()
                         .expect(
                             "same output_opts given in previous layer \
-                                                     leading to same set of options",
+                             leading to same set of options",
                         )
                         .aft
                 })
@@ -193,7 +193,7 @@ fn fix_tree<'key>(tree: Tree<'key, u64>) -> Tree<'key, u64> {
             .unwrap_or_else(|| {
                 eprintln!(
                     "somehow parent has lower value, {orig_value}, \
-                 than sum of children, {orig_children_total}"
+                     than sum of children, {orig_children_total}"
                 );
                 0
             })
