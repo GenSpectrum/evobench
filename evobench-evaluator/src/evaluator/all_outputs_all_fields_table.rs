@@ -11,8 +11,8 @@ use run_git::path_util::{add_extension, AppendToPath};
 use crate::{
     config_file::ron_to_file_pretty, evaluator::data::log_data_tree::LogDataTree,
     evaluator::options::TILE_COUNT, excel_table_view::excel_file_write, info,
-    io_utils::tempfile_utils::TempfileOpts, join::KeyVal, stats::StatsField, table_view::TableView,
-    tree::Tree, warn,
+    io_utils::tempfile_utils::TempfileOptions, join::KeyVal, stats::StatsField,
+    table_view::TableView, tree::Tree, warn,
 };
 
 use super::{
@@ -304,7 +304,7 @@ impl<Kind: AllFieldsTableKind> AllOutputsAllFieldsTable<Kind> {
                             let target_path = flame_base_dir
                                 .append(format!("{flame_base_name}-{}.svg", table.table_name()));
                             if let Err(e) = (|| -> Result<()> {
-                                let tempfile = TempfileOpts {
+                                let tempfile = TempfileOptions {
                                     target_path: target_path.clone(),
                                     retain_tempfile: true,
                                     migrate_access: false,

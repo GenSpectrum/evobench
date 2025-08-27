@@ -51,13 +51,13 @@ pub fn temp_path(target_path: impl AsRef<Path>) -> Result<PathBuf, TempfileError
 // }
 
 #[derive(Debug, Clone)]
-pub struct TempfileOpts {
+pub struct TempfileOptions {
     pub target_path: PathBuf,
     pub retain_tempfile: bool,
     pub migrate_access: bool,
 }
 
-impl TempfileOpts {
+impl TempfileOptions {
     pub fn tempfile(self) -> Result<Tempfile, TempfileError> {
         Tempfile::try_from(self)
     }
@@ -65,14 +65,14 @@ impl TempfileOpts {
 
 #[derive(Debug)]
 pub struct Tempfile {
-    pub opts: TempfileOpts,
+    pub opts: TempfileOptions,
     pub temp_path: PathBuf,
 }
 
-impl TryFrom<TempfileOpts> for Tempfile {
+impl TryFrom<TempfileOptions> for Tempfile {
     type Error = TempfileError;
 
-    fn try_from(opts: TempfileOpts) -> Result<Self, TempfileError> {
+    fn try_from(opts: TempfileOptions) -> Result<Self, TempfileError> {
         let temp_path = temp_path(&opts.target_path)?;
         Ok(Tempfile { opts, temp_path })
     }
@@ -91,7 +91,7 @@ impl Tempfile {
         self.opts.retain_tempfile = true; // tell Drop that it should do nothing
         let Self {
             opts:
-                TempfileOpts {
+                TempfileOptions {
                     ref target_path,
                     retain_tempfile: _,
                     migrate_access,
@@ -137,7 +137,7 @@ impl Drop for Tempfile {
     fn drop(&mut self) {
         let Self {
             opts:
-                TempfileOpts {
+                TempfileOptions {
                     target_path: _,
                     retain_tempfile,
                     migrate_access: _,

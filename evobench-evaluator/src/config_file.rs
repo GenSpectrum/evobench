@@ -17,7 +17,7 @@ use serde::{de::DeserializeOwned, Serialize};
 
 use crate::{
     ctx, info,
-    io_utils::tempfile_utils::TempfileOpts,
+    io_utils::tempfile_utils::TempfileOptions,
     json5_from_str::{json5_from_str, Json5FromStrError},
     path_util::add_extension,
     serde::proper_filename::ProperFilename,
@@ -41,7 +41,7 @@ pub fn ron_to_file_pretty<V: serde::Serialize>(
 ) -> Result<()> {
     let s = ron_to_string_pretty(value)?;
     let path = path.as_ref();
-    let tmpfile = TempfileOpts {
+    let tmpfile = TempfileOptions {
         target_path: path.into(),
         retain_tempfile: false,
         migrate_access,
