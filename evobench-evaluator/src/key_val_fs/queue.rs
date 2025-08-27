@@ -39,17 +39,11 @@ pub struct TimeKey {
     id: u64,
 }
 
-fn datetime_from_nanoseconds(nanos: u128) -> DateTime<Local> {
-    let secs = (nanos / 1_000_000_000) as u64;
-    let nanos = (nanos % 1_000_000_000) as u32;
-    let system_time = UNIX_EPOCH + Duration::new(secs, nanos);
-    system_time.into()
-}
-
 impl Display for TimeKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let Self { nanos, pid, id } = self;
-        let t = datetime_from_nanoseconds(*nanos);
+        let Self { nanos: _, pid, id } = self;
+
+        let t = self.datetime();
         write!(f, "{t} ({pid}-{id})")
     }
 }
@@ -68,13 +62,24 @@ impl TimeKey {
         Self { nanos, pid, id }
     }
 
+    pub fn unixtime_nanoseconds(&self) -> u128 {
+        self.nanos
+    }
+
+    pub fn unixtime_seconds_and_nanoseconds(&self) -> (u64, u32) {
+        let nanos = self.nanos;
+        let secs = (nanos / 1_000_000_000) as u64;
+        let nanos = (nanos % 1_000_000_000) as u32;
+        (secs, nanos)
+    }
+
+    pub fn system_time(&self) -> SystemTime {
+        let (secs, nanos) = self.unixtime_seconds_and_nanoseconds();
+        UNIX_EPOCH + Duration::new(secs, nanos)
+    }
+
     pub fn datetime(&self) -> DateTime<Local> {
-        let Self {
-            nanos,
-            pid: _,
-            id: _,
-        } = self;
-        datetime_from_nanoseconds(*nanos)
+        self.system_time().into()
     }
 }
 

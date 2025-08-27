@@ -1,4 +1,5 @@
 use anyhow::{anyhow, bail, Result};
+use chrono::{DateTime, Local};
 use clap::Parser;
 use itertools::Itertools;
 use run_git::git::GitWorkingDir;
@@ -439,7 +440,7 @@ fn run() -> Result<Option<PathBuf>> {
 
                 let values: &[&dyn Display] =
                     &[&t, &commit_id, &target_name.as_str(), &custom_parameters];
-                table.write_data_row(values)?;
+                table.write_data_row(values, None)?;
             }
             drop(table.finish()?);
         }
@@ -451,7 +452,7 @@ fn run() -> Result<Option<PathBuf>> {
         } => {
             fn table_with_titles<'v, 's, O: Write + IsTerminal>(
                 titles: &'s [TerminalTableTitle],
-                style: Option<&Style>,
+                style: Option<Style>,
                 terminal_table_opts: &TerminalTableOpts,
                 out: O,
                 verbose: bool,
@@ -493,7 +494,7 @@ fn run() -> Result<Option<PathBuf>> {
                 // rgb(10, 70, 140) looks perfect but `watch` turns it to black.
                 let table = table_with_titles(
                     titles,
-                    Some(&Style::new().green().italic().bold()),
+                    Some(Style::new().green().italic().bold()),
                     &terminal_table_opts,
                     out,
                     verbose,
@@ -501,6 +502,7 @@ fn run() -> Result<Option<PathBuf>> {
                 out = table.finish()?;
             }
 
+            let now = SystemTime::now();
             let show_queue =
                 |i: &str, run_queue: &RunQueue, is_extra_queue: bool, out| -> Result<_> {
                     let RunQueue {
@@ -617,21 +619,34 @@ fn run() -> Result<Option<PathBuf>> {
                         };
                         let target_name = job.benchmarking_job_public.command.target_name.as_str();
 
+                        let system_time = key.system_time();
+                        let is_older = {
+                            let age = now.duration_since(system_time)?;
+                            age > Duration::from_secs(3600 * 24)
+                        };
                         let time = if verbose {
                             &*format!("{file_name} ({key})")
                         } else {
-                            &*key.datetime().to_rfc3339()
+                            let datetime: DateTime<Local> = system_time.into();
+                            &*datetime.to_rfc3339()
                         };
-                        table.write_data_row(&[
-                            time,
-                            locking,
-                            priority,
-                            &*wd,
-                            reason,
-                            commit_id,
-                            target_name,
-                            custom_parameters,
-                        ])?;
+                        table.write_data_row(
+                            &[
+                                time,
+                                locking,
+                                priority,
+                                &*wd,
+                                reason,
+                                commit_id,
+                                target_name,
+                                custom_parameters,
+                            ],
+                            if is_older {
+                                Some(Style::new().bright_black())
+                            } else {
+                                None
+                            },
+                        )?;
                         if verbose {
                             let s = ron_to_string_pretty(&job)?;
                             table.print(&format!("{s}\n\n"))?;

@@ -170,7 +170,7 @@ impl<'v, 's, O: Write + IsTerminal> TerminalTable<'v, 's, O> {
     pub fn start(
         widths: &[usize],
         titles: &'v [TerminalTableTitle<'s>],
-        style: Option<&Style>,
+        style: Option<Style>,
         opts: TerminalTableOpts,
         out: O,
     ) -> Result<Self> {
@@ -202,7 +202,7 @@ impl<'v, 's, O: Write + IsTerminal> TerminalTable<'v, 's, O> {
         settings: &TerminalTableSettings,
         out: &mut BufWriter<O>,
         row: Row<V>,
-        line_style: Option<&Style>,
+        line_style: Option<Style>,
     ) -> Result<()> {
         let lens = (settings.widths.len(), row.logical_len());
         let (l1, l2) = lens;
@@ -225,7 +225,7 @@ impl<'v, 's, O: Write + IsTerminal> TerminalTable<'v, 's, O> {
                 // make sure italic text is not clipped on terminals
                 text.push_str(" ");
                 minimal_pading_len = Self::MINIMAL_PADDING_LEN.saturating_sub(1);
-                let s = text.as_str().paint(*style);
+                let s = text.as_str().paint(style);
                 let s = s.to_string();
                 out.write_all(s.as_bytes())?;
             } else {
@@ -249,7 +249,7 @@ impl<'v, 's, O: Write + IsTerminal> TerminalTable<'v, 's, O> {
         Ok(())
     }
 
-    pub fn write_title_row_with_style(&mut self, style: &Style) -> Result<()> {
+    pub fn write_title_row_with_style(&mut self, style: Style) -> Result<()> {
         Self::write_row(
             &self.opts,
             &self.settings,
@@ -265,16 +265,20 @@ impl<'v, 's, O: Write + IsTerminal> TerminalTable<'v, 's, O> {
 
     pub fn write_title_row(&mut self) -> Result<()> {
         const STYLE: Style = Style::new().bold().italic();
-        self.write_title_row_with_style(&STYLE)
+        self.write_title_row_with_style(STYLE)
     }
 
-    pub fn write_data_row<V: Display>(&mut self, data: &[V]) -> Result<()> {
+    pub fn write_data_row<V: Display>(
+        &mut self,
+        data: &[V],
+        line_style: Option<Style>,
+    ) -> Result<()> {
         Self::write_row(
             &self.opts,
             &self.settings,
             &mut self.out,
             Row::PlainStrings(data),
-            None,
+            line_style,
         )
     }
 
