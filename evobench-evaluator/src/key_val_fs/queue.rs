@@ -100,7 +100,7 @@ impl AsKey for TimeKey {
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub struct QueueGetItemOpts {
+pub struct QueueGetItemOptions {
     /// Used for debugging in some places
     pub verbose: bool,
     /// Do not attempt to lock entries (default: false)
@@ -123,7 +123,7 @@ pub struct QueueIterationOpts {
     /// Sort in reverse
     pub reverse: bool,
 
-    pub get_item_opts: QueueGetItemOpts,
+    pub get_item_opts: QueueGetItemOptions,
 }
 
 #[derive(Debug)]
@@ -195,9 +195,9 @@ impl<'basedir, V: DeserializeOwned + Serialize> QueueItem<'basedir, V> {
     pub fn from_entry<'s>(
         mut entry: Entry<'s, TimeKey, V>,
         base_dir: &PathBuf,
-        opts: QueueGetItemOpts,
+        opts: QueueGetItemOptions,
     ) -> Result<QueueItem<'s, V>, KeyValError> {
-        let QueueGetItemOpts {
+        let QueueGetItemOptions {
             no_lock,
             error_when_locked,
             delete_first,
@@ -329,7 +329,7 @@ impl<V: DeserializeOwned + Serialize + 'static> Queue<V> {
     pub fn get_item<'s>(
         &'s self,
         key: &TimeKey,
-        opts: QueueGetItemOpts,
+        opts: QueueGetItemOptions,
     ) -> Result<Option<QueueItem<'s, V>>, KeyValError> {
         if let Some(entry) = self.0.entry_opt(key)? {
             Ok(Some(QueueItem::from_entry(entry, self.base_dir(), opts)?))

@@ -12,7 +12,7 @@ use evobench_evaluator::{
     info_if,
     key_val_fs::{
         key_val::{Entry, KeyValConfig},
-        queue::{Queue, QueueGetItemOpts, QueueIterationOpts},
+        queue::{Queue, QueueGetItemOptions, QueueIterationOpts},
     },
     safe_string::SafeString,
 };
@@ -203,7 +203,7 @@ fn main() -> Result<()> {
                 wait,
                 stop_at: None,
                 reverse: false,
-                get_item_opts: QueueGetItemOpts {
+                get_item_opts: QueueGetItemOptions {
                     no_lock,
                     error_when_locked,
                     verbose,

@@ -17,7 +17,7 @@ use crate::{
     info,
     key_val_fs::{
         key_val::{KeyValConfig, KeyValSync},
-        queue::{Queue, QueueGetItemOpts, QueueItem, TimeKey},
+        queue::{Queue, QueueGetItemOptions, QueueItem, TimeKey},
     },
     path_util::AppendToPath,
     run::run_job::{JobRunnerJobData, JobRunnerWithJob},
@@ -258,7 +258,7 @@ impl RunQueues {
                 if let Some((key, job, job_priority)) = jobs.into_iter().next() {
                     if let Some(item) = rq.current.queue.get_item(
                         &key,
-                        QueueGetItemOpts {
+                        QueueGetItemOptions {
                             verbose,
                             no_lock: true,
                             error_when_locked: false,
@@ -561,7 +561,7 @@ impl<'run_queues> RunQueuesData<'run_queues> {
         {
             if let Some(item) = rq.current.run_queue().queue.get_item(
                 key,
-                QueueGetItemOpts {
+                QueueGetItemOptions {
                     verbose,
                     no_lock: true,
                     error_when_locked: false,
