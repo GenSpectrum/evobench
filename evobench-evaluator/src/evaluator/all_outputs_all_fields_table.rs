@@ -20,7 +20,7 @@ use super::{
         AllFieldsTable, AllFieldsTableKind, AllFieldsTableKindParams, KeyRuntimeDetails,
         SingleRunStats, SummaryStats,
     },
-    options::{CheckedOutputOptsMapCase, EvaluationOpts, OutputVariants},
+    options::{CheckedOutputOptionsMapCase, EvaluationOpts, OutputVariants},
 };
 
 pub struct AllFieldsTableWithOutputPathOrBase<Kind: AllFieldsTableKind> {
@@ -49,7 +49,7 @@ impl<Kind: AllFieldsTableKind> Deref for AllOutputsAllFieldsTable<Kind> {
 }
 
 fn key_details_for(
-    case: CheckedOutputOptsMapCase,
+    case: CheckedOutputOptionsMapCase,
     evaluation_opts: &EvaluationOpts,
 ) -> KeyRuntimeDetails {
     let EvaluationOpts {
@@ -69,7 +69,7 @@ fn key_details_for(
         prefix,
     );
     match case {
-        CheckedOutputOptsMapCase::Excel => {
+        CheckedOutputOptionsMapCase::Excel => {
             normal_separator = " > ";
             reverse_separator = " < ";
             show_probe_names = true;
@@ -79,7 +79,7 @@ fn key_details_for(
             skip_process = false;
             prefix = None;
         }
-        CheckedOutputOptsMapCase::Flame => {
+        CheckedOutputOptionsMapCase::Flame => {
             normal_separator = ";";
             reverse_separator = ";";
             show_probe_names = false;
@@ -156,10 +156,10 @@ impl AllOutputsAllFieldsTable<SummaryStats> {
             aft: AllFieldsTable::summary_stats(
                 afts.as_slice(),
                 match case {
-                    CheckedOutputOptsMapCase::Excel => field_selector,
+                    CheckedOutputOptionsMapCase::Excel => field_selector,
                     // Flame graphs always need the sums, thus ignore
                     // the user option for those
-                    CheckedOutputOptsMapCase::Flame => StatsField::Sum,
+                    CheckedOutputOptionsMapCase::Flame => StatsField::Sum,
                 },
                 &key_details_for(case, evaluation_opts),
             ),
@@ -250,7 +250,7 @@ impl<Kind: AllFieldsTableKind> AllOutputsAllFieldsTable<Kind> {
             }
             let tables = aft.tables();
             match case {
-                CheckedOutputOptsMapCase::Excel => {
+                CheckedOutputOptionsMapCase::Excel => {
                     excel_file_write(
                         tables.iter().map(|v| {
                             let v: &dyn TableView = *v;
@@ -259,7 +259,7 @@ impl<Kind: AllFieldsTableKind> AllOutputsAllFieldsTable<Kind> {
                         &output_path_or_base,
                     )?;
                 }
-                CheckedOutputOptsMapCase::Flame => {
+                CheckedOutputOptionsMapCase::Flame => {
                     let curdir = PathBuf::from(".");
                     let flame_base_dir = output_path_or_base.parent().unwrap_or(&*curdir);
                     let flame_base_name = output_path_or_base

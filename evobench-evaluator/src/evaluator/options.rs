@@ -89,41 +89,41 @@ pub struct OutputVariants<T> {
 }
 
 #[derive(Clone, Copy, PartialEq)]
-pub enum CheckedOutputOptsMapCase {
+pub enum CheckedOutputOptionsMapCase {
     Excel,
     Flame,
 }
 
 impl<T> OutputVariants<T> {
     /// get a field
-    pub fn get(&self, case: CheckedOutputOptsMapCase) -> &Option<T> {
+    pub fn get(&self, case: CheckedOutputOptionsMapCase) -> &Option<T> {
         match case {
-            CheckedOutputOptsMapCase::Excel => &self.excel,
-            CheckedOutputOptsMapCase::Flame => &self.flame,
+            CheckedOutputOptionsMapCase::Excel => &self.excel,
+            CheckedOutputOptionsMapCase::Flame => &self.flame,
         }
     }
 
     /// `f` is applied to all fields that are `Some`
-    pub fn map<U>(self, f: impl Fn(CheckedOutputOptsMapCase, T) -> U) -> OutputVariants<U> {
+    pub fn map<U>(self, f: impl Fn(CheckedOutputOptionsMapCase, T) -> U) -> OutputVariants<U> {
         let Self { excel, flame } = self;
         OutputVariants {
-            excel: excel.map(|v| f(CheckedOutputOptsMapCase::Excel, v)),
-            flame: flame.map(|v| f(CheckedOutputOptsMapCase::Flame, v)),
+            excel: excel.map(|v| f(CheckedOutputOptionsMapCase::Excel, v)),
+            flame: flame.map(|v| f(CheckedOutputOptionsMapCase::Flame, v)),
         }
     }
 
     /// `f` is applied to all fields that are `Some`
     pub fn try_map<U, E>(
         self,
-        f: impl Fn(CheckedOutputOptsMapCase, T) -> Result<U, E>,
+        f: impl Fn(CheckedOutputOptionsMapCase, T) -> Result<U, E>,
     ) -> Result<OutputVariants<U>, E> {
         let Self { excel, flame } = self;
         Ok(OutputVariants {
             excel: excel
-                .map(|v| f(CheckedOutputOptsMapCase::Excel, v))
+                .map(|v| f(CheckedOutputOptionsMapCase::Excel, v))
                 .transpose()?,
             flame: flame
-                .map(|v| f(CheckedOutputOptsMapCase::Flame, v))
+                .map(|v| f(CheckedOutputOptionsMapCase::Flame, v))
                 .transpose()?,
         })
     }
