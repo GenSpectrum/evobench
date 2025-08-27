@@ -2,6 +2,7 @@
 //! percentiles), with strong typing, and ability to handle weighted
 //! values.
 
+pub mod average;
 pub mod weighted;
 
 use std::marker::PhantomData;
@@ -10,9 +11,9 @@ use std::{borrow::Cow, str::FromStr};
 use anyhow::bail;
 use num_traits::{Pow, Zero};
 
+use crate::stats::average::Average;
 use crate::stats::weighted::{IndexedNumbers, WeightedValue};
 use crate::{
-    average::Average,
     table_view::{ColumnFormatting, Highlight, TableViewRow, Unit},
     times::{MicroTime, NanoTime, ToStringMilliseconds},
 };

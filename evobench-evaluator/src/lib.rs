@@ -1,4 +1,3 @@
-pub mod average;
 pub mod change;
 pub mod config_file;
 pub mod crypto_hash;
