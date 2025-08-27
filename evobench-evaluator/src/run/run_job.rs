@@ -22,7 +22,7 @@ use crate::{
     ctx, info,
     io_utils::{
         bash::bash_string_from_program_and_args,
-        capture::{CaptureOpts, OutFile},
+        capture::{CaptureOptions, OutFile},
         temporary_file::TemporaryFile,
     },
     key::{BenchmarkingJobParameters, RunParameters},
@@ -313,7 +313,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                         command_output_file.run_with_capture(
                             command,
                             other_files,
-                            CaptureOpts {
+                            CaptureOptions {
                                 add_source_indicator: true,
                                 add_timestamp: true,
                             },

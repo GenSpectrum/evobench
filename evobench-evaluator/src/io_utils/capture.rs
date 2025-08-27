@@ -85,7 +85,7 @@ where
 }
 
 #[derive(Clone, Debug)]
-pub struct CaptureOpts {
+pub struct CaptureOptions {
     pub add_source_indicator: bool,
     pub add_timestamp: bool,
 }
@@ -160,9 +160,9 @@ impl OutFile {
         &self,
         mut cmd: Command,
         other_files: Arc<Mutex<Vec<Box<dyn Write + Send + 'static>>>>,
-        opts: CaptureOpts,
+        opts: CaptureOptions,
     ) -> Result<ExitStatus> {
-        let CaptureOpts {
+        let CaptureOptions {
             add_source_indicator,
             add_timestamp,
         } = opts;
