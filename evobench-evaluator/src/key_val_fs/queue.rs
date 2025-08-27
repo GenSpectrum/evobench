@@ -114,7 +114,7 @@ pub struct QueueGetItemOptions {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct QueueIterationOpts {
+pub struct QueueIterationOptions {
     /// Wait for entries if the queue is empty (i.e. go on forever)
     pub wait: bool,
     /// Stop at this time if given. Unblocks "wait" (waiting for new
@@ -260,7 +260,7 @@ impl<'basedir, V: DeserializeOwned + Serialize> QueueItem<'basedir, V> {
     }
 
     /// Delete this item now (alternatively, give `delete_first` in
-    /// `QueueIterationOpts`)
+    /// `QueueIterationOptions`)
     pub fn delete(&self) -> Result<(), KeyValError> {
         let deleted = self.with_perhaps_lock(|(entry, _lock)| entry.delete())?;
         info_if!(*self.borrow_verbose(), "deleted entry: {:?}", deleted);
@@ -396,11 +396,11 @@ impl<V: DeserializeOwned + Serialize + 'static> Queue<V> {
     /// entry as well as delete it automatically immediately.
     pub fn items<'s>(
         &'s self,
-        opts: QueueIterationOpts,
+        opts: QueueIterationOptions,
     ) -> impl Iterator<Item = Result<(QueueItem<'s, V>, V), KeyValError>> + use<'s, V> {
         let base_dir = self.0.base_dir.clone();
         Gen::new(|co| async move {
-            let QueueIterationOpts {
+            let QueueIterationOptions {
                 wait,
                 stop_at,
                 get_item_opts,

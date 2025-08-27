@@ -7,7 +7,7 @@ use crate::{
     ctx, info,
     key_val_fs::{
         key_val::KeyValError,
-        queue::{Queue, QueueGetItemOptions, QueueItem, QueueIterationOpts, TimeKey},
+        queue::{Queue, QueueGetItemOptions, QueueItem, QueueIterationOptions, TimeKey},
     },
     run::{benchmarking_job::BenchmarkingJobState, run_job::JobRunnerWithJob},
     serde::{priority::Priority, proper_filename::ProperFilename},
@@ -110,7 +110,7 @@ impl<'conf> RunQueue<'conf> {
         &'s self,
     ) -> impl Iterator<Item = Result<(QueueItem<'s, BenchmarkingJob>, BenchmarkingJob), KeyValError>>
            + use<'s> {
-        let opts = QueueIterationOpts {
+        let opts = QueueIterationOptions {
             get_item_opts: QueueGetItemOptions {
                 no_lock: true,
                 error_when_locked: false,
