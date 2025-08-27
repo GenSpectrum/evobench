@@ -33,7 +33,7 @@ pub struct AllFieldsTableWithOutputPathOrBase<Kind: AllFieldsTableKind> {
 }
 
 /// A wrapper holding the table sets for all requested
-/// outputs. (Wrapping `CheckedOutputOpts` since we want to have the
+/// outputs. (Wrapping `CheckedOutputOptions` since we want to have the
 /// same fields and mapping methods. A type alias would currently lose
 /// the trait restriction checks in Rust's type system.)
 pub struct AllOutputsAllFieldsTable<Kind: AllFieldsTableKind>(

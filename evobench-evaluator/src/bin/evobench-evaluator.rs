@@ -7,8 +7,8 @@ use evobench_evaluator::evaluator::all_fields_table::{SingleRunStats, SummarySta
 use evobench_evaluator::evaluator::all_outputs_all_fields_table::AllOutputsAllFieldsTable;
 use evobench_evaluator::evaluator::data::log_data_and_tree::LogDataAndTree;
 use evobench_evaluator::evaluator::options::{
-    CheckedOutputOpts, EvaluationAndOutputOpts, FieldSelectorDimension3, FieldSelectorDimension4,
-    FlameField,
+    CheckedOutputOptions, EvaluationAndOutputOpts, FieldSelectorDimension3,
+    FieldSelectorDimension4, FlameField,
 };
 use evobench_evaluator::get_terminal_width::get_terminal_width;
 use evobench_evaluator::stats::StatsField;
@@ -103,7 +103,7 @@ fn main() -> Result<()> {
                 },
             path,
         } => {
-            let CheckedOutputOpts { variants } = output_opts.check()?;
+            let CheckedOutputOptions { variants } = output_opts.check()?;
             let ldat = LogDataAndTree::read_file(&path)?;
             let aoaft = AllOutputsAllFieldsTable::from_log_data_tree(
                 ldat.tree(),
@@ -124,7 +124,7 @@ fn main() -> Result<()> {
             field_selector_dimension_3: FieldSelectorDimension3 { summary_field },
             flame_selector: FlameField { flame_field },
         } => {
-            let CheckedOutputOpts { variants } = output_opts.check()?;
+            let CheckedOutputOptions { variants } = output_opts.check()?;
             let afts: Vec<AllOutputsAllFieldsTable<SingleRunStats>> = paths
                 .iter()
                 .map(|source_path| {

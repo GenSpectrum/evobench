@@ -61,12 +61,12 @@ pub struct FlameField {
 /// options (flame_field was here in the past, not any more, but maybe
 /// other fields will come in the future, thus keeping the separation
 /// into OutputVariants and the wrapper)
-pub struct CheckedOutputOpts {
+pub struct CheckedOutputOptions {
     pub variants: OutputVariants<PathBuf>,
 }
 
 impl OutputOpts {
-    pub fn check(self) -> Result<CheckedOutputOpts> {
+    pub fn check(self) -> Result<CheckedOutputOptions> {
         let Self { excel, flame } = self;
 
         let any_given = [excel.is_some(), flame.is_some()].iter().any(|b| *b);
@@ -74,7 +74,7 @@ impl OutputOpts {
             bail!("no output files were specified")
         }
 
-        Ok(CheckedOutputOpts {
+        Ok(CheckedOutputOptions {
             variants: OutputVariants { excel, flame },
         })
     }
