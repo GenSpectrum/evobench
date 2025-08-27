@@ -1,3 +1,7 @@
+//! Simple statistics (count, average, standard deviation, median and
+//! percentiles), with strong typing, and ability to handle weighted
+//! values.
+
 pub mod weighted;
 
 use std::marker::PhantomData;
