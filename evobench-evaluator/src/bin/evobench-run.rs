@@ -3,7 +3,7 @@ use chrono::{DateTime, Local};
 use clap::Parser;
 use itertools::Itertools;
 use run_git::git::GitWorkingDir;
-use yansi::Style;
+use yansi::{Color, Style};
 
 use std::{
     borrow::Cow,
@@ -491,10 +491,14 @@ fn run() -> Result<Option<PathBuf>> {
                 full_span = titles.len();
                 // Somehow have to move `out` in and out, `&mut out`
                 // would not satisfy IsTerminal.
-                // rgb(10, 70, 140) looks perfect but `watch` turns it to black.
                 let table = table_with_titles(
                     titles,
-                    Some(Style::new().green().italic().bold()),
+                    // Note: in spite of `TERM=xterm-256color`, `watch
+                    // --color` still only supports system colors
+                    // 0..14!  (Can still not use `.rgb(10, 70, 140)`
+                    // nor `.fg(Color::Fixed(30))`, and watch 4.0.2
+                    // does not support `TERM=xterm-truecolor`.)
+                    Some(Style::new().fg(Color::Fixed(4)).italic().bold()),
                     &terminal_table_opts,
                     out,
                     verbose,
@@ -642,6 +646,9 @@ fn run() -> Result<Option<PathBuf>> {
                                 custom_parameters,
                             ],
                             if is_older {
+                                // Note: need `TERM=xterm-256color`
+                                // for `watch --color` to not turn
+                                // this color to black!
                                 Some(Style::new().bright_black())
                             } else {
                                 None
