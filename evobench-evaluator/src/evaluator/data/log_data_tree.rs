@@ -17,7 +17,7 @@ use std::{
 use anyhow::{anyhow, bail, Result};
 
 use crate::evaluator::data::{
-    log_file::LogData,
+    log_data::LogData,
     log_message::{DataMessage, KeyValue, PointKind, ThreadId, Timing},
 };
 
