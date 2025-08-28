@@ -15,7 +15,9 @@
 //! redundant, or not?
 
 //! Time-of-day may be relevant (rather: were other processes shut
-//! down or not), strongly or weakly.
+//! down or not), strongly or weakly, but can't be part of the key or
+//! grouping would not work; this is a piece of information to track
+//! separately for verification.
 
 //! Custom parameters can be given and be relevant, e.g. whether
 //! providing input data to an application sorted or not.
@@ -39,7 +41,7 @@ use crate::{
         custom_parameter::{AllowedCustomParameter, CustomParameterValue},
         run_job::AllowableCustomEnvVar,
     },
-    serde::{allowed_env_var::AllowedEnvVar, date_and_time::DateTimeWithOffset},
+    serde::allowed_env_var::AllowedEnvVar,
 };
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
@@ -84,8 +86,6 @@ pub struct Host {
 pub struct EarlyContext {
     pub host: Host,
     pub username: String,
-    /// The time when the benchmarking run was started
-    pub start_datetime: DateTimeWithOffset,
 }
 
 /// Custom key/value pairings, passed on as environment variables when
