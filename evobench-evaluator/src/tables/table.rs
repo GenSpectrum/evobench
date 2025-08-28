@@ -4,14 +4,16 @@ use genawaiter::rc::Gen;
 use itertools::{EitherOrBoth, Itertools};
 
 use crate::{
-    change::{Change, IsBetter},
     dynamic_typing::{StatsOrCount, StatsOrCountOrSubStats},
     evaluator::options::TILE_COUNT,
     join::KeyVal,
     resolution_unit::ResolutionUnit,
     stats::{Stats, StatsField, SubStats, ToStatsString},
-    table_field_view::TableFieldView,
-    table_view::{ColumnFormatting, Highlight, TableView, TableViewRow, Unit},
+    tables::{
+        change::{Change, IsBetter},
+        table_field_view::TableFieldView,
+        table_view::{ColumnFormatting, Highlight, TableView, TableViewRow, Unit},
+    },
 };
 
 pub trait TableKind: Clone {

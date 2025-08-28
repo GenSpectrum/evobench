@@ -6,7 +6,7 @@ use rust_xlsxwriter::{workbook::Workbook, Color, Format, FormatAlign};
 use crate::{
     io_utils::div::xrename,
     path_util::add_extension,
-    table_view::{ColumnFormatting, Highlight, TableView, Unit},
+    tables::table_view::{ColumnFormatting, Highlight, TableView, Unit},
 };
 
 /// How many characters to add to the automatic column width

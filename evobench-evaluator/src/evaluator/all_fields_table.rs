@@ -24,8 +24,10 @@ use crate::{
         weighted::{WeightedValue, WEIGHT_ONE},
         Stats, StatsError, StatsField, ToStatsString,
     },
-    table::{Table, TableKind},
-    table_field_view::TableFieldView,
+    tables::{
+        table::{Table, TableKind},
+        table_field_view::TableFieldView,
+    },
     times::{MicroTime, NanoTime},
 };
 

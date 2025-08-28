@@ -14,7 +14,7 @@ use num_traits::{Pow, Zero};
 use crate::stats::average::Average;
 use crate::stats::weighted::{IndexedNumbers, WeightedValue};
 use crate::{
-    table_view::{ColumnFormatting, Highlight, TableViewRow, Unit},
+    tables::table_view::{ColumnFormatting, Highlight, TableViewRow, Unit},
     times::{MicroTime, NanoTime, ToStringMilliseconds},
 };
 

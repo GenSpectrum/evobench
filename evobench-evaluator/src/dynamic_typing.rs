@@ -4,7 +4,7 @@ use std::{borrow::Cow, fmt::Debug};
 
 use crate::{
     stats::{Stats, SubStats, ToStatsString},
-    table_view::{ColumnFormatting, Highlight, TableViewRow, Unit},
+    tables::table_view::{ColumnFormatting, Highlight, TableViewRow, Unit},
 };
 
 #[derive(Debug)]
