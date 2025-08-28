@@ -4,6 +4,8 @@ use anyhow::{bail, Result};
 use kstring::KString;
 use serde::de::Visitor;
 
+use crate::utillib::type_name_short::type_name_short;
+
 pub trait AllowEnvVar {
     /// Max allowed variable name length in UTF-8 bytes
     const MAX_ENV_VAR_NAME_LEN: usize;
@@ -66,9 +68,13 @@ impl<A: AllowEnvVar> FromStr for AllowedEnvVar<A> {
         if s.contains('\0') {
             bail!("null characters are not allowed in environment variable names")
         }
+        if s.contains('=') {
+            bail!("'=' characters are not allowed in environment variable names")
+        }
         if s.len() > A::MAX_ENV_VAR_NAME_LEN {
             bail!(
-                "environment variable names must not be longer than {} bytes",
+                "{} environment variable names must not be longer than {} bytes",
+                type_name_short::<A>(),
                 A::MAX_ENV_VAR_NAME_LEN
             )
         }
@@ -76,7 +82,8 @@ impl<A: AllowEnvVar> FromStr for AllowedEnvVar<A> {
             Ok(Self(KString::from_ref(s), PhantomData))
         } else {
             bail!(
-                "env variable {s:?} is reserved, expecting {}",
+                "{} env variable {s:?} is reserved, expecting {}",
+                type_name_short::<A>(),
                 A::expecting()
             )
         }
