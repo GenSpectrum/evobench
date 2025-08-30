@@ -15,9 +15,9 @@ use crate::{
             log_data_tree::{LogDataTree, PathStringOptions, SpanId},
             log_message::Timing,
         },
+        index_by_call_path::IndexByCallPath,
         options::TILE_COUNT,
     },
-    index_by_call_path::IndexByCallPath,
     join::{keyval_inner_join, KeyVal},
     rayon_util::ParRun,
     stats::{
