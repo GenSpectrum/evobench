@@ -20,6 +20,8 @@ enum Extension<'s> {
     Other(&'s str),
 }
 
+// Expect a file extension in `path`, return whether it is "zstd" or
+// the `expected_suffix`. Anything else yields an error.
 fn file_extension<'s, P: AsRef<Path>>(path: P, expected_suffix: &'s str) -> Result<Extension<'s>> {
     let path = path.as_ref();
     let ext = path.extension().ok_or_else(|| {
