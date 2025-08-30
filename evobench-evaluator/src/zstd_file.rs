@@ -15,15 +15,12 @@ use crate::ctx;
 const USING_EXTERNAL_TOOL: bool = false;
 
 #[derive(Debug, PartialEq)]
-pub enum Extension<'s> {
+enum Extension<'s> {
     ZStd,
     Other(&'s str),
 }
 
-pub fn file_extension<'s, P: AsRef<Path>>(
-    path: P,
-    expected_suffix: &'s str,
-) -> Result<Extension<'s>> {
+fn file_extension<'s, P: AsRef<Path>>(path: P, expected_suffix: &'s str) -> Result<Extension<'s>> {
     let path = path.as_ref();
     let ext = path.extension().ok_or_else(|| {
         anyhow!("missing file extension, expecting {expected_suffix:?} or \"zstd\": {path:?}")
