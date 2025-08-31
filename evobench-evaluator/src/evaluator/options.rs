@@ -49,7 +49,7 @@ pub struct OutputOpts {
 ///  Do not use for level 0 (i.e. `single` subcommand), there sum must
 /// always be used!
 #[derive(clap::Args, Debug)]
-pub struct FlameField {
+pub struct FlameFieldOpt {
     /// What field to select from the last stage for the flame graph
     /// (tables show all stats values, but flame graphs can only show
     /// one, that's why this option is needed for those).
