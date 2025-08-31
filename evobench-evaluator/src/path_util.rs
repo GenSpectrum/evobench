@@ -1,3 +1,6 @@
+//! Utilities to make working with `PathBuf` / `&Path` more
+//! productive.
+
 use std::{
     ffi::{OsStr, OsString},
     os::unix::prelude::OsStringExt,

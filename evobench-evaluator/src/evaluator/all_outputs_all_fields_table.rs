@@ -275,9 +275,10 @@ impl<Kind: AllFieldsTableKind> AllOutputsAllFieldsTable<Kind> {
 
                     for table in tables {
                         if table.table_key_vals(flame_field).next().is_none() {
-                            // Attempting to generate flame graphs
-                            // without data is giving an error from
-                            // the library, thus skip this table
+                            // The table has no rows. `inferno` is
+                            // giving errors when attempting to
+                            // generate flame graphs without data,
+                            // thus skip this table
                             continue;
                         }
 
@@ -297,10 +298,10 @@ impl<Kind: AllFieldsTableKind> AllOutputsAllFieldsTable<Kind> {
                                 .collect()
                         };
 
-                        // inferno is really fussy, apparently it
+                        // `inferno` is really fussy, apparently it
                         // gives a "No stack counts found" error
-                        // whenever it's missing any line with a
-                        // ";" in it, thus check:
+                        // whenever it's missing any line with a ";"
+                        // in it, thus check:
                         if !lines.iter().any(|s| s.contains(';')) {
                             eprintln!(
                                 "note: there are no lines with ';' to be fed to inferno, \

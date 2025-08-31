@@ -1,4 +1,6 @@
-//! Numbers based on decimal digits, for testing only
+//! Numbers based on decimal digits, for correctness and
+//! introspection, not performance. Useful for writing some kinds of
+//! tests.
 
 use std::{fmt::Display, io::Write};
 

@@ -1,3 +1,10 @@
+//! Time durations in microseconds and nanoseconds, plus conversions
+//! between them as well as traits for a common `u64` based
+//! representation and getting the unit as human-readable string from
+//! the type for doing type safe statistics (works with the `stats`
+//! module). Also includes formatting as strings in milliseconds but
+//! padded to the precision.
+
 use std::fmt::{Debug, Display};
 use std::ops::{Add, Sub};
 

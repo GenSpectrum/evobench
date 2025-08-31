@@ -1,3 +1,7 @@
+//! The core `evobench-run` functionality (i.e. excl. more general
+//! library files, and excl. the main driver program at
+//! `src/bin/evobench-run.rs`)
+
 pub mod benchmarking_job;
 pub mod config;
 pub mod custom_parameter;

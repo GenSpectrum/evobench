@@ -1,3 +1,6 @@
+//! Utilities to make working with the
+//! [rayon](https://crates.io/crates/rayon) crate more productive.
+
 pub trait ParRun {
     type Output;
     fn par_run(self) -> Self::Output;

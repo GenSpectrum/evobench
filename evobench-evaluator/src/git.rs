@@ -1,3 +1,6 @@
+//! Parse Git history, for tracking performance changes across the
+//! history. Should perhaps be moved into the `run-git` crate.
+
 use std::{
     collections::{BTreeSet, HashMap},
     fmt::{Debug, Display},

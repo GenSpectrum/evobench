@@ -1,4 +1,5 @@
-//! Build tree and index for making summaries.
+//! Build tree and index for making statistical evaluations over
+//! probes in their call context.
 
 //! `Timing` and contextual info remains in the parsed log file
 //! (`Vec<LogMessage>`), the index just references into those.
