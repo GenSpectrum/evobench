@@ -236,8 +236,8 @@ impl AllFieldsTableKind for SummaryStats {}
 
 /// Marks a `Stats` containing Change records, i.e. trend values /
 /// lines, across SummaryStats.
-pub struct Trend;
-impl AllFieldsTableKind for Trend {}
+pub struct TrendStats;
+impl AllFieldsTableKind for TrendStats {}
 
 /// A group of 4 tables, one per real/cpu/sys time and ctx switches,
 /// rows representing probe points, although the exact rows depend on
