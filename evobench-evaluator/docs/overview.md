@@ -24,15 +24,19 @@ benchmarking results). The tool has various subcommands, for polling a
 repository for changes, inserting jobs, listing them, and running them
 (daemon). Run it with `--help`.
 
-It has a concept of a "key", which is all pieces of information that
-influence a benchmarking run (which commit of the target project was
-run, with which custom parameters, in which queuing context
-(configurable), and on which machine/OS (but which is not currently
-used as results are currently only stored locally)).
-
-It currently runs the `evobench-evaluator` after each finished job run
-to evaluate the results of the run and also generate summary
-statistics across all runs for the same "key".
+It runs the `evobench-evaluator` after each finished job run to
+evaluate the results of the run and also generate summary statistics
+across all runs for the same key. The key here is the set of pieces of
+information about a benchmarking run that identify the experiment that
+the run belongs to. The experiment is the measurement of performance
+for a commit id of the target project, on a particular piece of
+hardware and OS, for a particular set of custom parameters for a
+particular benchmarking invocation (as defined by the target project)
+and optionally the queueing context (e.g. runs during the night while
+shutting down other services can be configured as a different
+experiment from runs during multi-use times). Multiple runs are
+executed for each experiment (the number is configurable) to allow to
+calculate the statistical significance for performance deviations.
 
 ### Configuration
 
@@ -66,10 +70,10 @@ sub directory with the timestamp of the start of the run as the
 directory name and holding the results for that run. The files are:
 
 `bench_output.log.zstd`
-: contents of what the target app wrote to $BENCH_OUTPUT_LOG
+: contents of what the target app wrote to the path in `$BENCH_OUTPUT_LOG`
 
 `evobench.log.zstd`
-: contents of what evobench-probes wrote to $EVOBENCH_LOG
+: contents of what evobench-probes wrote to the path in `$EVOBENCH_LOG`
 
 `single.xlsx`
 : statistical results of the run, extracted from `evobench.log.zstd`
