@@ -8,7 +8,7 @@ use evobench_evaluator::evaluator::all_outputs_all_fields_table::AllOutputsAllFi
 use evobench_evaluator::evaluator::data::log_data_and_tree::LogDataAndTree;
 use evobench_evaluator::evaluator::options::{
     CheckedOutputOptions, EvaluationAndOutputOpts, FieldSelectorDimension3Opt,
-    FieldSelectorDimension4, FlameFieldOpt,
+    FieldSelectorDimension4Opt, FlameFieldOpt,
 };
 use evobench_evaluator::get_terminal_width::get_terminal_width;
 use evobench_evaluator::stats::StatsField;
@@ -77,7 +77,7 @@ enum Command {
         #[clap(flatten)]
         field_selector_dimension_3: FieldSelectorDimension3Opt,
         #[clap(flatten)]
-        field_selector_dimension_4: FieldSelectorDimension4,
+        field_selector_dimension_4: FieldSelectorDimension4Opt,
         #[clap(flatten)]
         flame_selector: FlameFieldOpt,
 
@@ -152,7 +152,7 @@ fn main() -> Result<()> {
             evaluation_and_output_opts: evaluation_opts,
             grouped_paths,
             field_selector_dimension_3: FieldSelectorDimension3Opt { summary_field },
-            field_selector_dimension_4: FieldSelectorDimension4 { trend_field },
+            field_selector_dimension_4: FieldSelectorDimension4Opt { trend_field },
             flame_selector: FlameFieldOpt { flame_field },
         } => todo!(),
     }

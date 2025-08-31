@@ -149,7 +149,7 @@ pub struct FieldSelectorDimension3Opt {
 }
 
 #[derive(clap::Args, Debug)]
-pub struct FieldSelectorDimension4 {
+pub struct FieldSelectorDimension4Opt {
     /// What stats field to select for the trend stats (i.e. of the
     /// 3rd dimension, for calculating the 4nd dimension in the data
     /// evaluation, after dimensions 1 (probe name), 2 (stats fields),
