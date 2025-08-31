@@ -138,7 +138,7 @@ pub struct EvaluationAndOutputOpts {
 }
 
 #[derive(clap::Args, Debug)]
-pub struct FieldSelectorDimension3 {
+pub struct FieldSelectorDimension3Opt {
     /// What stats field to select for the summary stats (i.e. of the
     /// 2nd dimension, for calculating the 3rd dimension in the data
     /// evaluation, after dimensions 1 (probe name) and 2 (stats
