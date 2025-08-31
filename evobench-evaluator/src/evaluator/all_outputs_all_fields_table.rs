@@ -117,7 +117,7 @@ impl AllOutputsAllFieldsTable<SingleRunStats> {
         output_opts: OutputVariants<PathBuf>,
         is_final_file: bool,
     ) -> Result<Self> {
-        let OutputVariants { excel, flame } = output_opts.try_map(|case, path| -> Result<_> {
+        let output_variants = output_opts.try_map(|case, path| -> Result<_> {
             Ok(AllFieldsTableWithOutputPathOrBase {
                 aft: AllFieldsTable::from_log_data_tree(
                     log_data_tree,
@@ -130,7 +130,7 @@ impl AllOutputsAllFieldsTable<SingleRunStats> {
                 is_final_file,
             })
         })?;
-        Ok(Self(OutputVariants { excel, flame }))
+        Ok(Self(output_variants))
     }
 }
 
