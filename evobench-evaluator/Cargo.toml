@@ -54,3 +54,5 @@ yansi = "1.0.1"
 chrono = "0.4"
 walkdir = "2"
 os_info = "=3.7"
+
+regex = "1.7"
