@@ -10,25 +10,34 @@ use chrono::DateTime;
 use crate::{ctx, key::BenchmarkingJobParameters};
 
 /// Returns `(head, rest, rest_lineno)`, where `rest_lineno` is the
-/// 1-based line number where `rest` starts.
+/// 1-based line number where `rest` starts. Returns None if either
+/// head or rest are empty.
 fn split_off_log_file_params(s: &str) -> Option<(&str, &str, usize)> {
     // Should have added a separator to the files (now it outputs an
     // empty line, but have to deal with older files, too): scan until
     // finding the first timestamp, then assume the part before is the
     // head.
-    let line_endings = s.char_indices().filter(|(_, c)| *c == '\n');
-    let mut lineno = 0;
-    for (i, _) in line_endings {
-        lineno += 1;
-        let rest = &s[i + 1..];
+    let mut line_endings = s.char_indices().filter(|(_, c)| *c == '\n').map(|(i, _)| i);
+    let mut lineno = 1;
+    let mut i = 0; // the start of the next line
+    loop {
+        let rest = &s[i..];
         if let Some((t, _)) = rest.split_once('\t') {
             if let Ok(_timestamp) = DateTime::parse_from_rfc3339(t) {
-                let head = &s[0..i];
+                if i == 0 {
+                    return None;
+                }
+                let head = &s[0..i - 1];
                 return Some((head, rest, lineno));
             }
         }
+        if let Some(i2) = line_endings.next() {
+            lineno += 1;
+            i = i2 + 1;
+        } else {
+            return None;
+        }
     }
-    None
 }
 
 /// A command log file, i.e. stderr and stdout of the benchmarking
