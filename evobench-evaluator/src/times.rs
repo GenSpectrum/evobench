@@ -7,7 +7,15 @@ use serde::{Deserialize, Serialize};
 use crate::resolution_unit::ResolutionUnit;
 
 pub trait ToStringMilliseconds {
+    /// "1234.567890" or as many digits as the type has precision for
+    /// (always that many, filling with zeroes)
     fn to_string_ms(&self) -> String;
+}
+
+pub trait ToStringSeconds {
+    /// "1.234567890" or as many digits as the type has precision for
+    /// (always that many, filling with zeroes)
+    fn to_string_seconds(&self) -> String;
 }
 
 pub trait FromMicroseconds: Sized {
@@ -316,6 +324,20 @@ impl ToStringMilliseconds for NanoTime {
     }
 }
 
+impl ToStringSeconds for MicroTime {
+    fn to_string_seconds(&self) -> String {
+        let Self { sec, usec } = self;
+        format!("{sec}.{usec:06}")
+    }
+}
+
+impl ToStringSeconds for NanoTime {
+    fn to_string_seconds(&self) -> String {
+        let Self { sec, nsec } = self;
+        format!("{sec}.{nsec:09}")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -392,6 +414,7 @@ mod tests {
         const DIGITS_BELOW_MS: usize,
         const DIGITS_BELOW_S: usize,
         Time: ToStringMilliseconds
+            + ToStringSeconds
             + FromMicroseconds
             + From<u64>
             + Display
@@ -401,6 +424,7 @@ mod tests {
             + ToIncrements,
     >() {
         let mut num: DigitNum<DIGITS_BELOW_MS> = DigitNum::new();
+        let mut num_seconds: DigitNum<DIGITS_BELOW_S> = DigitNum::new();
         let digits_above_ms = 10; // 10 is the max possible for just creating nums
         let num_digits_to_test = DIGITS_BELOW_MS + digits_above_ms;
         for _ in 0..num_digits_to_test {
@@ -411,6 +435,15 @@ mod tests {
             assert_eq!(
                 time.to_string_ms(),
                 num.to_string_with_params(DigitNumFormat {
+                    underscores: false,
+                    omit_trailing_dot: false
+                })
+            );
+
+            // Test `to_string_seconds()`
+            assert_eq!(
+                time.to_string_seconds(),
+                num_seconds.to_string_with_params(DigitNumFormat {
                     underscores: false,
                     omit_trailing_dot: false
                 })
@@ -476,7 +509,9 @@ mod tests {
             let ns2 = time2.to_nsec();
             assert_eq!(ns2, num_u64 * 1000);
 
-            num.push_lowest_digit(Digit::random());
+            let digit = Digit::random();
+            num.push_lowest_digit(digit);
+            num_seconds.push_lowest_digit(digit);
         }
     }
 
