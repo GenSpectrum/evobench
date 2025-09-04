@@ -353,6 +353,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                     // Add info header in YAML
                     command_output_file
                         .write_str(&serde_yml::to_string(&benchmarking_job_parameters)?)?;
+                    command_output_file.write_str("\n")?;
 
                     let status = {
                         let mut other_files: Vec<Box<dyn Write + Send + 'static>> = vec![];
