@@ -124,7 +124,8 @@ pub fn grep_diff(
     let regex_end = Regex::new(&regex_end).map_err(ctx!("compiling end regex {regex_end:?}"))?;
 
     'logfile: for logfile in &logfiles {
-        let log_contents = std::fs::read_to_string(logfile).map_err(ctx!("f"))?;
+            let log_contents =
+                std::fs::read_to_string(logfile).map_err(ctx!("reading file {logfile:?}"))?;
 
         let (
             BenchmarkingJobParameters {
