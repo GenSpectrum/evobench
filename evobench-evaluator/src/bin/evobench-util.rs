@@ -7,7 +7,7 @@ use evobench_evaluator::{
     get_terminal_width::get_terminal_width,
     git::GitHash,
     serde::proper_dirname::ProperDirname,
-    util::grep_diff::grep_diff,
+    util::grep_diff::GrepDiffRegion,
     utillib::logging::{set_log_level, LogLevelOpt},
 };
 
@@ -82,7 +82,10 @@ fn main() -> Result<()> {
             commit,
             target,
             params,
-        } => grep_diff(regex_start, regex_end, logfiles, commit, target, params)?,
+        } => {
+            let grep_diff_region = GrepDiffRegion::from_strings(&regex_start, &regex_end)?;
+            grep_diff_region.grep_diff(logfiles, commit, target, params)?;
+        }
     }
 
     Ok(())
