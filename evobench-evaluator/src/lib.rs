@@ -25,5 +25,6 @@ pub mod tables;
 pub mod terminal_table;
 pub mod times;
 pub mod tree;
+pub mod util;
 pub mod utillib;
 pub mod zstd_file;
