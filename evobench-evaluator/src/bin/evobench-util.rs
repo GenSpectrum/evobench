@@ -74,15 +74,18 @@ enum SubCommand {
 }
 
 // XX move to pair up with code for writing log files!
-fn parse_log_file_params(s: &str) -> Result<Option<BenchmarkingJobParameters>> {
-    // XX should have added a separator to the files.
+fn parse_log_file_params(s: &str) -> Result<Option<(BenchmarkingJobParameters, &str)>> {
+    // Should have added a separator to the files (now it outputs an
+    // empty line, but have to deal with older files, too): scan until
+    // finding the first timestamp, then assume the part before is the
+    // head.
     let line_endings = s.char_indices().filter(|(_, c)| *c == '\n');
     for (i, _) in line_endings {
         let rest = &s[i + 1..];
         if let Some((t, _)) = rest.split_once('\t') {
             if let Ok(_timestamp) = DateTime::parse_from_rfc3339(t) {
                 let head = &s[0..i];
-                return Ok(serde_yml::from_str(head)?);
+                return Ok(Some((serde_yml::from_str(head)?, rest)));
             }
         }
     }
@@ -181,10 +184,13 @@ fn grep_diff(
     'logfile: for logfile in &logfiles {
         let log_contents = std::fs::read_to_string(logfile).map_err(ctx!("f"))?;
 
-        let BenchmarkingJobParameters {
-            run_parameters,
-            command,
-        } = if let Some(params) = parse_log_file_params(&log_contents)
+        let (
+            BenchmarkingJobParameters {
+                run_parameters,
+                command,
+            },
+            log_contents_rest,
+        ) = if let Some(params) = parse_log_file_params(&log_contents)
             .map_err(ctx!("can't parse header of log file {logfile:?}"))?
         {
             params
@@ -192,6 +198,8 @@ fn grep_diff(
             warn!("file {logfile:?} has no log file info header, skipping");
             continue 'logfile;
         };
+        #[allow(unused)]
+        let log_contents = ();
 
         let RunParameters {
             commit_id,
@@ -228,7 +236,7 @@ fn grep_diff(
         }
 
         // Extract the time span
-        match grep_diff_str(&regex_start, &regex_end, &log_contents) {
+        match grep_diff_str(&regex_start, &regex_end, log_contents_rest) {
             Ok(spans) => match spans.len() {
                 0 => {
                     warn!("file {logfile:?} has no match");
