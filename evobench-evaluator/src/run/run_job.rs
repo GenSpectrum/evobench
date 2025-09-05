@@ -83,7 +83,7 @@ mod tests {
         // We don't care whether the user decides to use unorthodox
         // variable names
         assert!(allow("foo"));
-        assert!(allow("%&/',ç\nhmm"));
+        assert!(allow("%&/',é\nhmm"));
         assert!(allow(
             "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
         ));
@@ -97,7 +97,7 @@ mod tests {
             |s: &str| -> bool { AllowedEnvVar::<AllowableCustomEnvVar>::from_str(s).is_ok() };
 
         assert!(allow("foo"));
-        assert!(allow("%&/',ç\nhmm"));
+        assert!(allow("%&/',é\nhmm"));
         assert!(allow(
             "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
         ));
