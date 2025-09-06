@@ -4,6 +4,7 @@ use anyhow::{anyhow, bail, Result};
 use chrono::{DateTime, FixedOffset};
 use itertools::Itertools;
 use regex::Regex;
+use run_git::path_util::AppendToPath;
 
 use crate::{
     ctx,
@@ -14,7 +15,10 @@ use crate::{
         command_log_file::{CommandLog, CommandLogFile},
         run_job::AllowableCustomEnvVar,
     },
-    serde::{allowed_env_var::AllowedEnvVar, proper_dirname::ProperDirname},
+    serde::{
+        allowed_env_var::AllowedEnvVar, proper_dirname::ProperDirname,
+        proper_filename::ProperFilename,
+    },
     times::{NanoTime, ToStringSeconds},
     warn,
 };
@@ -241,6 +245,48 @@ impl GrepDiffRegion {
             }
         }
 
+        Ok(())
+    }
+}
+
+#[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct LogExtract {
+    pub filename: ProperFilename,
+    pub regex_start: String,
+    pub regex_end: String,
+}
+
+impl LogExtract {
+    /// Extract from the given command log the given parameters and
+    /// write the resulting time to the given filename below the
+    /// `output_base_dir`.
+    pub fn extract_seconds_from<P: AsRef<Path>>(
+        &self,
+        command_log: &CommandLog<P>,
+        output_base_dir: &Path,
+    ) -> Result<()> {
+        let Self {
+            filename,
+            regex_start,
+            regex_end,
+        } = self;
+        let grep_diff_region = GrepDiffRegion::from_strings(regex_start, regex_end)?;
+        if let Some(span) = grep_diff_region.find_duration_for(command_log)? {
+            let output_path = output_base_dir.append(filename.as_ref());
+            // XX copy-paste from `fn grep_diff`
+            let duration = span.duration_nanotime().map_err(ctx!(
+                "file {}:{} to {}",
+                command_log.path_string_lossy(),
+                span.start.lineno,
+                span.end.lineno
+            ))?;
+
+            let mut contents = duration.to_string_seconds();
+            contents.push_str("\n");
+            std::fs::write(&output_path, contents).map_err(ctx!("writing to {output_path:?}"))?;
+        } else {
+            info!("span {regex_start:?} .. {regex_end:?} for {filename:?} not found");
+        }
         Ok(())
     }
 }

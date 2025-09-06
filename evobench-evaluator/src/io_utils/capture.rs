@@ -213,4 +213,8 @@ impl OutFile {
             Ok(status)
         })
     }
+
+    pub fn into_path(self) -> PathBuf {
+        self.path
+    }
 }

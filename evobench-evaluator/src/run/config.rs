@@ -26,6 +26,7 @@ use crate::{
         proper_filename::ProperFilename,
         val_or_ref::{ValOrRef, ValOrRefTarget},
     },
+    util::grep_diff::LogExtract,
     utillib::arc::CloneArc,
 };
 
@@ -383,6 +384,13 @@ pub struct BenchmarkingCommand {
 
     /// Arguments to the command, e.g. "bench"
     pub arguments: Vec<String>,
+
+    /// Optional list of `LogExtract` declarations, to extract time
+    /// spans from the stdout/stderr of the benchmark run. (Note: this
+    /// is not and does not include the file optionally written by the
+    /// target application to the path in the `BENCH_OUTPUT_LOG` env
+    /// var!--Possible todo: offer something separate for that file?)
+    pub log_extracts: Option<Vec<LogExtract>>,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]

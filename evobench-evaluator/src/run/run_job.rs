@@ -27,11 +27,15 @@ use crate::{
     },
     key::{BenchmarkingJobParameters, RunParameters},
     path_util::rename_tmp_path,
-    run::{benchmarking_job::BenchmarkingJob, run_queues::RunQueuesData},
+    run::{
+        benchmarking_job::BenchmarkingJob, command_log_file::CommandLogFile,
+        run_queues::RunQueuesData,
+    },
     serde::{
         allowed_env_var::AllowEnvVar, date_and_time::DateTimeWithOffset,
         proper_filename::ProperFilename,
     },
+    util::grep_diff::LogExtract,
     utillib::logging::{log_level, LogLevel},
     zstd_file::compress_file,
 };
@@ -291,18 +295,18 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
         let _ = std::fs::remove_file(evobench_log.path());
         let _ = std::fs::remove_file(bench_output_log.path());
 
-        let ((), cleanup) = self
+        let (opt_log_extraction, cleanup) = self
             .job_runner
             .working_directory_pool
             .process_in_working_directory(
                 working_directory_id,
                 &self.job_runner.timestamp,
-                |working_directory| -> Result<()> {
+                |working_directory| -> Result<Option<(&Option<Vec<LogExtract>>, OutFile)>> {
                     working_directory.checkout(commit_id.clone())?;
 
                     if self.job_runner.dry_run.means(DryRun::DoWorkingDir) {
                         println!("checked out working directory: {working_directory_id}");
-                        return Ok(());
+                        return Ok(None);
                     }
 
                     let BenchmarkingCommand {
@@ -310,6 +314,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                         subdir,
                         command,
                         arguments,
+                        log_extracts,
                     } = command.deref();
 
                     let dir = working_directory
@@ -350,7 +355,8 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                         .expect("has filename"),
                     )?;
 
-                    // Add info header in YAML
+                    // Add info header in YAML -- XX abstraction, and
+                    // move to / merge with `command_log_file.rs`?
                     command_output_file
                         .write_str(&serde_yml::to_string(&benchmarking_job_parameters)?)?;
                     command_output_file.write_str("\n")?;
@@ -377,7 +383,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                     if status.success() {
                         info!("running {cmd_in_dir} succeeded");
 
-                        Ok(())
+                        Ok(Some((log_extracts, command_output_file)))
                     } else {
                         info!("running {cmd_in_dir} failed.");
                         let last_part = command_output_file.last_part(3000)?;
@@ -492,6 +498,21 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             info!("saving context to {target:?}");
             let s = ron_to_string_pretty(&reason)?;
             std::fs::write(&target, &s).map_err(ctx!("saving to {target:?}"))?
+        }
+
+        if let Some((log_extracts, command_output_file)) = opt_log_extraction {
+            if let Some(log_extracts) = log_extracts {
+                if !log_extracts.is_empty() {
+                    info!("performing log extracts");
+
+                    let command_log_file = CommandLogFile::from(command_output_file);
+                    let command_log = command_log_file.command_log()?;
+
+                    for log_extract in log_extracts {
+                        log_extract.extract_seconds_from(&command_log, &result_dir)?;
+                    }
+                }
+            }
         }
 
         info!("(re-)evaluating the summary file across all results for this key");

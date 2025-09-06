@@ -2,12 +2,15 @@
 //! timing data, but stdout and stderr of the benchmarking target of
 //! the target application.
 
-use std::{borrow::Cow, path::Path};
+use std::{
+    borrow::Cow,
+    path::{Path, PathBuf},
+};
 
 use anyhow::Result;
 use chrono::DateTime;
 
-use crate::{ctx, key::BenchmarkingJobParameters};
+use crate::{ctx, io_utils::capture::OutFile, key::BenchmarkingJobParameters};
 
 /// Returns `(head, rest, rest_lineno)`, where `rest_lineno` is the
 /// 1-based line number where `rest` starts. Returns None if either
@@ -44,6 +47,17 @@ fn split_off_log_file_params(s: &str) -> Option<(&str, &str, usize)> {
 /// target of the target application.
 pub struct CommandLogFile<P: AsRef<Path>> {
     pub path: P,
+}
+
+// XX should wrap OutFile to represent command log files while
+// writing, then translate from *that* to CommandLogFile (which is the
+// non-writing state).
+impl From<OutFile> for CommandLogFile<PathBuf> {
+    fn from(value: OutFile) -> Self {
+        Self {
+            path: value.into_path(),
+        }
+    }
 }
 
 /// The contents of a command log file, split into head and rest if

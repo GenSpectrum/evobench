@@ -436,6 +436,7 @@ fn run() -> Result<Option<PathBuf>> {
                     subdir: _,
                     command: _,
                     arguments: _,
+                    log_extracts: _,
                 } = &*command;
 
                 let values: &[&dyn Display] =
