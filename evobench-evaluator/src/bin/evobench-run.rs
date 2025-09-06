@@ -269,7 +269,8 @@ fn run_queues(
             return Ok(RunResult::OnceResult(ran));
         }
 
-        thread::sleep(Duration::from_secs(5));
+        // XX have something better than polling?
+        thread::sleep(Duration::from_secs(1));
 
         // Has our binary been updated?
         if let Some((binary, mtime)) = &opt_binary_and_mtime {
