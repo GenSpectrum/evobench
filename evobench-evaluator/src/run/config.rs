@@ -384,13 +384,6 @@ pub struct BenchmarkingCommand {
 
     /// Arguments to the command, e.g. "bench"
     pub arguments: Vec<String>,
-
-    /// Optional list of `LogExtract` declarations, to extract time
-    /// spans from the stdout/stderr of the benchmark run. (Note: this
-    /// is not and does not include the file optionally written by the
-    /// target application to the path in the `BENCH_OUTPUT_LOG` env
-    /// var!--Possible todo: offer something separate for that file?)
-    pub log_extracts: Option<Vec<LogExtract>>,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -402,6 +395,13 @@ pub struct BenchmarkingTarget {
     /// of what type (format) they must be.
     pub allowed_custom_parameters:
         BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, AllowedCustomParameter>,
+
+    /// Optional list of `LogExtract` declarations, to extract time
+    /// spans from the stdout/stderr of the benchmark run. (Note: this
+    /// is not and does not include the file optionally written by the
+    /// target application to the path in the `BENCH_OUTPUT_LOG` env
+    /// var!--Possible todo: offer something separate for that file?)
+    pub log_extracts: Option<Vec<LogExtract>>,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -525,6 +525,7 @@ pub struct RunConfig {
     pub benchmarking_job_settings: Arc<BenchmarkingJobSettingsOpts>,
     pub remote_repository: RemoteRepository,
     pub output_base_dir: Arc<Path>,
+    pub targets: BTreeMap<ProperDirname, Arc<BenchmarkingTarget>>,
 }
 
 impl RunConfigOpts {
@@ -594,7 +595,7 @@ impl RunConfigOpts {
             benchmarking_job_settings: benchmarking_job_settings.clone_arc(),
             remote_repository,
             output_base_dir: output_base_dir.clone_arc(),
-            // targets,
+            targets,
         })
     }
 }

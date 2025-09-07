@@ -250,8 +250,8 @@ fn run_queues(
     loop {
         // XX handle errors without exiting? Or do that above
 
-        let conf = &config_with_reload.run_config;
-        let output_base_dir = path_resolve_home(&conf.output_base_dir)?;
+        let run_config = &config_with_reload.run_config;
+        let output_base_dir = path_resolve_home(&run_config.output_base_dir)?;
 
         let queues_data = queues.data()?;
 
@@ -261,6 +261,7 @@ fn run_queues(
                 output_base_dir: &output_base_dir,
                 dry_run,
                 timestamp: DateTimeWithOffset::now(),
+                run_config,
             },
             &mut run_context,
         )?;
@@ -437,7 +438,6 @@ fn run() -> Result<Option<PathBuf>> {
                     subdir: _,
                     command: _,
                     arguments: _,
-                    log_extracts: _,
                 } = &*command;
 
                 let values: &[&dyn Display] =

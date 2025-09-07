@@ -28,14 +28,13 @@ use crate::{
     key::{BenchmarkingJobParameters, RunParameters},
     path_util::rename_tmp_path,
     run::{
-        benchmarking_job::BenchmarkingJob, command_log_file::CommandLogFile,
+        benchmarking_job::BenchmarkingJob, command_log_file::CommandLogFile, config::RunConfig,
         run_queues::RunQueuesData,
     },
     serde::{
         allowed_env_var::AllowEnvVar, date_and_time::DateTimeWithOffset,
-        proper_filename::ProperFilename,
+        proper_dirname::ProperDirname, proper_filename::ProperFilename,
     },
-    util::grep_diff::LogExtract,
     utillib::logging::{log_level, LogLevel},
     zstd_file::compress_file,
 };
@@ -237,16 +236,23 @@ fn generate_summary<P: AsRef<Path>>(
     Ok(())
 }
 
+/// The context for running a job (information that should not be part
+/// of `Key`). Only used for one run, as some fields
+/// (e.g. `timestamp`) change. Independent of jobs: this context is
+/// bundled before selecting the job to run.
 pub struct JobRunner<'pool> {
     pub working_directory_pool: &'pool mut WorkingDirectoryPool,
     pub output_base_dir: &'pool Path,
     pub dry_run: DryRun,
+    /// The timestamp for this run.
     pub timestamp: DateTimeWithOffset,
+    // Separate lifetime?
+    pub run_config: &'pool RunConfig,
 }
 
 impl<'pool> JobRunner<'pool> {
     pub fn timestamp_local(&self) -> DateTime<Local> {
-        // XX ~costly
+        // (A little bit costly.)
         self.timestamp.to_datetime().into()
     }
 }
@@ -325,7 +331,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             .process_in_working_directory(
                 working_directory_id,
                 &self.job_runner.timestamp,
-                |working_directory| -> Result<Option<(&Option<Vec<LogExtract>>, OutFile)>> {
+                |working_directory| -> Result<Option<(&ProperDirname, OutFile)>> {
                     working_directory.checkout(commit_id.clone())?;
 
                     if self.job_runner.dry_run.means(DryRun::DoWorkingDir) {
@@ -334,11 +340,10 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                     }
 
                     let BenchmarkingCommand {
-                        target_name: _,
+                        target_name,
                         subdir,
                         command,
                         arguments,
-                        log_extracts,
                     } = command.deref();
 
                     let dir = working_directory
@@ -407,7 +412,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                     if status.success() {
                         info!("running {cmd_in_dir} succeeded");
 
-                        Ok(Some((log_extracts, command_output_file)))
+                        Ok(Some((target_name, command_output_file)))
                     } else {
                         info!("running {cmd_in_dir} failed.");
                         let last_part = command_output_file.last_part(3000)?;
@@ -524,18 +529,28 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             std::fs::write(&target, &s).map_err(ctx!("saving to {target:?}"))?
         }
 
-        if let Some((log_extracts, command_output_file)) = opt_log_extraction {
-            if let Some(log_extracts) = log_extracts {
-                if !log_extracts.is_empty() {
-                    info!("performing log extracts");
+        if let Some((target_name, command_output_file)) = opt_log_extraction {
+            // Find the `LogExtract`s for the `target_name`
+            if let Some(target) = self.job_runner.run_config.targets.get(target_name) {
+                if let Some(log_extracts) = &target.log_extracts {
+                    if !log_extracts.is_empty() {
+                        info!("performing log extracts");
 
-                    let command_log_file = CommandLogFile::from(command_output_file);
-                    let command_log = command_log_file.command_log()?;
+                        let command_log_file = CommandLogFile::from(command_output_file);
+                        let command_log = command_log_file.command_log()?;
 
-                    for log_extract in log_extracts {
-                        log_extract.extract_seconds_from(&command_log, &result_dir)?;
+                        for log_extract in log_extracts {
+                            log_extract.extract_seconds_from(&command_log, &result_dir)?;
+                        }
                     }
+                } else {
+                    info!("no log extracts are configured");
                 }
+            } else {
+                info!(
+                    "haven't found target {target_name:?}, old job before \
+                     configuration change?"
+                );
             }
         }
 
