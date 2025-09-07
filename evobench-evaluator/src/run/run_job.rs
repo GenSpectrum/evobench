@@ -213,6 +213,30 @@ fn evobench_evaluator(args: &[OsString]) -> Result<()> {
     }
 }
 
+fn generate_summary<P: AsRef<Path>>(
+    key_dir: &PathBuf,
+    job_output_dirs: &[P],
+    target_type_opt: &str,
+    file_base_name: &str,
+) -> Result<()> {
+    let mut args: Vec<OsString> = vec!["summary".into()];
+    args.push(target_type_opt.into());
+    args.push(key_dir.append(file_base_name).into());
+
+    for job_output_dir in job_output_dirs {
+        let evobench_log = job_output_dir.as_ref().append("evobench.log.zstd");
+        if std::fs::exists(&evobench_log).map_err(ctx!("checking path {evobench_log:?}"))? {
+            args.push(evobench_log.into());
+        } else {
+            info!("missing file {evobench_log:?}, empty dir?");
+        }
+    }
+
+    evobench_evaluator(&args)?;
+
+    Ok(())
+}
+
 pub struct JobRunner<'pool> {
     pub working_directory_pool: &'pool mut WorkingDirectoryPool,
     pub output_base_dir: &'pool Path,
@@ -516,30 +540,6 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
         }
 
         info!("(re-)evaluating the summary file across all results for this key");
-
-        fn generate_summary<P: AsRef<Path>>(
-            key_dir: &PathBuf,
-            job_output_dirs: &[P],
-            target_type_opt: &str,
-            file_base_name: &str,
-        ) -> Result<()> {
-            let mut args: Vec<OsString> = vec!["summary".into()];
-            args.push(target_type_opt.into());
-            args.push(key_dir.append(file_base_name).into());
-
-            for job_output_dir in job_output_dirs {
-                let evobench_log = job_output_dir.as_ref().append("evobench.log.zstd");
-                if std::fs::exists(&evobench_log).map_err(ctx!("checking path {evobench_log:?}"))? {
-                    args.push(evobench_log.into());
-                } else {
-                    info!("missing file {evobench_log:?}, empty dir?");
-                }
-            }
-
-            evobench_evaluator(&args)?;
-
-            Ok(())
-        }
 
         let job_output_dirs: Vec<PathBuf> = std::fs::read_dir(&key_dir)
             .map_err(ctx!("opening dir {key_dir:?}"))?
