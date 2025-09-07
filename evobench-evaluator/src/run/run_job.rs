@@ -245,7 +245,7 @@ pub struct JobRunner<'pool> {
 }
 
 impl<'pool> JobRunner<'pool> {
-    pub fn now(&self) -> DateTime<Local> {
+    pub fn timestamp_local(&self) -> DateTime<Local> {
         // XX ~costly
         self.timestamp.to_datetime().into()
     }

@@ -598,13 +598,13 @@ impl<'run_queues> RunQueuesData<'run_queues> {
         job_runner: JobRunner,
         run_context: &mut RunContext,
     ) -> Result<bool> {
-        let now = job_runner.now();
+        let timestamp_local = job_runner.timestamp_local();
         // XXX remove old_* stuff check once verified.
-        let old_job = self.run_queues.old_most_prioritized_job(now)?;
+        let old_job = self.run_queues.old_most_prioritized_job(timestamp_local)?;
         let old_job_1 = old_job
             .as_ref()
             .map(|(rqwn, dtr, item, job, prio)| (rqwn.clone(), dtr, item, job, prio));
-        let job = self.most_prioritized_job(now)?;
+        let job = self.most_prioritized_job(timestamp_local)?;
         let job_1 = job.as_ref().map(|(rqwn, dtr, item, job, prio)| {
             (rqwn.run_queue_with_next(), dtr, item, *job, prio)
         });
