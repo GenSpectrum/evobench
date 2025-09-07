@@ -130,6 +130,22 @@ pub struct BenchmarkingJob {
 }
 
 impl BenchmarkingJob {
+    /// Constructor, since some fields are private (needed for
+    /// migration code).
+    pub fn new(
+        benchmarking_job_public: BenchmarkingJobPublic,
+        benchmarking_job_state: BenchmarkingJobState,
+        priority: Priority,
+        current_boost: Priority,
+    ) -> Self {
+        Self {
+            benchmarking_job_public,
+            benchmarking_job_state,
+            priority,
+            current_boost,
+        }
+    }
+
     pub fn priority(&self) -> Result<Priority, NonComparableNumber> {
         self.priority + self.current_boost
     }

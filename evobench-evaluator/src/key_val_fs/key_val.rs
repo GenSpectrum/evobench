@@ -433,6 +433,25 @@ impl<K: AsKey, V: DeserializeOwned + Serialize> KeyVal<K, V> {
         Ok(())
     }
 
+    /// Returns whether an entry was actually deleted (false means
+    /// that no entry for `key` existed)
+    pub fn delete(&self, key: &K) -> Result<bool, KeyValError> {
+        let key_filename = key.verified_as_filename_str();
+        let target_path = (&self.base_dir).append(key_filename.as_ref());
+        match std::fs::remove_file(&target_path) {
+            Ok(()) => Ok(true),
+            Err(error) => match error.kind() {
+                std::io::ErrorKind::NotFound => Ok(false),
+                _ => Err(KeyValError::IO {
+                    base_dir: self.base_dir.clone(),
+                    path: target_path,
+                    ctx: "delete",
+                    error,
+                }),
+            },
+        }
+    }
+
     /// Get access to an entry, if it exists. Note: does not lock,
     /// and on Windows might possibly deadlock with the rename calls
     /// of `insert`?  Only tested on Linux (and macOS?)

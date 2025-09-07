@@ -31,7 +31,7 @@ fn next_id() -> u64 {
     IDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TimeKey {
     /// Nanoseconds since UNIX_EPOCH
     nanos: u128,
@@ -313,6 +313,18 @@ fn keyvalerror_from_lock_error<V>(
 impl<V: DeserializeOwned + Serialize + 'static> Queue<V> {
     pub fn open(base_dir: impl AsRef<Path>, config: KeyValConfig) -> Result<Self, KeyValError> {
         Ok(Queue(KeyVal::open(base_dir, config)?))
+    }
+
+    /// Give access to the underlying key-value database. WARNING: it
+    /// *will* be possible to mess up the queue this way.
+    pub fn key_val(&self) -> &KeyVal<TimeKey, V> {
+        &self.0
+    }
+
+    /// Give access to the underlying key-value database. WARNING: it
+    /// *will* be possible to mess up the queue this way.
+    pub fn key_val_mut(&mut self) -> &mut KeyVal<TimeKey, V> {
+        &mut self.0
     }
 
     pub fn base_dir(&self) -> &PathBuf {

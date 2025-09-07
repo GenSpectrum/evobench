@@ -8,6 +8,7 @@ use std::{
 
 use anyhow::{bail, Result};
 use chrono::{DateTime, Local};
+use genawaiter::rc::Gen;
 use itertools::{EitherOrBoth, Itertools};
 
 use crate::{
@@ -67,6 +68,22 @@ pub struct RunQueuesData<'run_queues> {
 }
 
 impl RunQueues {
+    /// Retuns all queues of all kinds; e.g. for migrating items.
+    pub fn all_queues<'s>(&'s self) -> impl Iterator<Item = &'s RunQueue<'s>> {
+        Gen::new(|co| async move {
+            for queue in self.pipeline() {
+                co.yield_(queue).await;
+            }
+            if let Some(queue) = self.borrow_erroneous_jobs_queue().as_ref() {
+                co.yield_(queue).await;
+            }
+            if let Some(queue) = self.borrow_done_jobs_queue().as_ref() {
+                co.yield_(queue).await;
+            }
+        })
+        .into_iter()
+    }
+
     pub fn pipeline(&self) -> &[RunQueue<'_>] {
         self.borrow_pipeline()
     }

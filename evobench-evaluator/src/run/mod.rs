@@ -4,6 +4,7 @@ pub mod config;
 pub mod custom_parameter;
 pub mod global_app_state_dir;
 pub mod insert_jobs;
+pub mod migrate;
 pub mod polling_pool;
 pub mod run_context;
 pub mod run_job;
