@@ -212,7 +212,7 @@ impl BenchmarkingJobParameters {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Clone, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct BenchmarkingJobParametersHash(String);
 
 impl From<&BenchmarkingJobParameters> for BenchmarkingJobParametersHash {

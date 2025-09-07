@@ -1,7 +1,14 @@
 //! Database migration. Structs with incompatible changes should be
 //! copied here and an upgrade function provided.
 
-use std::{fmt::Debug, path::PathBuf, sync::Arc, time::SystemTime};
+use std::{
+    collections::btree_map,
+    collections::{BTreeMap, BTreeSet},
+    fmt::Debug,
+    path::PathBuf,
+    sync::Arc,
+    time::SystemTime,
+};
 
 use anyhow::{anyhow, bail, Result};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -31,17 +38,14 @@ trait FromStrMigrating: Sized + DeserializeOwned + Serialize {
     fn from_str_migrating(s: &str) -> Result<(Self, bool)>;
 }
 
-#[allow(unused)]
-enum Replacement<T> {
-    KeepOld,
-    Store(T),
-}
-
-/// Returns how many items were migrated
-fn migrate_key_val<K: AsKey + Debug + Clone + PartialEq, T: FromStrMigrating>(
+/// Returns how many items were migrated. `handle_conflict` receives
+/// two values resulting from migration or pre-existing entry in the
+/// table, that both yield the same key; its return value is stored
+/// for the key. It can return an error to stop migration.
+fn migrate_key_val<K: AsKey + Debug + Clone + PartialEq + Ord, T: FromStrMigrating>(
     table: &KeyVal<K, T>,
     gen_key: impl Fn(&K, &T) -> K,
-    handle_conflict: impl Fn(PathBuf, String, &K, T, T) -> Result<Replacement<T>>,
+    handle_conflict: impl Fn(&K, T, T) -> Result<T>,
 ) -> Result<usize> {
     let mut num_migrated = 0;
     // Take a lock on the whole table since we need to ensure files
@@ -52,9 +56,14 @@ fn migrate_key_val<K: AsKey + Debug + Clone + PartialEq, T: FromStrMigrating>(
     // ordering is required!)
     let _table_lock = table.lock_exclusive()?;
 
+    // Collect changes until after iteration has finished, to avoid
+    // the "iterator invalidation" problem.
+    let mut saves: BTreeMap<K, Vec<(bool, T)>> = BTreeMap::new();
+    let mut deletions: BTreeSet<K> = BTreeSet::new();
+
     for old_key in table.keys(false, None)? {
         let old_key = old_key?;
-        // Entry works for us as it does not transparently decode.
+        // `Entry` works for us as it does not transparently decode.
         if let Some(mut entry) = table.entry_opt(&old_key)? {
             let _entry_lock = entry
                 .take_lockable_file()
@@ -66,44 +75,63 @@ fn migrate_key_val<K: AsKey + Debug + Clone + PartialEq, T: FromStrMigrating>(
             let key_changed = new_key != old_key;
             if needs_saving || key_changed {
                 if key_changed {
-                    table.delete(&old_key)?;
+                    deletions.insert(old_key);
                 }
-                // If key_changed is false, then it's OK to
-                // overwrite. If the key changed, and there is a
-                // conflict, then that probably means that migrated
-                // data clashes with pre-existing data that wasn't
-                // modified, "or something like that".
-                match table.insert(&new_key, &value, key_changed) {
-                    Ok(()) => (),
-                    Err(e) => match e {
-                        KeyValError::KeyExists {
-                            base_dir,
-                            key_debug_string,
-                        } => {
-                            let old_value = table.get(&new_key)?.ok_or_else(|| {
-                                anyhow!("entry {new_key:?} has vanished while we held the lock")
-                            })?;
-                            match handle_conflict(
-                                base_dir,
-                                key_debug_string,
-                                &new_key,
-                                old_value,
-                                value,
-                            )? {
-                                Replacement::KeepOld => (),
-                                Replacement::Store(value) => {
-                                    // Now overwrite it.
-                                    table.insert(&new_key, &value, false)?;
-                                }
-                            }
-                        }
-                        _ => Err(e)?,
-                    },
+                match saves.entry(new_key) {
+                    btree_map::Entry::Vacant(vacant_entry) => {
+                        vacant_entry.insert(vec![(key_changed, value)]);
+                    }
+                    btree_map::Entry::Occupied(mut occupied_entry) => {
+                        occupied_entry.get_mut().push((key_changed, value));
+                    }
                 }
                 num_migrated += 1;
             }
         }
     }
+
+    for old_key in &deletions {
+        table.delete(old_key)?;
+    }
+    for (new_key, mut values) in saves {
+        let (key_changed, value) = {
+            // I don't really know what I'm doing here: if we have
+            // multiple values that were migrated *and* are hashing to
+            // the same key, still try to apply `handle_conflict`,
+            // does that make sense? In what order, how do the changed
+            // flags matter?
+            let (mut key_changed, mut value) =
+                values.pop().expect("at least one must have been inserted");
+            for (_other_key_changed, other_value) in values {
+                value = handle_conflict(&new_key, value, other_value)?;
+                key_changed = false; // at that point, overwrite will have to happen.
+            }
+            (key_changed, value)
+        };
+        // If key_changed is false, then it's OK to
+        // overwrite. If the key changed, and there is a
+        // conflict, then that probably means that migrated
+        // data clashes with pre-existing data that wasn't
+        // modified, "or something like that".
+        match table.insert(&new_key, &value, key_changed) {
+            Ok(()) => (),
+            Err(e) => match e {
+                KeyValError::KeyExists {
+                    base_dir: _,
+                    key_debug_string: _,
+                } => {
+                    let old_value = table.get(&new_key)?.ok_or_else(|| {
+                        anyhow!("entry {new_key:?} has vanished while we held the lock")
+                    })?;
+                    let value = handle_conflict(&new_key, old_value, value)?;
+                    // Now overwrite it.
+                    table.insert(&new_key, &value, false)?;
+                }
+                _ => Err(e)?,
+            },
+        }
+    }
+
     Ok(num_migrated)
 }
 
@@ -114,7 +142,7 @@ pub fn migrate_queue(run_queue: &RunQueue) -> Result<usize> {
         // The key (a `TimeKey`) remains the same
         |k, _v| k.clone(),
         // Conflicts can't happen since we never change the key
-        |_, _, _, _, _| bail!("can't happen"),
+        |_, _, _| bail!("can't happen"),
     )
 }
 
@@ -127,11 +155,12 @@ pub fn migrate_already_inserted(
         table,
         // Recalculate the key from the `BenchmarkingJobParameters`
         |_k, v| v.0.slow_hash(),
-        // On conflicts, assume that the old (existing at the key
-        // location) value is the right one, OK?
-        |_path, _msg, key, _old_value, _new_value| {
-            warn!("note: after migration, two buckets for key {key:?} exist; keeping the original one");
-            Ok(Replacement::KeepOld)
+        |key, (params1, times1), (_params2, times2)| {
+            warn!(
+                "note: after migration, two buckets for key {key:?} exist; \
+                 taking the older one, assuming that the newer entry was erroneous"
+            );
+            Ok((params1, times1.min(times2)))
         },
     )
 }
