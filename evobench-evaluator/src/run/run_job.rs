@@ -215,10 +215,16 @@ fn evobench_evaluator(args: &[OsString]) -> Result<()> {
 fn generate_summary<P: AsRef<Path>>(
     key_dir: &PathBuf,
     job_output_dirs: &[P],
-    target_type_opt: &str,
+    selector: &str,        // "avg" or so
+    target_type_opt: &str, // "--excel" or so
     file_base_name: &str,
 ) -> Result<()> {
-    let mut args: Vec<OsString> = vec!["summary".into()];
+    let mut args: Vec<OsString> = Vec::new();
+    args.push("summary".into());
+
+    args.push("--summary-field".into()); // XXX *is* right one right? OPEN
+    args.push(selector.into());
+
     args.push(target_type_opt.into());
     args.push(key_dir.append(file_base_name).into());
 
@@ -233,6 +239,29 @@ fn generate_summary<P: AsRef<Path>>(
 
     evobench_evaluator(&args)?;
 
+    Ok(())
+}
+
+const SUMMARIES: &[(&str, &str, &str)] = &[
+    ("sum", "--flame", ""),
+    ("avg", "--excel", ".xlsx"),
+    ("sum", "--excel", ".xlsx"),
+];
+
+/// Situation `None` means across all outputs; otherwise "night" etc.
+fn generate_all_summaries_for_situation<P: AsRef<Path>>(
+    situation: Option<&ProperFilename>,
+    key_dir: &PathBuf,
+    job_output_dirs: &[P],
+) -> Result<()> {
+    for (selector, target, suffix) in SUMMARIES {
+        let mut basename = format!("{selector}-summary");
+        if let Some(situation) = situation {
+            basename = format!("{basename}-{situation}");
+        }
+        basename.push_str(suffix);
+        generate_summary(&key_dir, job_output_dirs, selector, target, &basename)?;
+    }
     Ok(())
 }
 
@@ -571,8 +600,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             .collect::<Result<_, _>>()
             .map_err(ctx!("getting dir listing for {key_dir:?}"))?;
 
-        generate_summary(&key_dir, &job_output_dirs, "--excel", "summary.xlsx")?;
-        generate_summary(&key_dir, &job_output_dirs, "--flame", "summary")?;
+        generate_all_summaries_for_situation(None, &key_dir, &job_output_dirs)?;
 
         {
             let mut job_output_dirs_by_situation: HashMap<ProperFilename, Vec<&PathBuf>> =
@@ -603,17 +631,10 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             }
 
             for (situation, job_output_dirs) in job_output_dirs_by_situation.iter() {
-                generate_summary(
+                generate_all_summaries_for_situation(
+                    Some(situation),
                     &key_dir,
                     job_output_dirs.as_slice(),
-                    "--excel",
-                    &format!("summary-{situation}.xlsx"),
-                )?;
-                generate_summary(
-                    &key_dir,
-                    job_output_dirs.as_slice(),
-                    "--flame",
-                    &format!("summary-{situation}"),
                 )?;
             }
         }
