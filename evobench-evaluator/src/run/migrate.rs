@@ -3,13 +3,16 @@
 
 use std::{fmt::Debug, path::PathBuf, sync::Arc, time::SystemTime};
 
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use crate::{
     ctx,
     key::{BenchmarkingJobParameters, BenchmarkingJobParametersHash, RunParameters},
-    key_val_fs::{as_key::AsKey, key_val::KeyVal},
+    key_val_fs::{
+        as_key::AsKey,
+        key_val::{KeyVal, KeyValError},
+    },
     run::{
         benchmarking_job::{BenchmarkingJob, BenchmarkingJobPublic, BenchmarkingJobState},
         config::BenchmarkingCommand,
@@ -18,19 +21,27 @@ use crate::{
     serde::{priority::Priority, proper_dirname::ProperDirname},
     util::grep_diff::LogExtract,
     utillib::type_name_short::type_name_short,
+    warn,
 };
 
-pub trait FromStrMigrating: Sized + DeserializeOwned + Serialize {
+trait FromStrMigrating: Sized + DeserializeOwned + Serialize {
     /// Parse from whatever serialisation format that's appropriate
     /// for your type. Returns whether migration was needed as the
     /// second result.
     fn from_str_migrating(s: &str) -> Result<(Self, bool)>;
 }
 
+#[allow(unused)]
+enum Replacement<T> {
+    KeepOld,
+    Store(T),
+}
+
 /// Returns how many items were migrated
 fn migrate_key_val<K: AsKey + Debug + Clone + PartialEq, T: FromStrMigrating>(
     table: &KeyVal<K, T>,
     gen_key: impl Fn(&K, &T) -> K,
+    handle_conflict: impl Fn(PathBuf, String, &K, T, T) -> Result<Replacement<T>>,
 ) -> Result<usize> {
     let mut num_migrated = 0;
     // Take a lock on the whole table since we need to ensure files
@@ -57,7 +68,38 @@ fn migrate_key_val<K: AsKey + Debug + Clone + PartialEq, T: FromStrMigrating>(
                 if key_changed {
                     table.delete(&old_key)?;
                 }
-                table.insert(&new_key, &value, false)?;
+                // If key_changed is false, then it's OK to
+                // overwrite. If the key changed, and there is a
+                // conflict, then that probably means that migrated
+                // data clashes with pre-existing data that wasn't
+                // modified, "or something like that".
+                match table.insert(&new_key, &value, key_changed) {
+                    Ok(()) => (),
+                    Err(e) => match e {
+                        KeyValError::KeyExists {
+                            base_dir,
+                            key_debug_string,
+                        } => {
+                            let old_value = table.get(&new_key)?.ok_or_else(|| {
+                                anyhow!("entry {new_key:?} has vanished while we held the lock")
+                            })?;
+                            match handle_conflict(
+                                base_dir,
+                                key_debug_string,
+                                &new_key,
+                                old_value,
+                                value,
+                            )? {
+                                Replacement::KeepOld => (),
+                                Replacement::Store(value) => {
+                                    // Now overwrite it.
+                                    table.insert(&new_key, &value, false)?;
+                                }
+                            }
+                        }
+                        _ => Err(e)?,
+                    },
+                }
                 num_migrated += 1;
             }
         }
@@ -71,6 +113,8 @@ pub fn migrate_queue(run_queue: &RunQueue) -> Result<usize> {
         run_queue.queue.key_val(),
         // The key (a `TimeKey`) remains the same
         |k, _v| k.clone(),
+        // Conflicts can't happen since we never change the key
+        |_, _, _, _, _| bail!("can't happen"),
     )
 }
 
@@ -83,6 +127,12 @@ pub fn migrate_already_inserted(
         table,
         // Recalculate the key from the `BenchmarkingJobParameters`
         |_k, v| v.0.slow_hash(),
+        // On conflicts, assume that the old (existing at the key
+        // location) value is the right one, OK?
+        |_path, _msg, key, _old_value, _new_value| {
+            warn!("note: after migration, two buckets for key {key:?} exist; keeping the original one");
+            Ok(Replacement::KeepOld)
+        },
     )
 }
 
