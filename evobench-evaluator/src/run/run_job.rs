@@ -559,47 +559,50 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
         generate_summary(&key_dir, &job_output_dirs, "--excel", "summary.xlsx")?;
         generate_summary(&key_dir, &job_output_dirs, "--flame", "summary")?;
 
-        let mut job_output_dirs_by_situation: HashMap<ProperFilename, Vec<&PathBuf>> =
-            HashMap::new();
-        for job_output_dir in &job_output_dirs {
-            let schedule_condition_path = job_output_dir.append("schedule_condition.ron");
-            match std::fs::read_to_string(&schedule_condition_path) {
-                Ok(s) => {
-                    let schedule_condition: ScheduleCondition = ron::from_str(&s)
-                        .map_err(ctx!("reading file {schedule_condition_path:?}"))?;
-                    if let Some(situation) = schedule_condition.situation() {
-                        // XX it's just too long, proper abstraction pls?
-                        match job_output_dirs_by_situation.entry(situation.clone()) {
-                            Entry::Occupied(mut occupied_entry) => {
-                                occupied_entry.get_mut().push(job_output_dir);
-                            }
-                            Entry::Vacant(vacant_entry) => {
-                                vacant_entry.insert(vec![job_output_dir]);
+        {
+            let mut job_output_dirs_by_situation: HashMap<ProperFilename, Vec<&PathBuf>> =
+                HashMap::new();
+            for job_output_dir in &job_output_dirs {
+                let schedule_condition_path = job_output_dir.append("schedule_condition.ron");
+                match std::fs::read_to_string(&schedule_condition_path) {
+                    Ok(s) => {
+                        let schedule_condition: ScheduleCondition = ron::from_str(&s)
+                            .map_err(ctx!("reading file {schedule_condition_path:?}"))?;
+                        if let Some(situation) = schedule_condition.situation() {
+                            // XX it's just too long, proper abstraction pls?
+                            match job_output_dirs_by_situation.entry(situation.clone()) {
+                                Entry::Occupied(mut occupied_entry) => {
+                                    occupied_entry.get_mut().push(job_output_dir);
+                                }
+                                Entry::Vacant(vacant_entry) => {
+                                    vacant_entry.insert(vec![job_output_dir]);
+                                }
                             }
                         }
                     }
+                    Err(e) => match e.kind() {
+                        std::io::ErrorKind::NotFound => (),
+                        _ => Err(e).map_err(ctx!("reading file {schedule_condition_path:?}"))?,
+                    },
                 }
-                Err(e) => match e.kind() {
-                    std::io::ErrorKind::NotFound => (),
-                    _ => Err(e).map_err(ctx!("reading file {schedule_condition_path:?}"))?,
-                },
+            }
+
+            for (situation, job_output_dirs) in job_output_dirs_by_situation.iter() {
+                generate_summary(
+                    &key_dir,
+                    job_output_dirs.as_slice(),
+                    "--excel",
+                    &format!("summary-{situation}.xlsx"),
+                )?;
+                generate_summary(
+                    &key_dir,
+                    job_output_dirs.as_slice(),
+                    "--flame",
+                    &format!("summary-{situation}"),
+                )?;
             }
         }
 
-        for (situation, job_output_dirs) in job_output_dirs_by_situation.iter() {
-            generate_summary(
-                &key_dir,
-                job_output_dirs.as_slice(),
-                "--excel",
-                &format!("summary-{situation}.xlsx"),
-            )?;
-            generate_summary(
-                &key_dir,
-                job_output_dirs.as_slice(),
-                "--flame",
-                &format!("summary-{situation}"),
-            )?;
-        }
         Ok(())
     }
 }
