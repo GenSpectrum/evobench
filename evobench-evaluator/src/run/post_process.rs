@@ -113,9 +113,9 @@ impl RunDir {
             &default_path_
         };
 
-        // Doing this *before* moving the files, as a way to
-        // ensure that no invalid files end up in the results
-        // pool!
+        // Doing this *before* possibly renaming the file via
+        // `evaluating_benchmark_file_succeeded`, as a way to ensure
+        // that no invalid files end up in the results pool!
         evobench_evaluator(&vec![
             "single".into(),
             evobench_log_path.into(),
@@ -124,10 +124,10 @@ impl RunDir {
             self.append_str("single.xlsx")?.into(),
         ])?;
 
-        // It's a bit inefficient to read the $EVOBENCH_LOG
-        // twice, but currently can't change the options
-        // (--show-thread-number) without a separate run, also
-        // the cost is just a second or so.
+        // It's a bit inefficient to read the $EVOBENCH_LOG twice, but
+        // currently can't change the options (--show-thread-number)
+        // without a separate run. (Will be low cost once caching is
+        // done.)
         evobench_evaluator(&vec![
             "single".into(),
             evobench_log_path.into(),
