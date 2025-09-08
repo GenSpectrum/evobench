@@ -315,7 +315,10 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
     }
 
     pub fn handle_timeout(&self) -> Result<()> {
-        info!("ran out of time in queue {}", self.current.file_name);
+        info!(
+            "ran out of time in queue {:?}",
+            self.current.file_name.as_str()
+        );
         if self.current.schedule_condition.move_when_time_window_ends() {
             let mut count = 0;
             for entry in self.current.queue.sorted_entries(false, None, false)? {

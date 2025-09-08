@@ -1,4 +1,4 @@
-use std::{fmt::Display, str::FromStr};
+use std::str::FromStr;
 
 use serde::de::Visitor;
 
@@ -22,16 +22,6 @@ impl AsRef<str> for ProperFilename {
 impl<'t> From<&'t ProperFilename> for &'t str {
     fn from(value: &'t ProperFilename) -> Self {
         value.as_str()
-    }
-}
-
-impl Display for ProperFilename {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // NOTE: somewhat relying on the string quoting here now: both
-        // in `list` subcommand, and I guess also in "summary-..."
-        // file names it's better to show the value explicitly as a
-        // separate string.
-        write!(f, "{:?}", self.0)
     }
 }
 

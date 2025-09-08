@@ -2,7 +2,7 @@
 // Here subtyping would really help. How to achievethat otherwise?
 // Deref doesn't do it, actually. XX Could use newtype utility crate
 // though?
-use std::{fmt::Display, path::Path, str::FromStr};
+use std::{path::Path, str::FromStr};
 
 use serde::de::Visitor;
 
@@ -35,16 +35,6 @@ impl AsRef<str> for ProperDirname {
 impl<'t> From<&'t ProperDirname> for &'t str {
     fn from(value: &'t ProperDirname) -> Self {
         value.as_str()
-    }
-}
-
-impl Display for ProperDirname {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // NOTE: somewhat relying on the string quoting here now: both
-        // in `list` subcommand, and I guess also in "summary-..."
-        // file names it's better to show the value explicitly as a
-        // separate string.
-        write!(f, "{:?}", self.0)
     }
 }
 

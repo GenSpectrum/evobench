@@ -59,8 +59,9 @@ impl RunContext {
                 self.open_queues.remove(&file_name);
             } else {
                 info!(
-                    "couldn't find RunQueue with name {file_name}, \
-                     might have been config change"
+                    "couldn't find RunQueue with name {:?}, \
+                     might have been config change",
+                    file_name.as_str()
                 )
             }
         }

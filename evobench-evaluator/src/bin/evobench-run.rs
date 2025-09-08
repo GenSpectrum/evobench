@@ -524,7 +524,11 @@ fn run() -> Result<Option<PathBuf>> {
                     // "Commit id"
                     // "Custom parameters"
                     let titles = &[TerminalTableTitle {
-                        text: format!("{i}: queue {file_name} ({schedule_condition}):").into(),
+                        text: format!(
+                            "{i}: queue {:?} ({schedule_condition}):",
+                            file_name.as_str()
+                        )
+                        .into(),
                         span: full_span,
                     }];
                     let mut table =

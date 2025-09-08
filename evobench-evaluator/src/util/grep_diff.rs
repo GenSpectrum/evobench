@@ -238,8 +238,9 @@ impl GrepDiffRegion {
 
                 let logfile_str = logfile.to_string_lossy();
                 println!(
-                    "{}\t{commit_id}\t{target_name}\t{custom_parameters}\t{logfile_str}:{}",
+                    "{}\t{commit_id}\t{}\t{custom_parameters}\t{logfile_str}:{}",
                     duration.to_string_seconds(),
+                    target_name.as_str(),
                     span.start.lineno
                 );
             }

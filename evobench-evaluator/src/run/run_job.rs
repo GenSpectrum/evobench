@@ -257,7 +257,7 @@ fn generate_all_summaries_for_situation<P: AsRef<Path>>(
     for (selector, target, suffix) in SUMMARIES {
         let mut basename = format!("{selector}-summary");
         if let Some(situation) = situation {
-            basename = format!("{basename}-{situation}");
+            basename = format!("{basename}-{}", situation.as_str());
         }
         basename.push_str(suffix);
         generate_summary(&key_dir, job_output_dirs, selector, target, &basename)?;

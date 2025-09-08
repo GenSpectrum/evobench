@@ -72,9 +72,9 @@ fn main() -> Result<()> {
                 let queues =
                     RunQueues::open(run_config.queues.clone_arc(), true, &global_app_state_dir)?;
                 for queue in queues.all_queues() {
-                    info!("migrating queue {}", queue.file_name);
+                    info!("migrating queue {:?}", queue.file_name.as_str());
                     let n = migrate_queue(queue)?;
-                    info!("migrated {n} items in queue {}", queue.file_name);
+                    info!("migrated {n} items in queue {:?}", queue.file_name.as_str());
                 }
             }
 
