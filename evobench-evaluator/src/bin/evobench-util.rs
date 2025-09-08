@@ -1,19 +1,25 @@
-use std::path::PathBuf;
+use std::{ffi::OsString, path::PathBuf};
 
 use anyhow::{bail, Result};
 use clap::Parser;
 
 use evobench_evaluator::{
+    ctx,
     get_terminal_width::get_terminal_width,
     git::GitHash,
+    info,
     run::{
         config::{RunConfig, RunConfigWithReload},
+        global_app_state_dir::GlobalAppStateDir,
         output_directory_structure::{KeyDir, RunDir},
+        post_process::compress_file_as,
+        working_directory_pool::WorkingDirectoryPoolBaseDir,
     },
     serde::proper_dirname::ProperDirname,
     util::grep_diff::GrepDiffRegion,
     utillib::logging::{set_log_level, LogLevelOpt},
 };
+use run_git::path_util::AppendToPath;
 
 #[derive(clap::Parser, Debug)]
 #[clap(next_line_help = true)]
@@ -105,13 +111,64 @@ enum SubCommand {
 
 fn post_process_single(run_dir: &RunDir, run_config: &RunConfig) -> Result<()> {
     let target = run_dir.target_name()?;
-    run_dir.post_process_single(
-        None,
-        || Ok(()),
-        &target,
-        &run_dir.standard_log_path(),
-        run_config,
-    )?;
+    let standard_log_path = run_dir.standard_log_path();
+    if !standard_log_path.exists() {
+        info!(
+            "missing {standard_log_path:?} -- try to find and move it \
+             from the working directory pool dir"
+        );
+
+        let (_, _, _, date_time_with_offset) = run_dir.parse()?;
+        let date_time_with_offset_str = date_time_with_offset.as_str();
+
+        // (Is this too involved?)
+        let global_app_state_dir = GlobalAppStateDir::new()?;
+        let pool_base_dir =
+            WorkingDirectoryPoolBaseDir::new(&run_config.working_directory_pool, &|| {
+                global_app_state_dir.working_directory_pool_base()
+            })?;
+        let pool_base_dir_path = pool_base_dir.path();
+        // /involved
+
+        let found_log_file_name = {
+            let mut file_names: Vec<OsString> = pool_base_dir_path
+                .read_dir()
+                .map_err(ctx!("reading dir {pool_base_dir_path:?}"))?
+                .map(|entry| -> Result<_> {
+                    let entry = entry?;
+                    let file_name = entry.file_name();
+                    if file_name
+                        .to_string_lossy()
+                        .contains(date_time_with_offset_str)
+                    {
+                        Ok(Some(file_name))
+                    } else {
+                        Ok(None)
+                    }
+                })
+                .filter_map(|v| v.transpose())
+                .collect::<Result<_>>()?;
+            match file_names.len() {
+                1 => file_names.pop().expect("seen"),
+                0 => bail!(
+                    "can't find standard log at {standard_log_path:?} and finding \
+                     {date_time_with_offset_str:?} in {pool_base_dir_path:?} was unsuccessful"
+                ),
+                _ => bail!(
+                    "got more than one match for {date_time_with_offset_str:?} in \
+                     {pool_base_dir_path:?}"
+                ),
+            }
+        };
+
+        let found_log_file_path = pool_base_dir_path.append(&found_log_file_name);
+        info!("found file {found_log_file_path:?}");
+
+        compress_file_as(&found_log_file_path, standard_log_path.clone(), false)?;
+        std::fs::remove_file(&found_log_file_path)?;
+        info!("deleted moved file {found_log_file_path:?}");
+    }
+    run_dir.post_process_single(None, || Ok(()), &target, &standard_log_path, run_config)?;
     Ok(())
 }
 
