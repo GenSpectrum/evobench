@@ -1,8 +1,6 @@
 //! Running a benchmarking job
 
 use std::{
-    collections::{hash_map::Entry, HashMap},
-    ffi::OsString,
     io::{stderr, Write},
     ops::Deref,
     os::unix::fs::MetadataExt,
@@ -28,12 +26,14 @@ use crate::{
     key::{BenchmarkingJobParameters, RunParameters},
     path_util::rename_tmp_path,
     run::{
-        benchmarking_job::BenchmarkingJob, command_log_file::CommandLogFile, config::RunConfig,
+        benchmarking_job::BenchmarkingJob,
+        config::RunConfig,
+        post_process::{generate_summaries_for_key_dir, post_process_single},
         run_queues::RunQueuesData,
     },
     serde::{
         allowed_env_var::AllowEnvVar, date_and_time::DateTimeWithOffset,
-        proper_dirname::ProperDirname, proper_filename::ProperFilename,
+        proper_dirname::ProperDirname,
     },
     utillib::logging::{log_level, LogLevel},
     zstd_file::compress_file,
@@ -196,73 +196,6 @@ fn bench_tmp_dir() -> Result<PathBuf> {
             Ok(tmp)
         }
     }
-}
-
-// XX here, *too*, do capture for consistency? XX: could do "nice" scheduling here.
-fn evobench_evaluator(args: &[OsString]) -> Result<()> {
-    let prog = "evobench-evaluator";
-    let mut c = Command::new(prog);
-    c.args(args);
-    let mut child = c.spawn().map_err(ctx!("spawning command {c:?}"))?;
-    let status = child.wait()?;
-    if status.success() {
-        Ok(())
-    } else {
-        bail!("running {prog:?} with args {args:?}: {status}")
-    }
-}
-
-fn generate_summary<P: AsRef<Path>>(
-    key_dir: &PathBuf,
-    job_output_dirs: &[P],
-    selector: &str,        // "avg" or so
-    target_type_opt: &str, // "--excel" or so
-    file_base_name: &str,
-) -> Result<()> {
-    let mut args: Vec<OsString> = Vec::new();
-    args.push("summary".into());
-
-    args.push("--summary-field".into()); // XXX *is* right one right? OPEN
-    args.push(selector.into());
-
-    args.push(target_type_opt.into());
-    args.push(key_dir.append(file_base_name).into());
-
-    for job_output_dir in job_output_dirs {
-        let evobench_log = job_output_dir.as_ref().append("evobench.log.zstd");
-        if std::fs::exists(&evobench_log).map_err(ctx!("checking path {evobench_log:?}"))? {
-            args.push(evobench_log.into());
-        } else {
-            info!("missing file {evobench_log:?}, empty dir?");
-        }
-    }
-
-    evobench_evaluator(&args)?;
-
-    Ok(())
-}
-
-const SUMMARIES: &[(&str, &str, &str)] = &[
-    ("sum", "--flame", ""),
-    ("avg", "--excel", ".xlsx"),
-    ("sum", "--excel", ".xlsx"),
-];
-
-/// Situation `None` means across all outputs; otherwise "night" etc.
-fn generate_all_summaries_for_situation<P: AsRef<Path>>(
-    situation: Option<&ProperFilename>,
-    key_dir: &PathBuf,
-    job_output_dirs: &[P],
-) -> Result<()> {
-    for (selector, target, suffix) in SUMMARIES {
-        let mut basename = format!("{selector}-summary");
-        if let Some(situation) = situation {
-            basename = format!("{basename}-{}", situation.as_str());
-        }
-        basename.push_str(suffix);
-        generate_summary(&key_dir, job_output_dirs, selector, target, &basename)?;
-    }
-    Ok(())
 }
 
 /// The context for running a job (information that should not be part
@@ -502,6 +435,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             // TemporaryFile::drop will do it.
             Ok(target)
         };
+
         // First try to compress the log file, here we check whether
         // it exists; before we expect to compress evobench.log
         // without checking its existence.
@@ -510,38 +444,6 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             drop(bench_output_log);
         }
         let evobench_log_tmp = compress_file_as(&evobench_log, "evobench.log", true)?;
-
-        info!("evaluating benchmark file");
-
-        // Doing this *before* moving the files, as a way to
-        // ensure that no invalid files end up in the results
-        // pool!
-        evobench_evaluator(&vec![
-            "single".into(),
-            evobench_log.path().into(),
-            "--show-thread-number".into(),
-            "--excel".into(),
-            (&result_dir).append("single.xlsx").into(),
-        ])?;
-
-        // It's a bit inefficient to read the $EVOBENCH_LOG
-        // twice, but currently can't change the options
-        // (--show-thread-number) without a separate run, also
-        // the cost is just a second or so.
-        evobench_evaluator(&vec![
-            "single".into(),
-            evobench_log.path().into(),
-            "--flame".into(),
-            (&result_dir).append("single").into(),
-        ])?;
-
-        info!("evaluating the benchmark file succeeded");
-
-        drop(evobench_log);
-
-        rename_tmp_path(evobench_log_tmp)?;
-
-        info!("compressed benchmark file renamed");
 
         {
             let target = (&result_dir).append("schedule_condition.ron");
@@ -558,86 +460,25 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             std::fs::write(&target, &s).map_err(ctx!("saving to {target:?}"))?
         }
 
-        if let Some((target_name, command_output_file)) = opt_log_extraction {
-            // Find the `LogExtract`s for the `target_name`
-            if let Some(target) = self.job_runner.run_config.targets.get(target_name) {
-                if let Some(log_extracts) = &target.log_extracts {
-                    if !log_extracts.is_empty() {
-                        info!("performing log extracts");
+        let evobench_log_path = evobench_log.path().to_owned();
+        post_process_single(
+            &evobench_log_path,
+            &result_dir,
+            move || {
+                info!("evaluating the benchmark file succeeded");
 
-                        let command_log_file = CommandLogFile::from(command_output_file);
-                        let command_log = command_log_file.command_log()?;
+                drop(evobench_log);
 
-                        for log_extract in log_extracts {
-                            log_extract.extract_seconds_from(&command_log, &result_dir)?;
-                        }
-                    }
-                } else {
-                    info!("no log extracts are configured");
-                }
-            } else {
-                info!(
-                    "haven't found target {target_name:?}, old job before \
-                     configuration change?"
-                );
-            }
-        }
+                rename_tmp_path(evobench_log_tmp)?;
 
-        info!("(re-)evaluating the summary file across all results for this key");
+                info!("compressed benchmark file renamed");
+                Ok(())
+            },
+            opt_log_extraction,
+            &self.job_runner.run_config,
+        )?;
 
-        let job_output_dirs: Vec<PathBuf> = std::fs::read_dir(&key_dir)
-            .map_err(ctx!("opening dir {key_dir:?}"))?
-            .map(|entry| -> Result<Option<PathBuf>, std::io::Error> {
-                let entry: std::fs::DirEntry = entry?;
-                let ft = entry.file_type()?;
-                if ft.is_dir() {
-                    Ok(Some(entry.path()))
-                } else {
-                    Ok(None)
-                }
-            })
-            .filter_map(|r| r.transpose())
-            .collect::<Result<_, _>>()
-            .map_err(ctx!("getting dir listing for {key_dir:?}"))?;
-
-        generate_all_summaries_for_situation(None, &key_dir, &job_output_dirs)?;
-
-        {
-            let mut job_output_dirs_by_situation: HashMap<ProperFilename, Vec<&PathBuf>> =
-                HashMap::new();
-            for job_output_dir in &job_output_dirs {
-                let schedule_condition_path = job_output_dir.append("schedule_condition.ron");
-                match std::fs::read_to_string(&schedule_condition_path) {
-                    Ok(s) => {
-                        let schedule_condition: ScheduleCondition = ron::from_str(&s)
-                            .map_err(ctx!("reading file {schedule_condition_path:?}"))?;
-                        if let Some(situation) = schedule_condition.situation() {
-                            // XX it's just too long, proper abstraction pls?
-                            match job_output_dirs_by_situation.entry(situation.clone()) {
-                                Entry::Occupied(mut occupied_entry) => {
-                                    occupied_entry.get_mut().push(job_output_dir);
-                                }
-                                Entry::Vacant(vacant_entry) => {
-                                    vacant_entry.insert(vec![job_output_dir]);
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => match e.kind() {
-                        std::io::ErrorKind::NotFound => (),
-                        _ => Err(e).map_err(ctx!("reading file {schedule_condition_path:?}"))?,
-                    },
-                }
-            }
-
-            for (situation, job_output_dirs) in job_output_dirs_by_situation.iter() {
-                generate_all_summaries_for_situation(
-                    Some(situation),
-                    &key_dir,
-                    job_output_dirs.as_slice(),
-                )?;
-            }
-        }
+        generate_summaries_for_key_dir(&key_dir)?;
 
         Ok(())
     }
