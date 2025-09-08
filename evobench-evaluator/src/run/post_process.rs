@@ -157,61 +157,79 @@ pub fn post_process_single(
     Ok(())
 }
 
-pub fn generate_summaries_for_key_dir(key_dir: &Path) -> Result<()> {
-    info!("(re-)evaluating the summary files across all results in key dir {key_dir:?}");
+pub struct KeyDir {
+    path: PathBuf,
+}
 
-    let job_output_dirs: Vec<PathBuf> = std::fs::read_dir(key_dir)
-        .map_err(ctx!("opening dir {key_dir:?}"))?
-        .map(|entry| -> Result<Option<PathBuf>, std::io::Error> {
-            let entry: std::fs::DirEntry = entry?;
-            let ft = entry.file_type()?;
-            if ft.is_dir() {
-                Ok(Some(entry.path()))
-            } else {
-                Ok(None)
-            }
-        })
-        .filter_map(|r| r.transpose())
-        .collect::<Result<_, _>>()
-        .map_err(ctx!("getting dir listing for {key_dir:?}"))?;
+impl From<PathBuf> for KeyDir {
+    fn from(path: PathBuf) -> Self {
+        KeyDir { path }
+    }
+}
 
-    generate_all_summaries_for_situation(None, key_dir, &job_output_dirs)?;
+impl KeyDir {
+    pub fn job_output_dirs(&self) -> Result<Vec<PathBuf>> {
+        let key_dir = &self.path;
+        std::fs::read_dir(key_dir)
+            .map_err(ctx!("opening dir {key_dir:?}"))?
+            .map(|entry| -> Result<Option<PathBuf>, std::io::Error> {
+                let entry: std::fs::DirEntry = entry?;
+                let ft = entry.file_type()?;
+                if ft.is_dir() {
+                    Ok(Some(entry.path()))
+                } else {
+                    Ok(None)
+                }
+            })
+            .filter_map(|r| r.transpose())
+            .collect::<Result<_, _>>()
+            .map_err(ctx!("getting dir listing for {key_dir:?}"))
+    }
 
-    {
-        let mut job_output_dirs_by_situation: HashMap<ProperFilename, Vec<&PathBuf>> =
-            HashMap::new();
-        for job_output_dir in &job_output_dirs {
-            let schedule_condition_path = job_output_dir.append("schedule_condition.ron");
-            match std::fs::read_to_string(&schedule_condition_path) {
-                Ok(s) => {
-                    let schedule_condition: ScheduleCondition = ron::from_str(&s)
-                        .map_err(ctx!("reading file {schedule_condition_path:?}"))?;
-                    if let Some(situation) = schedule_condition.situation() {
-                        // XX it's just too long, proper abstraction pls?
-                        match job_output_dirs_by_situation.entry(situation.clone()) {
-                            Entry::Occupied(mut occupied_entry) => {
-                                occupied_entry.get_mut().push(job_output_dir);
-                            }
-                            Entry::Vacant(vacant_entry) => {
-                                vacant_entry.insert(vec![job_output_dir]);
+    pub fn generate_summaries_for_key_dir(&self) -> Result<()> {
+        let key_dir = &self.path;
+        info!("(re-)evaluating the summary files across all results in key dir {key_dir:?}");
+
+        let job_output_dirs = self.job_output_dirs()?;
+
+        generate_all_summaries_for_situation(None, key_dir, &job_output_dirs)?;
+
+        {
+            let mut job_output_dirs_by_situation: HashMap<ProperFilename, Vec<&PathBuf>> =
+                HashMap::new();
+            for job_output_dir in &job_output_dirs {
+                let schedule_condition_path = job_output_dir.append("schedule_condition.ron");
+                match std::fs::read_to_string(&schedule_condition_path) {
+                    Ok(s) => {
+                        let schedule_condition: ScheduleCondition = ron::from_str(&s)
+                            .map_err(ctx!("reading file {schedule_condition_path:?}"))?;
+                        if let Some(situation) = schedule_condition.situation() {
+                            // XX it's just too long, proper abstraction pls?
+                            match job_output_dirs_by_situation.entry(situation.clone()) {
+                                Entry::Occupied(mut occupied_entry) => {
+                                    occupied_entry.get_mut().push(job_output_dir);
+                                }
+                                Entry::Vacant(vacant_entry) => {
+                                    vacant_entry.insert(vec![job_output_dir]);
+                                }
                             }
                         }
                     }
+                    Err(e) => match e.kind() {
+                        std::io::ErrorKind::NotFound => (),
+                        _ => Err(e).map_err(ctx!("reading file {schedule_condition_path:?}"))?,
+                    },
                 }
-                Err(e) => match e.kind() {
-                    std::io::ErrorKind::NotFound => (),
-                    _ => Err(e).map_err(ctx!("reading file {schedule_condition_path:?}"))?,
-                },
+            }
+
+            for (situation, job_output_dirs) in job_output_dirs_by_situation.iter() {
+                generate_all_summaries_for_situation(
+                    Some(situation),
+                    &key_dir,
+                    job_output_dirs.as_slice(),
+                )?;
             }
         }
-
-        for (situation, job_output_dirs) in job_output_dirs_by_situation.iter() {
-            generate_all_summaries_for_situation(
-                Some(situation),
-                &key_dir,
-                job_output_dirs.as_slice(),
-            )?;
-        }
+        Ok(())
     }
-    Ok(())
 }

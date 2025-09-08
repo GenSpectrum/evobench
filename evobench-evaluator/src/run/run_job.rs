@@ -28,7 +28,7 @@ use crate::{
     run::{
         benchmarking_job::BenchmarkingJob,
         config::RunConfig,
-        post_process::{generate_summaries_for_key_dir, post_process_single},
+        post_process::{post_process_single, KeyDir},
         run_queues::RunQueuesData,
     },
     serde::{
@@ -482,7 +482,8 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             &self.job_runner.run_config,
         )?;
 
-        generate_summaries_for_key_dir(&key_dir)?;
+        let key_dir = KeyDir::from(key_dir);
+        key_dir.generate_summaries_for_key_dir()?;
 
         Ok(())
     }
