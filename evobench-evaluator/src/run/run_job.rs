@@ -413,11 +413,10 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             ),
         )?;
         // Below that, we make a dir for this particular run
-        let result_dir = key_dir.append(self.job_runner.timestamp.as_str())?;
-        std::fs::create_dir_all(result_dir.path())
-            .map_err(ctx!("create_dir_all {result_dir:?}"))?;
+        let run_dir = key_dir.append(self.job_runner.timestamp.as_str())?;
+        std::fs::create_dir_all(run_dir.path()).map_err(ctx!("create_dir_all {run_dir:?}"))?;
 
-        info!("moving files to {result_dir:?}");
+        info!("moving files to {run_dir:?}");
 
         let compress_file_as = |source_file: &TemporaryFile,
                                 target_filename: &str,
@@ -429,7 +428,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             } else {
                 target_filename
             };
-            let target = result_dir.append(target_filename);
+            let target = run_dir.append(target_filename);
             compress_file(
                 source_file.path(),
                 &target,
@@ -451,7 +450,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
         let evobench_log_tmp = compress_file_as(&evobench_log, "evobench.log", true)?;
 
         {
-            let target = (&result_dir).append("schedule_condition.ron");
+            let target = run_dir.append("schedule_condition.ron");
             info!("saving context to {target:?}");
             let schedule_condition_str = ron_to_string_pretty(&schedule_condition)?;
             std::fs::write(&target, &schedule_condition_str)
@@ -459,14 +458,14 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
         }
 
         {
-            let target = (&result_dir).append("reason.ron");
+            let target = run_dir.append("reason.ron");
             info!("saving context to {target:?}");
             let s = ron_to_string_pretty(&reason)?;
             std::fs::write(&target, &s).map_err(ctx!("saving to {target:?}"))?
         }
 
         let evobench_log_path = evobench_log.path().to_owned();
-        result_dir.post_process_single(
+        run_dir.post_process_single(
             &evobench_log_path,
             move || {
                 info!("evaluating the benchmark file succeeded");
