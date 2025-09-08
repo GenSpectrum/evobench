@@ -466,7 +466,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
 
         let evobench_log_path = evobench_log.path().to_owned();
         run_dir.post_process_single(
-            &evobench_log_path,
+            Some(&evobench_log_path),
             move || {
                 info!("evaluating the benchmark file succeeded");
 

@@ -132,6 +132,11 @@ impl RunDir {
         &self.0
     }
 
+    /// The standard path to the compressed evobench.log file
+    pub fn evobench_log_path(&self) -> PathBuf {
+        self.path().append("evobench.log.zstd")
+    }
+
     /// Files below a RunDir are normal files (no special type, at
     /// least for now)
     pub fn append(&self, file_name: impl AsRef<Path>) -> PathBuf {

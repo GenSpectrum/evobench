@@ -98,12 +98,20 @@ impl RunDir {
     /// calling later on.
     pub fn post_process_single(
         &self,
-        evobench_log_path: &Path,
+        evobench_log_path: Option<&Path>,
         evaluating_benchmark_file_succeeded: impl FnOnce() -> Result<()>,
         opt_log_extraction: Option<(&ProperDirname, OutFile)>,
         run_config: &RunConfig,
     ) -> Result<()> {
         info!("evaluating benchmark file");
+
+        let default_path_;
+        let evobench_log_path = if let Some(path) = evobench_log_path {
+            path
+        } else {
+            default_path_ = self.evobench_log_path();
+            &default_path_
+        };
 
         // Doing this *before* moving the files, as a way to
         // ensure that no invalid files end up in the results
