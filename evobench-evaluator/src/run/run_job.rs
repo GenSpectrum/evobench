@@ -283,7 +283,11 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
         let bench_output_log =
             TemporaryFile::from((&bench_tmp_dir).append(format!("bench-output-{pid}.log")));
 
-        // Remove any stale files from previous runs
+        // Remove any stale files from previous runs (we're not
+        // removing all possible files (we leave files from other
+        // processes alone (in case running multiple independent
+        // daemons might be useful)), just those that would get in the
+        // way).
         let _ = std::fs::remove_file(evobench_log.path());
         let _ = std::fs::remove_file(bench_output_log.path());
 
