@@ -26,9 +26,7 @@ use crate::{
     key::{BenchmarkingJobParameters, RunParameters},
     path_util::rename_tmp_path,
     run::{
-        benchmarking_job::BenchmarkingJob,
-        config::RunConfig,
-        post_process::{post_process_single, KeyDir},
+        benchmarking_job::BenchmarkingJob, config::RunConfig, output_directory_structure::KeyDir,
         run_queues::RunQueuesData,
     },
     serde::{
@@ -391,7 +389,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
 
                         bail!(
                             "benchmarking command {cmd_in_dir} gave \
-                         error status {status}, last_part {last_part:?}"
+                             error status {status}, last_part {last_part:?}"
                         )
                     }
                 },
@@ -407,14 +405,17 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             .working_directory_cleanup(cleanup)?;
 
         // The directory holding the full key information
-        let key_dir = run_parameters.extend_path(
-            self.job_runner
-                .output_base_dir
-                .append(command.target_name.as_str()),
-        );
+        let key_dir = KeyDir::try_from(
+            run_parameters.extend_path(
+                self.job_runner
+                    .output_base_dir
+                    .append(command.target_name.as_str()),
+            ),
+        )?;
         // Below that, we make a dir for this particular run
-        let result_dir = (&key_dir).append(self.job_runner.timestamp.as_str());
-        std::fs::create_dir_all(&result_dir).map_err(ctx!("create_dir_all {result_dir:?}"))?;
+        let result_dir = key_dir.append(self.job_runner.timestamp.as_str())?;
+        std::fs::create_dir_all(result_dir.path())
+            .map_err(ctx!("create_dir_all {result_dir:?}"))?;
 
         info!("moving files to {result_dir:?}");
 
@@ -428,7 +429,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             } else {
                 target_filename
             };
-            let target = (&result_dir).append(target_filename);
+            let target = result_dir.append(target_filename);
             compress_file(
                 source_file.path(),
                 &target,
@@ -465,9 +466,8 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
         }
 
         let evobench_log_path = evobench_log.path().to_owned();
-        post_process_single(
+        result_dir.post_process_single(
             &evobench_log_path,
-            &result_dir,
             move || {
                 info!("evaluating the benchmark file succeeded");
 
@@ -482,7 +482,6 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             &self.job_runner.run_config,
         )?;
 
-        let key_dir = KeyDir::from(key_dir);
         key_dir.generate_summaries_for_key_dir()?;
 
         Ok(())
