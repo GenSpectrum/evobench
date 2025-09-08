@@ -121,7 +121,7 @@ impl RunDir {
             evobench_log_path.into(),
             "--show-thread-number".into(),
             "--excel".into(),
-            self.append("single.xlsx").into(),
+            self.append_str("single.xlsx")?.into(),
         ])?;
 
         // It's a bit inefficient to read the $EVOBENCH_LOG
@@ -132,7 +132,7 @@ impl RunDir {
             "single".into(),
             evobench_log_path.into(),
             "--flame".into(),
-            self.append("single").into(),
+            self.append_str("single")?.into(),
         ])?;
 
         evaluating_benchmark_file_succeeded()?;

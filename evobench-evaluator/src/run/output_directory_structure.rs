@@ -13,7 +13,10 @@ use crate::{
     ctx,
     git::GitHash,
     key::RunParameters,
-    serde::{date_and_time::DateTimeWithOffset, proper_dirname::ProperDirname},
+    serde::{
+        date_and_time::DateTimeWithOffset, proper_dirname::ProperDirname,
+        proper_filename::ProperFilename,
+    },
     utillib::type_name_short::type_name_short,
 };
 
@@ -151,7 +154,15 @@ impl RunDir {
 
     /// Files below a RunDir are normal files (no special type, at
     /// least for now)
-    pub fn append(&self, file_name: impl AsRef<Path>) -> PathBuf {
-        self.path().append(file_name)
+    pub fn append(&self, file_name: &ProperFilename) -> PathBuf {
+        self.path().append(file_name.as_str())
+    }
+
+    /// Same as `append` but returns an error if file_name cannot be a
+    /// `ProperFilename`.
+    pub fn append_str(&self, file_name: &str) -> Result<PathBuf> {
+        let proper = ProperFilename::from_str(file_name)
+            .map_err(|msg| anyhow!("not a proper file name ({msg}): {file_name:?}"))?;
+        Ok(self.append(&proper))
     }
 }

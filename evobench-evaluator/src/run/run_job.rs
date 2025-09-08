@@ -427,7 +427,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             } else {
                 target_filename
             };
-            let target = run_dir.append(target_filename);
+            let target = run_dir.append_str(&target_filename.to_string_lossy())?;
             compress_file(
                 source_file.path(),
                 &target,
@@ -449,7 +449,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
         let evobench_log_tmp = compress_file_as(&evobench_log, "evobench.log", true)?;
 
         {
-            let target = run_dir.append("schedule_condition.ron");
+            let target = run_dir.append_str("schedule_condition.ron")?;
             info!("saving context to {target:?}");
             let schedule_condition_str = ron_to_string_pretty(&schedule_condition)?;
             std::fs::write(&target, &schedule_condition_str)
@@ -457,7 +457,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
         }
 
         {
-            let target = run_dir.append("reason.ron");
+            let target = run_dir.append_str("reason.ron")?;
             info!("saving context to {target:?}");
             let s = ron_to_string_pretty(&reason)?;
             std::fs::write(&target, &s).map_err(ctx!("saving to {target:?}"))?
