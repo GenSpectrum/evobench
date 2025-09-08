@@ -27,14 +27,13 @@ use crate::{
     path_util::rename_tmp_path,
     run::{
         benchmarking_job::BenchmarkingJob, config::RunConfig, output_directory_structure::KeyDir,
-        run_queues::RunQueuesData,
+        post_process::compress_file_as, run_queues::RunQueuesData,
     },
     serde::{
         allowed_env_var::AllowEnvVar, date_and_time::DateTimeWithOffset,
         proper_dirname::ProperDirname,
     },
     utillib::logging::{log_level, LogLevel},
-    zstd_file::compress_file,
 };
 
 use super::{
@@ -425,28 +424,6 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
         std::fs::create_dir_all(run_dir.path()).map_err(ctx!("create_dir_all {run_dir:?}"))?;
 
         info!("moving files to {run_dir:?}");
-
-        // target_path includes the .zstd
-        // XX why does this not always do .tmp and then rename, for
-        // safety? Rather, `omit_rename` und thus leave .tmp suffix in
-        // place?
-        let compress_file_as =
-            |source_path: &Path, target_path: PathBuf, add_tmp_suffix: bool| -> Result<PathBuf> {
-                let actual_target_path = if add_tmp_suffix {
-                    add_extension(&target_path, "tmp").expect("got filename")
-                } else {
-                    target_path
-                };
-                compress_file(
-                    source_path,
-                    &actual_target_path,
-                    // be quiet when:
-                    log_level() < LogLevel::Info,
-                )?;
-                // Do *not* remove the source file here as
-                // TemporaryFile::drop will do it.
-                Ok(actual_target_path)
-            };
 
         // First try to compress the log file, here we check whether
         // it exists; before we expect to compress evobench.log

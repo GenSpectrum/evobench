@@ -4,7 +4,7 @@
 use std::{
     collections::{hash_map::Entry, HashMap},
     ffi::OsString,
-    path::Path,
+    path::{Path, PathBuf},
     process::Command,
 };
 
@@ -13,13 +13,40 @@ use run_git::path_util::AppendToPath;
 
 use crate::{
     ctx, info,
+    path_util::add_extension,
     run::{
         command_log_file::CommandLogFile,
         config::{RunConfig, ScheduleCondition},
         output_directory_structure::{KeyDir, RunDir},
     },
     serde::{proper_dirname::ProperDirname, proper_filename::ProperFilename},
+    utillib::logging::{log_level, LogLevel},
+    zstd_file::compress_file,
 };
+
+/// `target_path` must include the `.zstd` extension. XX why does this
+/// not always do .tmp and then rename, for safety? Rather, have an
+/// `omit_rename` argument and then leave .tmp suffix in place?
+pub fn compress_file_as(
+    source_path: &Path,
+    target_path: PathBuf,
+    add_tmp_suffix: bool,
+) -> Result<PathBuf> {
+    let actual_target_path = if add_tmp_suffix {
+        add_extension(&target_path, "tmp").expect("got filename")
+    } else {
+        target_path
+    };
+    compress_file(
+        source_path,
+        &actual_target_path,
+        // be quiet when:
+        log_level() < LogLevel::Info,
+    )?;
+    // Do *not* remove the source file here as
+    // TemporaryFile::drop will do it.
+    Ok(actual_target_path)
+}
 
 // XX here, *too*, do capture for consistency? XX: could do "nice" scheduling here.
 pub fn evobench_evaluator(args: &[OsString]) -> Result<()> {
