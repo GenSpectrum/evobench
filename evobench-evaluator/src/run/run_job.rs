@@ -404,6 +404,15 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             .working_directory_pool
             .working_directory_cleanup(cleanup)?;
 
+        let log_extraction = if let Some(le) = opt_log_extraction {
+            le
+        } else {
+            // It was dry run so must leave anyway, right? Todo:
+            // this whole dry_run system is almost surely not
+            // working any more and should probably be ripped out.
+            return Ok(());
+        };
+
         // The directory holding the full key information
         let key_dir = KeyDir::from_base_target_params(
             self.job_runner.output_base_dir,
@@ -417,36 +426,48 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
 
         info!("moving files to {run_dir:?}");
 
-        let compress_file_as = |source_file: &TemporaryFile,
-                                target_filename: &str,
-                                add_tmp: bool|
-         -> Result<PathBuf> {
-            let target_filename = add_extension(target_filename, "zstd").expect("got filename");
-            let target_filename = if add_tmp {
-                add_extension(target_filename, "tmp").expect("got filename")
-            } else {
-                target_filename
+        // target_path includes the .zstd
+        // XX why does this not always do .tmp and then rename, for
+        // safety? Rather, `omit_rename` und thus leave .tmp suffix in
+        // place?
+        let compress_file_as =
+            |source_path: &Path, target_path: PathBuf, add_tmp_suffix: bool| -> Result<PathBuf> {
+                let actual_target_path = if add_tmp_suffix {
+                    add_extension(&target_path, "tmp").expect("got filename")
+                } else {
+                    target_path
+                };
+                compress_file(
+                    source_path,
+                    &actual_target_path,
+                    // be quiet when:
+                    log_level() < LogLevel::Info,
+                )?;
+                // Do *not* remove the source file here as
+                // TemporaryFile::drop will do it.
+                Ok(actual_target_path)
             };
-            let target = run_dir.append_str(&target_filename.to_string_lossy())?;
-            compress_file(
-                source_file.path(),
-                &target,
-                // be quiet when:
-                log_level() < LogLevel::Info,
-            )?;
-            // Do *not* remove the source file here as
-            // TemporaryFile::drop will do it.
-            Ok(target)
-        };
 
         // First try to compress the log file, here we check whether
         // it exists; before we expect to compress evobench.log
         // without checking its existence.
         if bench_output_log.path().exists() {
-            compress_file_as(&bench_output_log, "bench_output.log", false)?;
+            compress_file_as(
+                bench_output_log.path(),
+                run_dir.bench_output_log_path(),
+                false,
+            )?;
             drop(bench_output_log);
         }
-        let evobench_log_tmp = compress_file_as(&evobench_log, "evobench.log", true)?;
+
+        let evobench_log_tmp =
+            compress_file_as(evobench_log.path(), run_dir.evobench_log_path(), true)?;
+
+        let (target_name, standard_log_tempfile) = log_extraction;
+        compress_file_as(&standard_log_tempfile, run_dir.standard_log_path(), false)?;
+        // It's OK to delete the original now, but we'll make use of
+        // it for reading back.
+        let standard_log_tempfile = TemporaryFile::from(standard_log_tempfile);
 
         {
             let target = run_dir.append_str("schedule_condition.ron")?;
@@ -476,7 +497,9 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                 info!("compressed benchmark file renamed");
                 Ok(())
             },
-            opt_log_extraction,
+            // log extraction:
+            target_name,
+            standard_log_tempfile.path(),
             &self.job_runner.run_config,
         )?;
 

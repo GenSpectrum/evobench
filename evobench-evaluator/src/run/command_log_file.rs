@@ -10,7 +10,9 @@ use std::{
 use anyhow::Result;
 use chrono::DateTime;
 
-use crate::{ctx, io_utils::capture::OutFile, key::BenchmarkingJobParameters};
+use crate::{
+    ctx, io_utils::capture::OutFile, key::BenchmarkingJobParameters, zstd_file::decompressed_file,
+};
 
 /// Returns `(head, rest, rest_lineno)`, where `rest_lineno` is the
 /// 1-based line number where `rest` starts. Returns None if either
@@ -60,8 +62,8 @@ impl From<OutFile> for CommandLogFile<PathBuf> {
     }
 }
 
-impl From<PathBuf> for CommandLogFile<PathBuf> {
-    fn from(path: PathBuf) -> Self {
+impl<P: AsRef<Path>> From<P> for CommandLogFile<P> {
+    fn from(path: P) -> Self {
         Self { path }
     }
 }
@@ -84,9 +86,10 @@ impl<P: AsRef<Path>> CommandLogFile<P> {
     /// Read the file contents and split it into head and rest if it
     /// has a detectable head.
     pub fn command_log<'l>(&'l self) -> Result<CommandLog<'l, P>> {
-        let logfile = self.path.as_ref();
+        let log_path = self.path.as_ref();
+        let input = decompressed_file(log_path, None)?;
         let log_contents =
-            std::fs::read_to_string(logfile).map_err(ctx!("reading file {logfile:?}"))?;
+            std::io::read_to_string(input).map_err(ctx!("reading file {log_path:?}"))?;
         Ok(CommandLog::new(self, log_contents, |contents| {
             split_off_log_file_params(contents)
         }))

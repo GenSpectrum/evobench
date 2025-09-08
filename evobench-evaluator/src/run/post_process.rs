@@ -4,7 +4,7 @@
 use std::{
     collections::{hash_map::Entry, HashMap},
     ffi::OsString,
-    path::{Path, PathBuf},
+    path::Path,
     process::Command,
 };
 
@@ -99,7 +99,8 @@ impl RunDir {
         &self,
         evobench_log_path: Option<&Path>,
         evaluating_benchmark_file_succeeded: impl FnOnce() -> Result<()>,
-        opt_log_extraction: Option<(&ProperDirname, PathBuf)>,
+        target_name: &ProperDirname,
+        standard_log_path: &Path,
         run_config: &RunConfig,
     ) -> Result<()> {
         info!("evaluating benchmark file");
@@ -139,30 +140,29 @@ impl RunDir {
         #[allow(unused)]
         let evobench_log_path = ();
 
-        if let Some((target_name, command_output_file)) = opt_log_extraction {
-            // Find the `LogExtract`s for the `target_name`
-            if let Some(target) = run_config.targets.get(target_name) {
-                if let Some(log_extracts) = &target.log_extracts {
-                    if !log_extracts.is_empty() {
-                        info!("performing log extracts");
+        // Find the `LogExtract`s for the `target_name`
+        if let Some(target) = run_config.targets.get(target_name) {
+            if let Some(log_extracts) = &target.log_extracts {
+                if !log_extracts.is_empty() {
+                    info!("performing log extracts");
 
-                        let command_log_file = CommandLogFile::from(command_output_file);
-                        let command_log = command_log_file.command_log()?;
+                    let command_log_file = CommandLogFile::from(standard_log_path);
+                    let command_log = command_log_file.command_log()?;
 
-                        for log_extract in log_extracts {
-                            log_extract.extract_seconds_from(&command_log, self.path())?;
-                        }
+                    for log_extract in log_extracts {
+                        log_extract.extract_seconds_from(&command_log, self.path())?;
                     }
-                } else {
-                    info!("no log extracts are configured");
                 }
             } else {
-                info!(
-                    "haven't found target {target_name:?}, old job before \
-                     configuration change?"
-                );
+                info!("no log extracts are configured");
             }
+        } else {
+            info!(
+                "haven't found target {target_name:?}, old job before \
+                 configuration change?"
+            );
         }
+
         Ok(())
     }
 }

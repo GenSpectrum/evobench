@@ -27,7 +27,7 @@ impl LogData {
     /// file. `max_file_size` can be used to avoid unintended loading
     /// of overly large files.
     pub fn read_file(path: &Path) -> Result<Self> {
-        let mut input = BufReader::new(decompressed_file(path, "log")?);
+        let mut input = BufReader::new(decompressed_file(path, Some("log"))?);
 
         let mut line = String::new();
         let mut linenum = 0;

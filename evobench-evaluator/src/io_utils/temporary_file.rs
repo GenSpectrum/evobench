@@ -16,6 +16,7 @@ use crate::info;
 
 pub struct TemporaryFile {
     path: PathBuf,
+    // XX currently never used
     file: Option<File>,
 }
 

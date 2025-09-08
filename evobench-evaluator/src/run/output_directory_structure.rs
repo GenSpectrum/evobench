@@ -147,9 +147,22 @@ impl RunDir {
         &self.0
     }
 
-    /// The standard path to the compressed evobench.log file
+    /// The path to the compressed evobench.log file
     pub fn evobench_log_path(&self) -> PathBuf {
         self.path().append("evobench.log.zstd")
+    }
+
+    /// The optional output location that target projects can use,
+    /// passed to it via the `BENCH_OUTPUT_LOG` env variable then
+    /// compressed/moved to this location.
+    pub fn bench_output_log_path(&self) -> PathBuf {
+        self.path().append("bench_output.log.zstd")
+    }
+
+    /// The path to the compressed stdout/stderr output from the
+    /// target application while running this benchmark.
+    pub fn standard_log_path(&self) -> PathBuf {
+        self.path().append("standard.log.zstd")
     }
 
     /// Files below a RunDir are normal files (no special type, at

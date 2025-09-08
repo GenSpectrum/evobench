@@ -15,41 +15,62 @@ use crate::ctx;
 const USING_EXTERNAL_TOOL: bool = false;
 
 #[derive(Debug, PartialEq)]
-enum Extension<'s> {
+enum Extension {
     ZStd,
-    Other(&'s str),
+    Other,
 }
 
 // Expect a file extension in `path`, return whether it is "zstd" or
-// the `expected_suffix`. Anything else yields an error.
-fn file_extension<'s, P: AsRef<Path>>(path: P, expected_suffix: &'s str) -> Result<Extension<'s>> {
+// the `expected_suffix`. Anything else yields an error. If not given,
+// accepts any suffix (but one is required).
+fn file_extension<P: AsRef<Path>>(path: P, expected_suffix: Option<&str>) -> Result<Extension> {
     let path = path.as_ref();
     let ext = path.extension().ok_or_else(|| {
-        anyhow!("missing file extension, expecting {expected_suffix:?} or \"zstd\": {path:?}")
+        let _hold;
+        let extension_msg = if let Some(expected_suffix) = expected_suffix {
+            _hold = format!("{expected_suffix:?}");
+            &_hold
+        } else {
+            "any extension"
+        };
+        anyhow!("missing file extension, expecting {extension_msg} or \"zstd\": {path:?}")
     })?;
 
     match ext.to_string_lossy().as_ref() {
         "zstd" => {
-            let stem = path.with_extension("");
-            let ext2 = stem.extension().ok_or_else(|| {
-                anyhow!(
-                    "missing second file extension, after \"zstd\", \
+            if let Some(expected_suffix) = expected_suffix {
+                let stem = path.with_extension("");
+                let ext2 = stem.extension().ok_or_else(|| {
+                    anyhow!(
+                        "missing second file extension, after \"zstd\", \
                      expecting {expected_suffix:?}: {path:?}"
-                )
-            })?;
-            match ext2.to_string_lossy().as_ref() {
-                s if &*s == expected_suffix => Ok(Extension::ZStd),
-                _ => bail!(
-                    "unknown second file extension {ext2:?} after \"zstd\", \
+                    )
+                })?;
+                match ext2.to_string_lossy().as_ref() {
+                    s if &*s == expected_suffix => Ok(Extension::ZStd),
+                    _ => bail!(
+                        "unknown second file extension {ext2:?} after \"zstd\", \
                      expecting {expected_suffix:?}: {path:?}"
-                ),
+                    ),
+                }
+            } else {
+                Ok(Extension::ZStd)
             }
         }
-        s if &*s == expected_suffix => Ok(Extension::Other(expected_suffix)),
-        _ => bail!(
-            "unknown file extension {ext:?}, expecting {expected_suffix:?} \
-             or \"zstd\": {path:?}"
-        ),
+        ext_str => {
+            if let Some(expected_suffix) = expected_suffix {
+                if ext_str == expected_suffix {
+                    Ok(Extension::Other)
+                } else {
+                    bail!(
+                        "unknown file extension {ext:?}, expecting {expected_suffix:?} \
+                     or \"zstd\": {path:?}"
+                    )
+                }
+            } else {
+                Ok(Extension::Other)
+            }
+        }
     }
 }
 
@@ -57,17 +78,17 @@ fn file_extension<'s, P: AsRef<Path>>(path: P, expected_suffix: &'s str) -> Resu
 fn t_file_extension() {
     use Extension::*;
     let ok = |a: &str, b: &'static str| {
-        file_extension(a, b).expect("test call should not give an error")
+        file_extension(a, Some(b)).expect("test call should not give an error")
     };
     let err = |a: &str, b: &'static str| {
-        file_extension(a, b)
+        file_extension(a, Some(b))
             .err()
             .expect("test call should give an error")
             .to_string()
     };
-    assert_eq!(ok("foo.x", "x"), Other("x"));
+    assert_eq!(ok("foo.x", "x"), Other);
     assert_eq!(ok("foo.x.zstd", "x"), ZStd);
-    assert_eq!(ok("foo.z.x", "x"), Other("x"));
+    assert_eq!(ok("foo.z.x", "x"), Other);
     assert_eq!(ok("foo.z.x.zstd", "x"), ZStd);
     assert_eq!(
         err("foo.x", "y"),
@@ -89,8 +110,8 @@ fn t_file_extension() {
 
 /// Transparently decompress zstd files if they have a .zstd suffix;
 /// after that, expecting the `expected_suffix` (which must be given
-/// *without* a leading dot)
-pub fn decompressed_file(path: &Path, expected_suffix: &str) -> Result<Box<dyn Read>> {
+/// *without* a leading dot) if given.
+pub fn decompressed_file(path: &Path, expected_suffix: Option<&str>) -> Result<Box<dyn Read>> {
     let ext = file_extension(path, expected_suffix)?;
 
     let file_open = || File::open(path).with_context(|| anyhow!("opening file {path:?}"));
@@ -111,7 +132,7 @@ pub fn decompressed_file(path: &Path, expected_suffix: &str) -> Result<Box<dyn R
                 ))
             }
         }
-        Extension::Other(_) => Ok(Box::new(file_open()?)),
+        Extension::Other => Ok(Box::new(file_open()?)),
     }
 }
 
