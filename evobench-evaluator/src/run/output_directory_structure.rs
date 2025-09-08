@@ -113,7 +113,7 @@ impl KeyDir {
         RunDir::try_from(self.path().append(dir_name))
     }
 
-    pub fn job_output_dirs(&self) -> Result<Vec<RunDir>> {
+    pub fn run_dirs(&self) -> Result<Vec<RunDir>> {
         typed_dir_listing_of_dirs(self.path())
     }
 }

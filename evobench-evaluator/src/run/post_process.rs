@@ -165,16 +165,15 @@ impl KeyDir {
         let key_dir = self.path();
         info!("(re-)evaluating the summary files across all results in key dir {key_dir:?}");
 
-        let job_output_dirs = self.job_output_dirs()?;
+        let run_dirs = self.run_dirs()?;
 
-        generate_all_summaries_for_situation(None, key_dir, &job_output_dirs)?;
+        generate_all_summaries_for_situation(None, key_dir, &run_dirs)?;
 
         {
             let mut job_output_dirs_by_situation: HashMap<ProperFilename, Vec<RunDir>> =
                 HashMap::new();
-            for job_output_dir in &job_output_dirs {
-                let schedule_condition_path =
-                    job_output_dir.path().append("schedule_condition.ron");
+            for run_dir in &run_dirs {
+                let schedule_condition_path = run_dir.path().append("schedule_condition.ron");
                 match std::fs::read_to_string(&schedule_condition_path) {
                     Ok(s) => {
                         let schedule_condition: ScheduleCondition = ron::from_str(&s)
@@ -183,10 +182,10 @@ impl KeyDir {
                             // XX it's just too long, proper abstraction pls?
                             match job_output_dirs_by_situation.entry(situation.clone()) {
                                 Entry::Occupied(mut occupied_entry) => {
-                                    occupied_entry.get_mut().push(job_output_dir.clone());
+                                    occupied_entry.get_mut().push(run_dir.clone());
                                 }
                                 Entry::Vacant(vacant_entry) => {
-                                    vacant_entry.insert(vec![job_output_dir.clone()]);
+                                    vacant_entry.insert(vec![run_dir.clone()]);
                                 }
                             }
                         }
