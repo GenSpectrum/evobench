@@ -116,12 +116,14 @@ pub fn generate_all_summaries_for_situation(
 }
 
 impl RunDir {
-    /// Produce the "single" extract files, as well as other configured
-    /// derivatives. After the standard "single" extracts succeeded,
-    /// `evaluating_benchmark_file_succeeded` is run; it should remove the
-    /// file at `evobench_log_path` if this is the initial run and
-    /// `evobench_log_path` pointed to e.g. a tmpfs. Pass a no-op if
-    /// calling later on.
+    /// Produce the "single" extract files, as well as other
+    /// configured derivatives. After the standard "single" extracts
+    /// succeeded, `evaluating_benchmark_file_succeeded` is run; it
+    /// should remove the file at `evobench_log_path` if this is the
+    /// initial run and `evobench_log_path` pointed to e.g. a
+    /// tmpfs. Pass a no-op if calling later on. If
+    /// `evobench_log_path` is None, then the standard location is
+    /// used.
     pub fn post_process_single(
         &self,
         evobench_log_path: Option<&Path>,
