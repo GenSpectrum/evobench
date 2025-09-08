@@ -412,7 +412,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
         );
 
         // Below that, we make a dir for this particular run
-        let run_dir = key_dir.append(self.job_runner.timestamp.as_str())?;
+        let run_dir = key_dir.append(&self.job_runner.timestamp)?;
         std::fs::create_dir_all(run_dir.path()).map_err(ctx!("create_dir_all {run_dir:?}"))?;
 
         info!("moving files to {run_dir:?}");

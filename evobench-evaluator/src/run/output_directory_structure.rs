@@ -121,8 +121,8 @@ impl KeyDir {
         &self.0
     }
 
-    pub fn append(&self, dir_name: &str) -> Result<RunDir> {
-        RunDir::try_from(self.path().append(dir_name))
+    pub fn append(&self, dir_name: &DateTimeWithOffset) -> Result<RunDir> {
+        RunDir::try_from(self.path().append(dir_name.as_str()))
     }
 
     pub fn run_dirs(&self) -> Result<Vec<RunDir>> {
