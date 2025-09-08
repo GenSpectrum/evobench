@@ -241,32 +241,39 @@ impl WorkingDirectory {
 
     /// Checks and is a no-op if already on the commit.
     pub fn checkout(&mut self, commit: GitHash) -> Result<()> {
+        let commit_str = commit.to_string();
         let quiet = false;
         let current_commit = self.git_working_dir.get_head_commit_id()?;
-        if current_commit == commit.to_string() {
+        if current_commit == commit_str {
             if self.commit != commit {
                 bail!("consistency failure: dir on disk has different commit id from obj")
             }
             Ok(())
         } else {
             let git_working_dir = &self.git_working_dir;
-            if !git_working_dir.contains_reference(&commit.to_string())? {
+            if !git_working_dir.contains_reference(&commit_str)? {
                 git_working_dir.git(&["remote", "update"], true)?;
                 info!(
                     "checkout({:?}, {commit}): ran git remote update",
                     self.git_working_dir.working_dir_path_ref()
                 );
+                if !git_working_dir.contains_reference(&commit_str)? {
+                    // XX really rely on "origin"? Seems we don't have
+                    // a way to know or even query the default remote?
+                    // But it should be safe as long as we freshly
+                    // clone those repositories.
+                    git_working_dir.git(&["fetch", "origin", &commit_str], true)?;
+                    info!(
+                        "checkout({:?}, {commit}): ran git fetch origin {commit_str}",
+                        self.git_working_dir.working_dir_path_ref()
+                    );
+                }
             }
 
             // First stash, merge --abort, cherry-pick --abort, and all
             // that jazz? No, have such a dir just go set aside with error
             // for manual fixing/removal.
-            git_working_dir.git_reset(
-                GitResetMode::Hard,
-                NO_OPTIONS,
-                &commit.to_string(),
-                quiet,
-            )?;
+            git_working_dir.git_reset(GitResetMode::Hard, NO_OPTIONS, &commit_str, quiet)?;
             info!(
                 "checkout({:?}, {commit}): ran git reset --hard",
                 self.git_working_dir.working_dir_path_ref()
