@@ -60,6 +60,12 @@ impl From<OutFile> for CommandLogFile<PathBuf> {
     }
 }
 
+impl From<PathBuf> for CommandLogFile<PathBuf> {
+    fn from(path: PathBuf) -> Self {
+        Self { path }
+    }
+}
+
 /// The contents of a command log file, split into head and rest if
 /// possible (old versions of those files didn't have a head; probably
 /// should require one at some point).

@@ -295,7 +295,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             .process_in_working_directory(
                 working_directory_id,
                 &self.job_runner.timestamp,
-                |working_directory| -> Result<Option<(&ProperDirname, OutFile)>> {
+                |working_directory| -> Result<Option<(&ProperDirname, PathBuf)>> {
                     working_directory.checkout(commit_id.clone())?;
 
                     if self.job_runner.dry_run.means(DryRun::DoWorkingDir) {
@@ -376,7 +376,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                     if status.success() {
                         info!("running {cmd_in_dir} succeeded");
 
-                        Ok(Some((target_name, command_output_file)))
+                        Ok(Some((target_name, command_output_file.into_path())))
                     } else {
                         info!("running {cmd_in_dir} failed.");
                         let last_part = command_output_file.last_part(3000)?;

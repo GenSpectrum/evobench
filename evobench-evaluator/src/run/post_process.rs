@@ -4,7 +4,7 @@
 use std::{
     collections::{hash_map::Entry, HashMap},
     ffi::OsString,
-    path::Path,
+    path::{Path, PathBuf},
     process::Command,
 };
 
@@ -13,7 +13,6 @@ use run_git::path_util::AppendToPath;
 
 use crate::{
     ctx, info,
-    io_utils::capture::OutFile,
     run::{
         command_log_file::CommandLogFile,
         config::{RunConfig, ScheduleCondition},
@@ -100,7 +99,7 @@ impl RunDir {
         &self,
         evobench_log_path: Option<&Path>,
         evaluating_benchmark_file_succeeded: impl FnOnce() -> Result<()>,
-        opt_log_extraction: Option<(&ProperDirname, OutFile)>,
+        opt_log_extraction: Option<(&ProperDirname, PathBuf)>,
         run_config: &RunConfig,
     ) -> Result<()> {
         info!("evaluating benchmark file");
