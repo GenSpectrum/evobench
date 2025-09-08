@@ -1,11 +1,15 @@
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use clap::Parser;
 
 use evobench_evaluator::{
     get_terminal_width::get_terminal_width,
     git::GitHash,
+    run::{
+        config::{RunConfig, RunConfigWithReload},
+        output_directory_structure::{KeyDir, RunDir},
+    },
     serde::proper_dirname::ProperDirname,
     util::grep_diff::GrepDiffRegion,
     utillib::logging::{set_log_level, LogLevelOpt},
@@ -18,6 +22,15 @@ use evobench_evaluator::{
 struct Opts {
     #[clap(flatten)]
     log_level: LogLevelOpt,
+
+    // XX should wrap that help text (COPYPASTE) in a wrapper for flatten
+    /// Override the path to the config file (default: the paths
+    /// `~/.evobench-run.*` where a single one exists where the `*` is
+    /// the suffix for one of the supported config file formats (run
+    /// `config-formats` to get the list), and if those are missing,
+    /// use compiled-in default config values)
+    #[clap(long)]
+    config: Option<PathBuf>,
 
     /// The subcommand to run. Use `--help` after the sub-command to
     /// get a list of the allowed options there.
@@ -64,10 +77,47 @@ enum SubCommand {
         /// use compiled-in default config values)
         logfiles: Vec<PathBuf>,
     },
+
+    /// Do the same "single" post-processing on a single benchmark
+    /// results as `evobench-run daemon` does--useful in case new
+    /// features were added or the configuration was changed.
+    PostProcessSingle {
+        /// The path to a directory for an individual run, i.e. ending
+        /// in a directory name that is a timestamp
+        run_dir: PathBuf,
+    },
+
+    /// Do the same "summary" post-processing on a set of benchmark
+    /// results as `evobench-run daemon` does--useful in case new
+    /// features were added or the configuration was changed.
+    PostProcessSummary {
+        /// Run `post-process-single` on all sub-directories for the
+        /// individual runs for this 'key', too.
+        #[clap(long)]
+        single: bool,
+
+        /// The path to a directory for a particular 'key', i.e. a set
+        /// of individual runs: ending in a directory name that is a
+        /// commit id
+        key_dir: PathBuf,
+    },
+}
+
+fn post_process_single(run_dir: &RunDir, run_config: &RunConfig) -> Result<()> {
+    let target = run_dir.target_name()?;
+    run_dir.post_process_single(
+        None,
+        || Ok(()),
+        &target,
+        &run_dir.standard_log_path(),
+        run_config,
+    )?;
+    Ok(())
 }
 
 fn main() -> Result<()> {
     let Opts {
+        config,
         log_level,
         subcommand,
     } = Opts::parse();
@@ -85,6 +135,34 @@ fn main() -> Result<()> {
         } => {
             let grep_diff_region = GrepDiffRegion::from_strings(&regex_start, &regex_end)?;
             grep_diff_region.grep_diff(logfiles, commit, target, params)?;
+        }
+
+        SubCommand::PostProcessSingle { run_dir } => {
+            let run_config_with_reload = RunConfigWithReload::load(config.as_ref(), |msg| {
+                bail!("can't load config: {msg}")
+            })?;
+            let run_config = &run_config_with_reload.run_config;
+
+            let run_dir = RunDir::try_from(run_dir)?;
+
+            post_process_single(&run_dir, run_config)?;
+        }
+
+        SubCommand::PostProcessSummary { single, key_dir } => {
+            let run_config_with_reload = RunConfigWithReload::load(config.as_ref(), |msg| {
+                bail!("can't load config: {msg}")
+            })?;
+            let run_config = &run_config_with_reload.run_config;
+
+            let key_dir = KeyDir::try_from(key_dir)?;
+
+            if single {
+                for run_dir in key_dir.run_dirs()? {
+                    post_process_single(&run_dir, run_config)?;
+                }
+            }
+
+            key_dir.generate_summaries_for_key_dir()?;
         }
     }
 
