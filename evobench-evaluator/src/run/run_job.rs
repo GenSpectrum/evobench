@@ -405,13 +405,12 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             .working_directory_cleanup(cleanup)?;
 
         // The directory holding the full key information
-        let key_dir = KeyDir::try_from(
-            run_parameters.extend_path(
-                self.job_runner
-                    .output_base_dir
-                    .append(command.target_name.as_str()),
-            ),
-        )?;
+        let key_dir = KeyDir::from_base_target_params(
+            self.job_runner.output_base_dir,
+            &command.target_name,
+            &run_parameters,
+        );
+
         // Below that, we make a dir for this particular run
         let run_dir = key_dir.append(self.job_runner.timestamp.as_str())?;
         std::fs::create_dir_all(run_dir.path()).map_err(ctx!("create_dir_all {run_dir:?}"))?;

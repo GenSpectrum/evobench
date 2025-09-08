@@ -10,7 +10,10 @@ use anyhow::{anyhow, bail, Result};
 use run_git::path_util::AppendToPath;
 
 use crate::{
-    ctx, git::GitHash, serde::date_and_time::DateTimeWithOffset,
+    ctx,
+    git::GitHash,
+    key::RunParameters,
+    serde::{date_and_time::DateTimeWithOffset, proper_dirname::ProperDirname},
     utillib::type_name_short::type_name_short,
 };
 
@@ -105,6 +108,15 @@ impl TryFrom<PathBuf> for KeyDir {
 }
 
 impl KeyDir {
+    pub fn from_base_target_params(
+        output_base_dir: &Path,
+        target_name: &ProperDirname,
+        run_parameters: &RunParameters,
+    ) -> Self {
+        KeyDir::try_from(run_parameters.extend_path(output_base_dir.append(target_name.as_str())))
+            .expect("self-created paths follow the spec")
+    }
+
     pub fn path(&self) -> &Path {
         &self.0
     }
