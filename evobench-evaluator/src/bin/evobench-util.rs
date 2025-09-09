@@ -88,6 +88,11 @@ enum SubCommand {
     /// results as `evobench-run daemon` does--useful in case new
     /// features were added or the configuration was changed.
     PostProcessSingle {
+        /// Skip (re)generation of the normal evobench.log Excel and
+        /// flamegraph stats.
+        #[clap(long)]
+        no_stats: bool,
+
         /// The path to a directory for an individual run, i.e. ending
         /// in a directory name that is a timestamp
         run_dir: PathBuf,
@@ -102,6 +107,17 @@ enum SubCommand {
         #[clap(long)]
         single: bool,
 
+        /// Skip (re)generation of the normal evobench.log Excel and
+        /// flamegraph stats. (Only relevant when `--single` is
+        /// given.)
+        #[clap(long)]
+        no_single_stats: bool,
+
+        /// Skip (re)generation of the normal evobench.log Excel and
+        /// flamegraph summary stats.
+        #[clap(long)]
+        no_summary_stats: bool,
+
         /// The path to a directory for a particular 'key', i.e. a set
         /// of individual runs: ending in a directory name that is a
         /// commit id
@@ -109,7 +125,7 @@ enum SubCommand {
     },
 }
 
-fn post_process_single(run_dir: &RunDir, run_config: &RunConfig) -> Result<()> {
+fn post_process_single(run_dir: &RunDir, run_config: &RunConfig, no_stats: bool) -> Result<()> {
     let target = run_dir.target_name()?;
     let standard_log_path = run_dir.standard_log_path();
     if !standard_log_path.exists() {
@@ -168,7 +184,14 @@ fn post_process_single(run_dir: &RunDir, run_config: &RunConfig) -> Result<()> {
         std::fs::remove_file(&found_log_file_path)?;
         info!("deleted moved file {found_log_file_path:?}");
     }
-    run_dir.post_process_single(None, || Ok(()), &target, &standard_log_path, run_config)?;
+    run_dir.post_process_single(
+        None,
+        || Ok(()),
+        &target,
+        &standard_log_path,
+        run_config,
+        no_stats,
+    )?;
     Ok(())
 }
 
@@ -194,7 +217,7 @@ fn main() -> Result<()> {
             grep_diff_region.grep_diff(logfiles, commit, target, params)?;
         }
 
-        SubCommand::PostProcessSingle { run_dir } => {
+        SubCommand::PostProcessSingle { run_dir, no_stats } => {
             let run_config_with_reload = RunConfigWithReload::load(config.as_ref(), |msg| {
                 bail!("can't load config: {msg}")
             })?;
@@ -202,10 +225,15 @@ fn main() -> Result<()> {
 
             let run_dir = RunDir::try_from(run_dir)?;
 
-            post_process_single(&run_dir, run_config)?;
+            post_process_single(&run_dir, run_config, no_stats)?;
         }
 
-        SubCommand::PostProcessSummary { single, key_dir } => {
+        SubCommand::PostProcessSummary {
+            single,
+            key_dir,
+            no_single_stats,
+            no_summary_stats,
+        } => {
             let run_config_with_reload = RunConfigWithReload::load(config.as_ref(), |msg| {
                 bail!("can't load config: {msg}")
             })?;
@@ -215,11 +243,11 @@ fn main() -> Result<()> {
 
             if single {
                 for run_dir in key_dir.run_dirs()? {
-                    post_process_single(&run_dir, run_config)?;
+                    post_process_single(&run_dir, run_config, no_single_stats)?;
                 }
             }
 
-            key_dir.generate_summaries_for_key_dir()?;
+            key_dir.generate_summaries_for_key_dir(no_summary_stats)?;
         }
     }
 

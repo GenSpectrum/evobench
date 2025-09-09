@@ -123,7 +123,9 @@ impl RunDir {
     /// initial run and `evobench_log_path` pointed to e.g. a
     /// tmpfs. Pass a no-op if calling later on. If
     /// `evobench_log_path` is None, then the standard location is
-    /// used.
+    /// used.  If `no_summary_stats` is true, skips Excel and
+    /// flamegraph generation for the evobench.log data (other
+    /// post-processing is still done, i.e. configured extractions)
     pub fn post_process_single(
         &self,
         evobench_log_path: Option<&Path>,
@@ -131,6 +133,7 @@ impl RunDir {
         target_name: &ProperDirname,
         standard_log_path: &Path,
         run_config: &RunConfig,
+        no_stats: bool,
     ) -> Result<()> {
         info!("evaluating benchmark file");
 
@@ -142,27 +145,29 @@ impl RunDir {
             &default_path_
         };
 
-        // Doing this *before* possibly renaming the file via
-        // `evaluating_benchmark_file_succeeded`, as a way to ensure
-        // that no invalid files end up in the results pool!
-        evobench_evaluator(&vec![
-            "single".into(),
-            evobench_log_path.into(),
-            "--show-thread-number".into(),
-            "--excel".into(),
-            self.append_str("single.xlsx")?.into(),
-        ])?;
+        if !no_stats {
+            // Doing this *before* possibly renaming the file via
+            // `evaluating_benchmark_file_succeeded`, as a way to ensure
+            // that no invalid files end up in the results pool!
+            evobench_evaluator(&vec![
+                "single".into(),
+                evobench_log_path.into(),
+                "--show-thread-number".into(),
+                "--excel".into(),
+                self.append_str("single.xlsx")?.into(),
+            ])?;
 
-        // It's a bit inefficient to read the $EVOBENCH_LOG twice, but
-        // currently can't change the options (--show-thread-number)
-        // without a separate run. (Will be low cost once caching is
-        // done.)
-        evobench_evaluator(&vec![
-            "single".into(),
-            evobench_log_path.into(),
-            "--flame".into(),
-            self.append_str("single")?.into(),
-        ])?;
+            // It's a bit inefficient to read the $EVOBENCH_LOG twice, but
+            // currently can't change the options (--show-thread-number)
+            // without a separate run. (Will be low cost once caching is
+            // done.)
+            evobench_evaluator(&vec![
+                "single".into(),
+                evobench_log_path.into(),
+                "--flame".into(),
+                self.append_str("single")?.into(),
+            ])?;
+        }
 
         evaluating_benchmark_file_succeeded()?;
         // The above may have unlinked evobench_log_path, thus prevent further use:
@@ -197,13 +202,19 @@ impl RunDir {
 }
 
 impl KeyDir {
-    pub fn generate_summaries_for_key_dir(&self) -> Result<()> {
+    /// If `no_summary_stats` is true, skips Excel and flamegraph
+    /// generation for the evobench.log data (which currently is all
+    /// that this method is doing, but in the future it might do stats
+    /// of other data)
+    pub fn generate_summaries_for_key_dir(&self, no_summary_stats: bool) -> Result<()> {
         let key_dir = self.path();
         info!("(re-)evaluating the summary files across all results in key dir {key_dir:?}");
 
         let run_dirs = self.run_dirs()?;
 
-        generate_all_summaries_for_situation(None, key_dir, &run_dirs)?;
+        if !no_summary_stats {
+            generate_all_summaries_for_situation(None, key_dir, &run_dirs)?;
+        }
 
         {
             let mut job_output_dirs_by_situation: HashMap<ProperFilename, Vec<RunDir>> =
@@ -234,11 +245,13 @@ impl KeyDir {
             }
 
             for (situation, job_output_dirs) in job_output_dirs_by_situation.iter() {
-                generate_all_summaries_for_situation(
-                    Some(situation),
-                    &key_dir,
-                    job_output_dirs.as_slice(),
-                )?;
+                if !no_summary_stats {
+                    generate_all_summaries_for_situation(
+                        Some(situation),
+                        &key_dir,
+                        job_output_dirs.as_slice(),
+                    )?;
+                }
             }
         }
         Ok(())

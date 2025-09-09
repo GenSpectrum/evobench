@@ -478,9 +478,14 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             target_name,
             standard_log_tempfile.path(),
             &self.job_runner.run_config,
+            // Do not omit generation of evobench.log stats
+            false,
         )?;
 
-        key_dir.generate_summaries_for_key_dir()?;
+        key_dir.generate_summaries_for_key_dir(
+            // Do not omit generation of evobench.log stats
+            false,
+        )?;
 
         Ok(())
     }
