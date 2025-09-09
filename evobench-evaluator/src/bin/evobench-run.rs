@@ -669,9 +669,9 @@ fn run() -> Result<Option<PathBuf>> {
                 };
 
             let width = get_terminal_width(1);
-            let bar_of = |c: u8| String::try_from([c].repeat(width)).expect("ascii char given");
-            let thin_bar = bar_of(b'-');
-            let thick_bar = bar_of(b'=');
+            let bar_of = |c: &str| c.repeat(width);
+            let thin_bar = bar_of("─");
+            let thick_bar = bar_of("═");
 
             for (i, run_queue) in queues.pipeline().iter().enumerate() {
                 println!("{thin_bar}");
