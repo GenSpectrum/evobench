@@ -76,7 +76,7 @@ impl<'conf, 'run_queue> RunQueueData<'conf, 'run_queue> {
 pub enum TerminationReason {
     Timeout,
     QueueEmpty,
-    GraveYard,
+    Inactive,
 }
 
 impl<'conf> RunQueue<'conf> {
@@ -92,7 +92,7 @@ impl<'conf> RunQueue<'conf> {
                 let queue_priority = self
                     .schedule_condition
                     .priority()
-                    .expect("no graveyard queue in pipeline");
+                    .expect("no inactive queue in pipeline");
                 let priority = (job.priority()? + queue_priority)?;
                 Ok((queue_item.key()?, job, priority))
             })
@@ -257,7 +257,7 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
                                     maybe_queue = self.next;
                                 }
                             }
-                            ScheduleCondition::GraveYard => {
+                            ScheduleCondition::Inactive => {
                                 unreachable!("already returned at beginning of function")
                             }
                         }

@@ -591,7 +591,7 @@ fn run() -> Result<Option<PathBuf>> {
                             .run_parameters
                             .custom_parameters
                             .to_string();
-                        let (locking, is_locked) = if schedule_condition.is_grave_yard() {
+                        let (locking, is_locked) = if schedule_condition.is_inactive() {
                             ("", false)
                         } else {
                             let lock_status = entry

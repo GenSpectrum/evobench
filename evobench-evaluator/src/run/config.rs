@@ -88,7 +88,7 @@ pub enum ScheduleCondition {
     /// A queue that is never run and never emptied, to add to the end
     /// of the queue pipeline to take up jobs that have been expelled
     /// from the second last queue, for informational purposes.
-    GraveYard,
+    Inactive,
 }
 
 impl Display for ScheduleCondition {
@@ -127,7 +127,7 @@ impl Display for ScheduleCondition {
                     situation.as_str()
                 )
             }
-            ScheduleCondition::GraveYard => f.write_str("GraveYard"),
+            ScheduleCondition::Inactive => f.write_str("Inactive"),
         }
     }
 }
@@ -136,9 +136,9 @@ impl ScheduleCondition {
     pub const TIMED_QUEUE_DEFAULT_PRIORITY: Priority = Priority::new_unchecked(1.5);
 
     /// Whether this queue will never run its jobs
-    pub fn is_grave_yard(&self) -> bool {
+    pub fn is_inactive(&self) -> bool {
         match self {
-            ScheduleCondition::GraveYard => true,
+            ScheduleCondition::Inactive => true,
             _ => false,
         }
     }
@@ -155,7 +155,7 @@ impl ScheduleCondition {
                 from,
                 to,
             } => Some((from.clone(), to.clone())),
-            ScheduleCondition::GraveYard => None,
+            ScheduleCondition::Inactive => None,
         }
     }
 
@@ -171,7 +171,7 @@ impl ScheduleCondition {
                 from: _,
                 to: _,
             } => stop_start.as_deref(),
-            ScheduleCondition::GraveYard => None,
+            ScheduleCondition::Inactive => None,
         }
     }
 
@@ -188,7 +188,7 @@ impl ScheduleCondition {
                 from: _,
                 to: _,
             } => *move_when_time_window_ends,
-            ScheduleCondition::GraveYard => false,
+            ScheduleCondition::Inactive => false,
         }
     }
 
@@ -204,7 +204,7 @@ impl ScheduleCondition {
                 from: _,
                 to: _,
             } => Some(situation),
-            ScheduleCondition::GraveYard => None,
+            ScheduleCondition::Inactive => None,
         }
     }
 
@@ -220,7 +220,7 @@ impl ScheduleCondition {
                 from: _,
                 to: _,
             } => Some(priority.unwrap_or(Self::TIMED_QUEUE_DEFAULT_PRIORITY)),
-            ScheduleCondition::GraveYard => None,
+            ScheduleCondition::Inactive => None,
         }
     }
 
@@ -257,7 +257,7 @@ impl ScheduleCondition {
                     None
                 }
             }
-            ScheduleCondition::GraveYard => None,
+            ScheduleCondition::Inactive => None,
         }
     }
 }
@@ -279,7 +279,7 @@ pub struct QueuesConfig {
     /// The queue where to put jobs when they run out of
     /// `error_budget` (if `None` is given, the jobs will be dropped--
     /// silently unless verbose flag is given). Should be of
-    /// scheduling type GraveYard (or perhaps a future messaging
+    /// scheduling type Inactive (or perhaps a future messaging
     /// queue).
     pub erroneous_jobs_queue: Option<(ProperFilename, ScheduleCondition)>,
 

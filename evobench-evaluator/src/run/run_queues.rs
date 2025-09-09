@@ -226,7 +226,7 @@ impl RunQueues {
                         None
                     }
                 }
-                ScheduleCondition::GraveYard => None,
+                ScheduleCondition::Inactive => None,
             })
     }
 
@@ -286,7 +286,7 @@ impl RunQueues {
                             + rq.current
                                 .schedule_condition
                                 .priority()
-                                .expect("no graveyards here"))?;
+                                .expect("no inactive queues here"))?;
                         Ok(Some((rq, dtr, item, job, priority)))
                     } else {
                         info!("entry {key} has disappeared in the mean time, skipping it");
@@ -313,7 +313,7 @@ impl RunQueues {
         if pipeline.is_empty() {
             bail!(
                 "no queues defined -- need at least one, also \
-                 suggested is to add a `GraveYard` as the last"
+                 suggested is to add a `Inactive` as the last"
             )
         }
 
@@ -328,7 +328,7 @@ impl RunQueues {
             }
         };
 
-        let mut grave_yard_count = 0;
+        let mut inactive_count = 0;
         for run_queue in pipeline {
             check_seen(&run_queue.file_name)?;
             match run_queue.schedule_condition {
@@ -351,28 +351,28 @@ impl RunQueues {
                         }
                     }
                 }
-                ScheduleCondition::GraveYard => grave_yard_count += 1,
+                ScheduleCondition::Inactive => inactive_count += 1,
             }
         }
-        if grave_yard_count > 1 {
-            bail!("can have at most one `GraveYard` queue");
+        if inactive_count > 1 {
+            bail!("can have at most one `Inactive` queue");
         }
-        if grave_yard_count > 0 {
+        if inactive_count > 0 {
             if *pipeline
                 .last()
                 .expect("checked in the if condition")
                 .schedule_condition
-                != ScheduleCondition::GraveYard
+                != ScheduleCondition::Inactive
             {
-                bail!("`GraveYard` queue must be the last in the pipeline")
+                bail!("`Inactive` queue must be the last in the pipeline")
             }
         }
 
         let mut check_extra_queue = |name: &str, run_queue: Option<&RunQueue>| -> Result<()> {
             if let Some(run_queue) = run_queue {
                 check_seen(&run_queue.file_name)?;
-                if !run_queue.schedule_condition.is_grave_yard() {
-                    bail!("the `{name}` must be of kind `GraveYard`")
+                if !run_queue.schedule_condition.is_inactive() {
+                    bail!("the `{name}` must be of kind `Inactive`")
                 }
             }
             Ok(())

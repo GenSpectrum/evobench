@@ -128,10 +128,10 @@ More details on jobs and the other entities follow below.
   times (`remaining_error_budget` dropped to zero), or the queue
   decides that the job should be processed by another queue. There are
   different kinds of queues (currently `Immediately`,
-  `LocalNaiveTimeWindow`, and `GraveYard`) with different rules,
+  `LocalNaiveTimeWindow`, and `Inactive`) with different rules,
   configurable for some kinds. They are working on the oldest job they
   have first (first in, first out), except job priorities dictate that
-  higher-priority jobs are worked on first (`GraveYard` queues do not
+  higher-priority jobs are worked on first (`Inactive` queues do not
   work on their jobs).
 
 * If a job execution fails, the job is always re-inserted into the
