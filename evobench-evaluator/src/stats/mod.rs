@@ -8,8 +8,13 @@ pub mod weighted;
 use std::marker::PhantomData;
 use std::{borrow::Cow, str::FromStr};
 
-use anyhow::bail;
-use num_traits::{Pow, Zero};
+use anyhow::{bail, Result};
+
+use num_rational::Ratio;
+use num_traits::{
+    ops::checked::{CheckedDiv, CheckedMul, CheckedSub},
+    Zero,
+};
 
 use crate::stats::average::Average;
 use crate::stats::weighted::{IndexedNumbers, WeightedValue};
@@ -17,6 +22,11 @@ use crate::{
     tables::table_view::{ColumnFormatting, Highlight, TableViewRow, Unit},
     times::{MicroTime, NanoTime, ToStringMilliseconds},
 };
+
+// Somehow num_traits::cast::ToPrimitive's to_f64 can't be used?
+fn ratio_u128_to_f64(r: &Ratio<u128>) -> f64 {
+    ((*r.numer()) as f64) / ((*r.denom()) as f64)
+}
 
 /// Selects a field of `Stats`, e.g. to calculate the stats for one of
 /// the Stats fields.
@@ -109,7 +119,7 @@ pub struct Stats<ViewType, const TILE_COUNT: usize> {
     /// Interpolated and rounded up for even numbers of input values.
     pub median: u64,
     /// mean squared difference from the mean
-    pub variance: f64,
+    pub variance: Ratio<u128>,
     /// Percentiles or in `TILE_COUNT` number of sections. Sample
     /// count is the index, the sample value there is the value in the
     /// vector. `tiles[0]` is the mininum, `tiles[TILE_COUNT]` the
@@ -127,6 +137,8 @@ pub enum StatsError {
     SaturatedU128,
     #[error("the virtual count (a u64) does not fit the usize range on this machine")]
     VirtualCountDoesNotFitUSize,
+    #[error("{0}")]
+    RationalU128Failure(Box<String>),
 }
 
 impl<ViewType, const TILE_COUNT: usize> Stats<ViewType, TILE_COUNT> {
@@ -135,7 +147,7 @@ impl<ViewType, const TILE_COUNT: usize> Stats<ViewType, TILE_COUNT> {
     pub fn standard_deviation_u64(&self) -> u64 {
         // What about number overflows from f64 ? Can't happen,
         // though, right?
-        (self.variance.sqrt() + 0.5) as u64
+        (ratio_u128_to_f64(&self.variance).sqrt() + 0.5) as u64
     }
 
     /// Get the value for the given field (and ending up untyped! But
@@ -228,22 +240,42 @@ impl<ViewType, const TILE_COUNT: usize> Stats<ViewType, TILE_COUNT> {
         };
 
         let variance = {
-            // XX is there any *good* reason to use f64 here (other
-            // than "average might lie inbetween integer steps"; but
-            // could downscale for the average, i.e. average is u128
-            // but with the lower half being parts--use
-            // https://crates.io/crates/fixed ?)?
-            let virtual_count = virtual_count as f64;
-            let average: f64 = virtual_sum as f64 / virtual_count;
-            let sum_squared_error: f64 = vals
+            // Using num-rational (Could perhaps also use
+            // https://crates.io/crates/fixed instead.)
+            let virtual_count = Ratio::from_integer(u128::from(virtual_count));
+            let average = Ratio::from_integer(virtual_sum) / virtual_count;
+            let sum_squared_error: Ratio<u128> = vals
                 .iter()
-                .map(|WeightedValue { value, weight }| {
-                    // Do the same as if `value` would be copied `weight` times
-                    let weight = u64::from(u32::from(*weight));
-                    (*value as f64 - average).pow(2) * (weight as f64)
-                })
-                .sum();
-            sum_squared_error / virtual_count
+                .map(
+                    |WeightedValue { value, weight }| -> Result<Ratio<u128>, StatsError> {
+                        // Do the same as if `value` would be copied `weight` times
+                        let value = Ratio::from_integer(u128::from(*value));
+                        let weight = Ratio::from_integer(u128::from(u64::from(u32::from(*weight))));
+                        let diff = value
+                            .checked_sub(&average)
+                            .or_else(|| average.checked_sub(&value))
+                            .ok_or_else(|| {
+                                StatsError::RationalU128Failure(Box::new(format!(
+                                    "failure to calculate diff between {value} and {average}"
+                                )))
+                            })?;
+                        (|| -> Option<_> { diff.checked_mul(&diff)?.checked_mul(&weight) })()
+                            .ok_or_else(|| {
+                                StatsError::RationalU128Failure(Box::new(format!(
+                                    "failure to compute diff^2 * weight, {diff} * {diff} * {weight}"
+                                )))
+                            })
+                    },
+                )
+                .sum::<Result<_, StatsError>>()?;
+            sum_squared_error
+                .checked_div(&virtual_count)
+                .ok_or_else(|| {
+                    StatsError::RationalU128Failure(Box::new(format!(
+                        "failure to calculate sum_squared_error / virtual_count, \
+                                     {sum_squared_error} / {virtual_count}"
+                    )))
+                })?
         };
 
         let indexed_vals = IndexedNumbers::from_unsorted_weighted_value_vec(&mut vals)
@@ -442,12 +474,13 @@ mod tests {
 
     #[test]
     fn t_average_and_tiles_and_median() -> Result<()> {
+        let f = ratio_u128_to_f64;
         let data = weighted(&[23, 4, 8, 30, 7]);
         let stats = Stats::<u64, 4>::from_values(data)?;
         assert_eq!(stats.average, 14); // 14.4
         assert_eq!(stats.tiles, [4, 7, 23, 30]); // 8 skipped
         assert_eq!(stats.median, 8);
-        assert_eq!(stats.variance, 104.24000000000001);
+        assert_eq!(f(&stats.variance), 104.24);
         assert_eq!(stats.standard_deviation_u64(), 10); // 10.2097992144802
 
         let data = weighted(&[23, 4, 8, 31, 7]);
@@ -458,7 +491,7 @@ mod tests {
         assert_eq!(stats.tiles[3], 31);
         assert_eq!(stats.tiles, [4, 7, 23, 31]); // 8 skipped
         assert_eq!(stats.median, 8);
-        assert_eq!(stats.variance, 110.64000000000001);
+        assert_eq!(f(&stats.variance), 110.64);
         assert_eq!(stats.standard_deviation_u64(), 11); // 10.5185550338438
 
         let data = weighted(&[23, 4, 8, 7]);
@@ -517,10 +550,11 @@ mod tests {
 
     #[test]
     fn t_weights() -> Result<()> {
+        let f = ratio_u128_to_f64;
         let data = weighted(&[23, 4, 9, 4, 4, 7]); // 4 4 4 7 9 23
         let stats = Stats::<u64, 4>::from_values(data)?;
         assert_eq!(stats.median, 6); // 5.5
-        assert_eq!(stats.variance, 45.583333333333336);
+        assert_eq!(f(&stats.variance), 45.583333333333336);
 
         let mut data = weighted(&[23, 4, 9, 7]);
         data.push(WeightedValue {
@@ -529,7 +563,7 @@ mod tests {
         });
         let stats = Stats::<u64, 4>::from_values(data)?;
         assert_eq!(stats.median, 6); // 5.5
-        assert_eq!(stats.variance, 45.583333333333336);
+        assert_eq!(f(&stats.variance), 45.583333333333336);
 
         Ok(())
     }
