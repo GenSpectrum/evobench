@@ -110,8 +110,9 @@ fn table_for_field<'key, K: KeyDetails>(
 /// name suggests, also what rows are generated, since the grouping of
 /// the measurements depends on the set of generated key
 /// strings. (This only contains the runtime data, but unlike what the
-/// name suggests, actually there is no static data for the key
-/// column?)
+/// name suggests, actually there is no static data for the key column
+/// in the output? (PS. But there is the definition of the trait
+/// `KeyDetails` below, can't conflict with that.))
 #[derive(Clone, PartialEq, Debug)]
 pub struct KeyRuntimeDetails {
     /// The separators to use

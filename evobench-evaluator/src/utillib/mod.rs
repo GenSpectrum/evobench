@@ -1,3 +1,5 @@
+//! Various utilities
+
 pub mod arc;
 pub mod bool_env;
 pub mod exit_status_ext;

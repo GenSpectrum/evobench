@@ -1,3 +1,5 @@
+//! Various utilities in the area of I/O.
+
 pub mod bash;
 pub mod capture;
 pub mod div;

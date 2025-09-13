@@ -1,3 +1,5 @@
+//! Joins (intersections) of sorted sequences.
+
 use itertools::{EitherOrBoth, Itertools};
 
 #[derive(Debug, PartialEq)]
