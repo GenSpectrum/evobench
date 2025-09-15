@@ -603,7 +603,11 @@ fn run() -> Result<Option<PathBuf>> {
                                     let status = working_directory_base_dir
                                         .get_working_directory_status(dir)?;
                                     match status.status {
-                                        Status::CheckedOut => "?", // Shouldn't happen
+                                        // CheckedOut wasn't planned
+                                        // to happen, but now happens
+                                        // for new working dir
+                                        // assignment
+                                        Status::CheckedOut => "R0",
                                         Status::Processing => "R", // running
                                         Status::Error => "F",      // failure
                                         Status::Finished => "E",   // evaluating
