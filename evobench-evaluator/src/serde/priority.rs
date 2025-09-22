@@ -117,15 +117,20 @@ impl FromStr for Priority {
     }
 }
 
+// Get rid of 1.250000000000000001 style formatting
+fn format_rounded(prefix: &str, value: f64) -> String {
+    let mut rounded = format!("{prefix}{:.6}", value);
+    let trimmed = rounded.trim_end_matches('0').trim_end_matches('.');
+    rounded.truncate(trimmed.len());
+    rounded
+}
+
 impl Display for Priority {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let x = self.0;
-        // XX round?
-        if x.is_sign_negative() {
-            write!(f, "{x}")
-        } else {
-            write!(f, " {x}")
-        }
+        let prefix = if x.is_sign_negative() { "" } else { " " };
+        let s = format_rounded(prefix, x);
+        f.write_str(&s)
     }
 }
 
