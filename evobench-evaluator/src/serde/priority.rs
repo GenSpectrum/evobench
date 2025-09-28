@@ -125,6 +125,18 @@ fn format_rounded(prefix: &str, value: f64) -> String {
     rounded
 }
 
+#[test]
+fn t_format_rounded() {
+    let t = |v: f64| format_rounded("", v);
+    assert_eq!(t(1.250000000001), "1.25");
+    assert_eq!(t(-1.250000000001), "-1.25");
+    assert_eq!(t(1.24999999), "1.25");
+    assert_eq!(t(1.25), "1.25");
+    assert_eq!(t(1.0), "1");
+    assert_eq!(t(10.0), "10");
+    assert_eq!(t(10.00100001), "10.001");
+}
+
 impl Display for Priority {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let x = self.0;
