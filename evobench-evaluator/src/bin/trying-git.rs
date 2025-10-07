@@ -9,7 +9,7 @@ use clap::Parser;
 use evobench_evaluator::get_terminal_width::get_terminal_width;
 use evobench_evaluator::git::git_log_commits;
 use evobench_evaluator::git::GitGraph;
-use evobench_evaluator::git::GitHistory;
+use evobench_evaluator::git::GitReference;
 use evobench_evaluator::serde::git_branch_name::GitBranchName;
 use evobench_evaluator::utillib::logging::set_log_level;
 use evobench_evaluator::utillib::logging::LogLevelOpt;
@@ -18,20 +18,20 @@ use kstring::KString;
 fn graph(directory: &Path, branch: &GitBranchName) -> Result<()> {
     let commits = git_log_commits(directory, branch.as_str())?;
     let graph = GitGraph::new();
-    let history = GitHistory::from_commits(
+    let history = GitReference::from_commits(
         KString::from_ref(branch.as_str()),
         commits.iter().rev(),
         &mut graph.lock(),
     );
     dbg!(graph.lock().commits().len());
-    dbg!(history.entry_commit_id);
-    let id = history.entry_commit_id;
+    dbg!(history.commit_id);
+    let id = history.commit_id;
     {
         let commit = { &graph.lock()[id] };
         eprintln!("entry commit: {commit:?}");
     }
 
-    let ids = graph.lock().history_from(history.entry_commit_id);
+    let ids = graph.lock().history_from(history.commit_id);
     let sorted_ids = graph.lock().sorted_by(&ids, |commit| commit.committer_time);
     {
         let graph_lock = graph.lock();

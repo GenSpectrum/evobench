@@ -172,12 +172,12 @@ impl GitGraph {
 }
 
 #[derive(Debug)]
-pub struct GitHistory {
-    pub entry_reference: KString,
-    pub entry_commit_id: Id<ToCommit>,
+pub struct GitReference {
+    pub name: KString,
+    pub commit_id: Id<ToCommit>,
 }
 
-impl GitHistory {
+impl GitReference {
     /// Important: `commits` must come in order of creation,
     /// i.e. parents must come before children, or this panics! Also
     /// panics if commits is empty!
@@ -217,9 +217,9 @@ impl GitHistory {
                 entry_commit_id = Some(graph_lock.push(commit));
             }
         }
-        GitHistory {
-            entry_reference,
-            entry_commit_id: entry_commit_id.expect("to be given non-empty commits iterator"),
+        GitReference {
+            name: entry_reference,
+            commit_id: entry_commit_id.expect("to be given non-empty commits iterator"),
         }
     }
 }
