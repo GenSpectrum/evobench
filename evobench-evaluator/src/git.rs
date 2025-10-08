@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeSet, HashMap, HashSet},
     fmt::{Debug, Display},
     ops::Index,
     path::Path,
@@ -94,10 +94,10 @@ impl Display for EnrichedGitCommit<GitHash> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Id<Kind>(u32, Kind);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ToEnrichedCommit;
 
 // Consciously does not include a repository base path, to allow to
@@ -192,6 +192,59 @@ impl GitGraphData {
             }
         }
         ids
+    }
+
+    /// Find the ancestor commit that is closest to `for_id`; "close"
+    /// means least steps as long as on a branch; when there are
+    /// multiple branches (bevore a merge) the commit with the newer
+    /// commit time is chosen. It is guaranteed that the id passed to
+    /// `is_match` is contained in `self`.
+    pub fn closest_matching_ancestor_of(
+        &self,
+        for_id: Id<ToEnrichedCommit>,
+        is_match: impl Fn(Id<ToEnrichedCommit>) -> bool,
+    ) -> Result<Option<Id<ToEnrichedCommit>>> {
+        // XX Could use roaring bitmaps instead of HashSet.
+
+        // To detect fork points that were already visited.
+        let mut seen_commit_ids = HashSet::new();
+        seen_commit_ids.insert(for_id);
+
+        // Can't use Vec since we'd need to splice. Linked list or:
+        let mut current_commits = HashSet::new();
+        self.get(for_id)
+            .ok_or_else(|| anyhow!("invalid parent_id"))?;
+        current_commits.insert(for_id);
+
+        let get_id = |id: Id<ToEnrichedCommit>| self.get(id).expect("internal consistency");
+
+        while !current_commits.is_empty() {
+            let matches: Vec<_> = current_commits
+                .iter()
+                .copied()
+                .filter(|id| is_match(*id))
+                .collect();
+            if let Some(id) = matches.iter().copied().max_by_key(|id| {
+                let commit = get_id(*id);
+                commit.commit.committer_time
+            }) {
+                return Ok(Some(id));
+            }
+            let commit_id_to_step = current_commits
+                .iter()
+                .copied()
+                .max_by_key(|id| get_id(*id).commit.committer_time)
+                .expect("exiting before here when current_commits is empty");
+            current_commits.remove(&commit_id_to_step);
+            let commit_to_step = get_id(commit_id_to_step);
+            for commit_id in &commit_to_step.commit.parents {
+                if !seen_commit_ids.contains(commit_id) {
+                    current_commits.insert(*commit_id);
+                    seen_commit_ids.insert(*commit_id);
+                }
+            }
+        }
+        Ok(None)
     }
 
     pub fn sorted_by<T: Ord>(
@@ -402,12 +455,19 @@ mod tests {
         let graph = GitGraph::new();
         let mut graph_lock = graph.lock();
 
-        let refs = [
-            "9fd0ad621328a11a984aaa0700d54d05af6a899a",
+        let interesting_commit_ids = [
+            // a later commit:
+            "710e7a2f4d48124964efbe48c901259ae31cfd6a",
+            // the merge commit:
             "f73da5abcc389db7754715a9fecadb478ecfbc16",
+            // ancestors in two separate branches leading to the commit above:
+            "9fd0ad621328a11a984aaa0700d54d05af6a899a",
             "d165351476db2d65c3efcda89b4a99decede3784",
-        ]
-        .map(|name| {
+        ];
+
+        // Test depth:
+
+        let refs = interesting_commit_ids.map(|name| {
             graph_lock
                 .add_history_from_dir_ref(git_in_cwd, name)
                 .map_err(|e| e.to_string())
@@ -416,12 +476,30 @@ mod tests {
         dbg!(&refs);
 
         assert_eq!(
-            refs[0].as_ref().unwrap().name.as_ref(),
+            refs[2].as_ref().unwrap().name.as_ref(),
             "9fd0ad621328a11a984aaa0700d54d05af6a899a"
         );
 
-        let depths = refs.map(|r| r.unwrap().commit_id.get(&graph_lock).unwrap().depth);
-        assert_eq!(depths, [159, 163, 161]);
+        let ids: [Id<ToEnrichedCommit>; _] = refs.map(|res| res.unwrap().commit_id);
+
+        let depths = ids.map(|id| id.get(&graph_lock).unwrap().depth);
+        assert_eq!(depths, [166, 163, 159, 161]);
+
+        // Test closest_matching_ancestor_of:
+
+        let closest = graph_lock
+            .closest_matching_ancestor_of(ids[0], |id| (&ids[2..]).contains(&id))?
+            .expect("to find it");
+        assert_eq!(closest, Id(165, ToEnrichedCommit));
+        assert_eq!(
+            closest
+                .get(&graph_lock)
+                .expect("contained")
+                .commit
+                .commit_hash
+                .to_string(),
+            "9fd0ad621328a11a984aaa0700d54d05af6a899a"
+        );
 
         Ok(())
     }
