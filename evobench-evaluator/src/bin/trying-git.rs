@@ -7,22 +7,16 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::Parser;
 use evobench_evaluator::get_terminal_width::get_terminal_width;
-use evobench_evaluator::git::git_log_commits;
 use evobench_evaluator::git::GitGraph;
-use evobench_evaluator::git::GitReference;
 use evobench_evaluator::serde::git_branch_name::GitBranchName;
 use evobench_evaluator::utillib::logging::set_log_level;
 use evobench_evaluator::utillib::logging::LogLevelOpt;
-use kstring::KString;
 
 fn graph(directory: &Path, branch: &GitBranchName) -> Result<()> {
-    let commits = git_log_commits(directory, branch.as_str())?;
     let graph = GitGraph::new();
-    let history = GitReference::from_commits(
-        KString::from_ref(branch.as_str()),
-        commits.iter().rev(),
-        &mut graph.lock(),
-    );
+    let history = graph
+        .lock()
+        .add_history_from_dir_ref(directory, branch.as_str())?;
     dbg!(graph.lock().commits().len());
     dbg!(history.commit_id);
     let id = history.commit_id;
@@ -31,14 +25,16 @@ fn graph(directory: &Path, branch: &GitBranchName) -> Result<()> {
         eprintln!("entry commit: {commit:?}");
     }
 
-    let ids = graph.lock().history_from(history.commit_id);
-    let sorted_ids = graph.lock().sorted_by(&ids, |commit| commit.committer_time);
+    let ids = graph.lock().history_as_btreeset_from(history.commit_id);
+    let sorted_ids = graph
+        .lock()
+        .sorted_by(&ids, |ecommit| ecommit.commit.committer_time);
     {
         let graph_lock = graph.lock();
-        let commits = graph_lock.ids_as_commits(&sorted_ids);
+        let ecommits = graph_lock.ids_as_commits(&sorted_ids);
         let mut out = BufWriter::new(stdout().lock());
-        for commit in commits {
-            let commit = commit.to_hashes(&graph_lock);
+        for ecommit in ecommits {
+            let commit = ecommit.with_ids_as_hashes(&graph_lock);
             writeln!(&mut out, "{commit}")?;
         }
         out.flush()?;

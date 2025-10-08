@@ -7,7 +7,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use itertools::Itertools;
 use kstring::KString;
 use smallvec::SmallVec;
@@ -23,9 +23,18 @@ pub struct GitCommit<RefType> {
     pub parents: SmallVec<[RefType; 1]>,
 }
 
-impl GitCommit<Id<ToCommit>> {
-    /// Panics if the contained ids are not in `data`
-    pub fn to_hashes(&self, data: &GitGraphData) -> GitCommit<GitHash> {
+#[derive(Debug)]
+pub struct EnrichedGitCommit<RefType> {
+    pub commit: GitCommit<RefType>,
+    /// The length of the longest parent chain (i.e. 0 for the initial
+    /// commit)
+    pub depth: usize,
+}
+
+impl GitCommit<Id<ToEnrichedCommit>> {
+    /// Turn the `Id`s to commit hashes. Panics if the contained ids
+    /// are not in `data`!
+    pub fn with_ids_as_hashes(&self, data: &GitGraphData) -> GitCommit<GitHash> {
         let Self {
             commit_hash,
             author_time,
@@ -35,7 +44,7 @@ impl GitCommit<Id<ToCommit>> {
 
         let parents = parents
             .iter()
-            .map(|parent| data[*parent].commit_hash.clone())
+            .map(|parent| data[*parent].commit.commit_hash.clone())
             .collect();
 
         GitCommit {
@@ -47,6 +56,21 @@ impl GitCommit<Id<ToCommit>> {
     }
 }
 
+impl EnrichedGitCommit<Id<ToEnrichedCommit>> {
+    /// Turn the `Id`s to commit hashes. Panics if the contained ids
+    /// are not in `data`!
+    pub fn with_ids_as_hashes(&self, data: &GitGraphData) -> EnrichedGitCommit<GitHash> {
+        let Self { commit, depth } = self;
+        let commit = commit.with_ids_as_hashes(data);
+        EnrichedGitCommit {
+            commit,
+            depth: *depth,
+        }
+    }
+}
+
+// XX arbitrarily, was meant just for testing (same output as original
+// git log output)
 impl Display for GitCommit<GitHash> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self {
@@ -62,49 +86,97 @@ impl Display for GitCommit<GitHash> {
     }
 }
 
+// XX arbitrarily
+impl Display for EnrichedGitCommit<GitHash> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self { commit, depth } = self;
+        write!(f, "{depth}\t{commit}")
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Id<Kind>(u32, Kind);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ToCommit;
+pub struct ToEnrichedCommit;
 
+// Consciously does not include a repository base path, to allow to
+// collect graph data from multiple of them? Is this sensible or not
+// really?
 #[derive(Debug)]
 pub struct GitGraphData {
-    by_hash: HashMap<GitHash, Id<ToCommit>>,
-    commits: Vec<GitCommit<Id<ToCommit>>>,
+    by_hash: HashMap<GitHash, Id<ToEnrichedCommit>>,
+    ecommits: Vec<EnrichedGitCommit<Id<ToEnrichedCommit>>>,
+}
+
+#[derive(thiserror::Error, Debug)]
+#[error("more than u32::max commits")]
+pub struct MoreThanU32Commits;
+
+impl Id<ToEnrichedCommit> {
+    pub fn get(self, data: &GitGraphData) -> Option<&EnrichedGitCommit<Id<ToEnrichedCommit>>> {
+        data.get(self)
+    }
 }
 
 impl GitGraphData {
     fn new() -> Self {
         Self {
             by_hash: HashMap::new(),
-            commits: Vec::new(),
+            ecommits: Vec::new(),
         }
     }
 
-    pub fn by_hash(&self, h: &GitHash) -> Option<Id<ToCommit>> {
+    pub fn get(
+        &self,
+        id: Id<ToEnrichedCommit>,
+    ) -> Option<&EnrichedGitCommit<Id<ToEnrichedCommit>>> {
+        self.ecommits
+            .get(usize::try_from(id.0).expect("at least 32 bit platform"))
+    }
+
+    pub fn get_by_hash(&self, h: &GitHash) -> Option<Id<ToEnrichedCommit>> {
         self.by_hash.get(h).copied()
     }
 
-    pub fn push(&mut self, commit: GitCommit<Id<ToCommit>>) -> Id<ToCommit> {
-        let id = self.commits.len();
+    // Does not check whether commit is already contained! But *does*
+    // check that the parent ids are in range (they are referenced to
+    // calculate the depth).
+    pub fn unchecked_push(
+        &mut self,
+        commit: GitCommit<Id<ToEnrichedCommit>>,
+    ) -> Result<Id<ToEnrichedCommit>, MoreThanU32Commits> {
+        let commit_hash = commit.commit_hash.clone();
+
+        let depth = commit
+            .parents
+            .iter()
+            .map(|parent_id| self.get(*parent_id).expect("XXX").depth)
+            .max()
+            .map(|m| m + 1)
+            .unwrap_or(0);
+
+        let ecommit = EnrichedGitCommit { commit, depth };
+        let id = self.ecommits.len();
         let id = Id(
-            // XX bad to panic here?
-            u32::try_from(id).expect("fewer than u32::MAX commits"),
-            ToCommit,
+            u32::try_from(id).map_err(|_| MoreThanU32Commits)?,
+            ToEnrichedCommit,
         );
-        self.by_hash.insert(commit.commit_hash.clone(), id);
-        self.commits.push(commit);
-        id
+        self.by_hash.insert(commit_hash, id);
+        self.ecommits.push(ecommit);
+        Ok(id)
     }
 
-    pub fn history_from(&self, mut id: Id<ToCommit>) -> BTreeSet<Id<ToCommit>> {
+    pub fn history_as_btreeset_from(
+        &self,
+        mut id: Id<ToEnrichedCommit>,
+    ) -> BTreeSet<Id<ToEnrichedCommit>> {
         let mut ids = BTreeSet::new();
         let mut stack_of_commits_to_follow = Vec::new();
         loop {
             if ids.insert(id) {
-                let commit = &self[id];
-                let mut parents = commit.parents.iter();
+                let ecommit = &self[id];
+                let mut parents = ecommit.commit.parents.iter();
                 if let Some(first_parent) = parents.next() {
                     id = *first_parent;
                     for parent in parents {
@@ -124,9 +196,9 @@ impl GitGraphData {
 
     pub fn sorted_by<T: Ord>(
         &self,
-        commits: &BTreeSet<Id<ToCommit>>,
-        mut by: impl FnMut(&GitCommit<Id<ToCommit>>) -> T,
-    ) -> Vec<Id<ToCommit>> {
+        commits: &BTreeSet<Id<ToEnrichedCommit>>,
+        mut by: impl FnMut(&EnrichedGitCommit<Id<ToEnrichedCommit>>) -> T,
+    ) -> Vec<Id<ToEnrichedCommit>> {
         let mut vec: Vec<_> = commits.iter().copied().collect();
         vec.sort_by_key(|id| by(&self[*id]));
         vec
@@ -134,22 +206,43 @@ impl GitGraphData {
 
     pub fn ids_as_commits<'s: 'ids, 'ids>(
         &'s self,
-        ids: &'ids [Id<ToCommit>],
-    ) -> impl DoubleEndedIterator<Item = &'s GitCommit<Id<ToCommit>>> + ExactSizeIterator + use<'s, 'ids>
-    {
+        ids: &'ids [Id<ToEnrichedCommit>],
+    ) -> impl DoubleEndedIterator<Item = &'s EnrichedGitCommit<Id<ToEnrichedCommit>>>
+           + ExactSizeIterator
+           + use<'s, 'ids> {
         ids.iter().map(|id| &self[*id])
     }
 
-    pub fn commits(&self) -> &[GitCommit<Id<ToCommit>>] {
-        &self.commits
+    pub fn commits(&self) -> &[EnrichedGitCommit<Id<ToEnrichedCommit>>] {
+        &self.ecommits
+    }
+
+    pub fn add_history_from_dir_ref(
+        &mut self,
+        in_directory: impl AsRef<Path>,
+        entry_reference: &str,
+    ) -> Result<GitReference> {
+        let in_directory = in_directory.as_ref();
+        // XX first check if entry_reference is already indexed? But
+        // need name index, too, then. And should make directory part
+        // of the context, here, really.
+        let commits = git_log_commits(in_directory, entry_reference)?;
+        if commits.is_empty() {
+            bail!("invalid Git reference {entry_reference:?} in Git dir {in_directory:?}")
+        }
+        Ok(GitReference::from_commits(
+            KString::from_ref(entry_reference),
+            commits.iter().rev(),
+            self,
+        )?)
     }
 }
 
-impl Index<Id<ToCommit>> for GitGraphData {
-    type Output = GitCommit<Id<ToCommit>>;
+impl Index<Id<ToEnrichedCommit>> for GitGraphData {
+    type Output = EnrichedGitCommit<Id<ToEnrichedCommit>>;
 
-    fn index(&self, index: Id<ToCommit>) -> &Self::Output {
-        &self.commits[usize::try_from(index.0).expect("at least u32 bit platform")]
+    fn index(&self, index: Id<ToEnrichedCommit>) -> &Self::Output {
+        &self.ecommits[usize::try_from(index.0).expect("usize must be at least 32 bit wide")]
     }
 }
 
@@ -174,19 +267,19 @@ impl GitGraph {
 #[derive(Debug)]
 pub struct GitReference {
     pub name: KString,
-    pub commit_id: Id<ToCommit>,
+    pub commit_id: Id<ToEnrichedCommit>,
 }
 
 impl GitReference {
-    /// Important: `commits` must come in order of creation,
-    /// i.e. parents must come before children, or this panics! Also
-    /// panics if commits is empty!
+    /// `commits` must come in order of creation, i.e. parents must
+    /// come before children, or this panics! Also panics if commits
+    /// is empty!
     pub fn from_commits<'c>(
         entry_reference: KString,
         commits: impl Iterator<Item = &'c GitCommit<GitHash>>,
         graph_lock: &mut GitGraphData,
-    ) -> Self {
-        let mut entry_commit_id: Option<Id<ToCommit>> = None;
+    ) -> Result<Self, MoreThanU32Commits> {
+        let mut entry_commit_id: Option<Id<ToEnrichedCommit>> = None;
         for GitCommit {
             commit_hash,
             author_time,
@@ -195,8 +288,11 @@ impl GitReference {
         } in commits
         {
             debug!("processing commit {commit_hash}");
-            if let Some(_id) = graph_lock.by_hash(commit_hash) {
-                debug!("already recorded {commit_hash} earlier, nothing to do")
+            if let Some(id) = graph_lock.get_by_hash(commit_hash) {
+                debug!("already recorded {commit_hash} earlier, ignoring the rest");
+                // But need to continue, as there can be other merged
+                // branches that come up later in the git log output.
+                entry_commit_id = Some(id);
             } else {
                 let commit = GitCommit {
                     commit_hash: commit_hash.clone(),
@@ -205,7 +301,7 @@ impl GitReference {
                     parents: parents
                         .iter()
                         .map(|parent| {
-                            graph_lock.by_hash(parent).unwrap_or_else(|| {
+                            graph_lock.get_by_hash(parent).unwrap_or_else(|| {
                                 panic!(
                                     "can't find parent {parent} of commit {commit_hash} -- \
                                      need commits with the oldest first!"
@@ -214,20 +310,30 @@ impl GitReference {
                         })
                         .collect(),
                 };
-                entry_commit_id = Some(graph_lock.push(commit));
+                entry_commit_id = Some(graph_lock.unchecked_push(commit)?);
             }
         }
-        GitReference {
+        Ok(GitReference {
             name: entry_reference,
             commit_id: entry_commit_id.expect("to be given non-empty commits iterator"),
-        }
+        })
     }
 }
 
-/// Returns the commits with the newest one first! You need to feed
-/// them to `GitHistory::from_commits` in reverse order!
-pub fn git_log_commits<D: AsRef<Path>>(
-    in_directory: D,
+/// Returns the commits with the newest one first. Careful:
+/// `GitHistory::from_commits` expects them in the reverse order of
+/// this one.  This returns a Vec (for lifetime reasons but also)
+/// because it needs to be reversed afterwards, but also because
+/// following branched Git history (via git log) can find branch with
+/// known commits at some point, but the other still needing
+/// exploration. Would need to analyze the history on the go to know
+/// if stopping is OK. Thus for now, just get the whole
+/// history. Returns the empty vector if the given reference does not
+/// resolve! You usually do not want to use this function directly,
+/// but instead initialize a GitGraph, get the lock, then run
+/// `add_history_from_dir_ref` on it, which then uses this function.
+pub fn git_log_commits(
+    in_directory: impl AsRef<Path>,
     entry_reference: &str,
 ) -> Result<Vec<GitCommit<GitHash>>> {
     let in_directory = in_directory.as_ref();
@@ -287,5 +393,36 @@ mod tests {
     use super::*;
 
     #[test]
-    fn t_() {}
+    fn t_() -> Result<()> {
+        let git_in_cwd = AsRef::<Path>::as_ref("../.git");
+        if !git_in_cwd.is_dir() {
+            eprintln!("git.rs: not tested due to not being in a Git repository");
+            return Ok(());
+        }
+        let graph = GitGraph::new();
+        let mut graph_lock = graph.lock();
+
+        let refs = [
+            "9fd0ad621328a11a984aaa0700d54d05af6a899a",
+            "f73da5abcc389db7754715a9fecadb478ecfbc16",
+            "d165351476db2d65c3efcda89b4a99decede3784",
+        ]
+        .map(|name| {
+            graph_lock
+                .add_history_from_dir_ref(git_in_cwd, name)
+                .map_err(|e| e.to_string())
+        });
+
+        dbg!(&refs);
+
+        assert_eq!(
+            refs[0].as_ref().unwrap().name.as_ref(),
+            "9fd0ad621328a11a984aaa0700d54d05af6a899a"
+        );
+
+        let depths = refs.map(|r| r.unwrap().commit_id.get(&graph_lock).unwrap().depth);
+        assert_eq!(depths, [159, 163, 161]);
+
+        Ok(())
+    }
 }
