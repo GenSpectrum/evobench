@@ -97,6 +97,10 @@ impl PollingPool {
             &DateTimeWithOffset::now(),
             |working_directory| {
                 let git_working_dir = &working_directory.git_working_dir;
+                // XX this code was a duplicate of the one for working
+                // dirs, right? But now there "remote fetch" is used,
+                // and should probably do the same here. Thus todo:
+                // abstract.
                 git_working_dir.git(&["remote", "update"], true)?;
                 Ok(working_directory_id)
             },
