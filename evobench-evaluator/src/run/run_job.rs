@@ -42,7 +42,12 @@ use super::{
 };
 
 // ------------------------------------------------------------------
-pub const EVOBENCH_ENV_VARS: &[&str] = &["EVOBENCH_LOG", "BENCH_OUTPUT_LOG", "COMMIT_ID"];
+pub const EVOBENCH_ENV_VARS: &[&str] = &[
+    "EVOBENCH_LOG",
+    "BENCH_OUTPUT_LOG",
+    "COMMIT_ID",
+    "DATASET_DIR",
+];
 
 pub fn is_evobench_env_var(s: &str) -> bool {
     EVOBENCH_ENV_VARS.contains(&s)
@@ -116,7 +121,7 @@ mod tests {
                 .unwrap()
                 .to_string(),
             "AllowableCustomEnvVar env variable \"EVOBENCH_LOG\" is reserved, expecting a variable name \
-             that is *not* any of EVOBENCH_LOG, BENCH_OUTPUT_LOG, COMMIT_ID"
+             that is *not* any of EVOBENCH_LOG, BENCH_OUTPUT_LOG, COMMIT_ID, DATASET_DIR"
         );
     }
 }
