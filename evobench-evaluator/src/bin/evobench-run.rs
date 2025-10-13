@@ -51,7 +51,6 @@ use evobench_evaluator::{
     utillib::{
         arc::CloneArc,
         logging::{set_log_level, LogLevelOpt},
-        path_resolve_home::path_resolve_home,
         re_exec::re_exec_with_existing_args_and_env,
     },
 };
@@ -258,8 +257,6 @@ fn run_queues(
     {
         debug!("Test-running versioned dataset search");
 
-        let versioned_dataset_base_dir = path_resolve_home(&versioned_dataset_base_dir)?;
-
         let working_directory_id = working_directory_pool.get_first()?;
         working_directory_pool.clear_current_working_directory()?;
         let ((), token) = working_directory_pool.process_in_working_directory(
@@ -315,7 +312,7 @@ fn run_queues(
         // XX handle errors without exiting? Or do that above
 
         let run_config = &config_with_reload.run_config;
-        let output_base_dir = path_resolve_home(&run_config.output_base_dir)?;
+        let output_base_dir = &run_config.output_base_dir;
 
         let queues_data = queues.data()?;
 

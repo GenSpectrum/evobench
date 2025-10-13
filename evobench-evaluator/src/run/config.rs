@@ -24,6 +24,7 @@ use crate::{
         priority::Priority,
         proper_dirname::ProperDirname,
         proper_filename::ProperFilename,
+        tilde_path::TildePath,
         val_or_ref::{ValOrRef, ValOrRefTarget},
     },
     util::grep_diff::LogExtract,
@@ -269,8 +270,9 @@ pub struct QueuesConfig {
     /// locking the `run` action of evobench-run, to ensure only one
     /// benchmarking job is executed at the same time--if you
     /// configure multiple such directories then you don't have this
-    /// guarantee any more.
-    pub run_queues_basedir: Option<PathBuf>,
+    /// guarantee any more. Supports `~/`
+    /// for specifying the home directory.
+    pub run_queues_basedir: Option<TildePath<PathBuf>>,
 
     /// The queues to use (file names, without '/'), and their
     /// scheduled execution condition
@@ -301,10 +303,11 @@ impl QueuesConfig {
         global_app_state_dir: &GlobalAppStateDir,
     ) -> Result<PathBuf> {
         if let Some(base_dir) = &self.run_queues_basedir {
+            let base_dir = base_dir.resolve()?;
             if create_if_not_exists {
-                create_dir_if_not_exists(base_dir, "queues base directory")?;
+                create_dir_if_not_exists(&base_dir, "queues base directory")?;
             }
-            Ok(base_dir.into())
+            Ok(base_dir)
         } else {
             global_app_state_dir.run_queues_basedir()
         }
@@ -497,8 +500,9 @@ pub struct RunConfigOpts {
     pub remote_repository: RemoteRepositoryOpts,
 
     /// The base of the directory hierarchy where the output files
-    /// should be placed
-    pub output_base_dir: Arc<Path>,
+    /// should be placed. Supports `~/` for specifying the home
+    /// directory.
+    pub output_base_dir: Arc<TildePath<PathBuf>>,
 
     /// Optional directory holding directories whose name is taken
     /// from the (optional, depending on the configuration) `DATASET`
@@ -509,10 +513,9 @@ pub struct RunConfigOpts {
     /// i.e. `$versioned_datasets_base_dir/$DATASET/$best_rev_name`. The
     /// resolved path (only when both this option and `DATASET` are
     /// provided) is stored in the `DATASET_DIR` env var when calling
-    /// the benchmarking entry point of the client app.
-    // XX todo: make serde/FromStr-transparent wrapper that decodes
-    // `~/`
-    pub versioned_datasets_base_dir: Option<Arc<Path>>,
+    /// the benchmarking entry point of the client app. Supports `~/`
+    /// for specifying the home directory.
+    pub versioned_datasets_base_dir: Option<Arc<TildePath<PathBuf>>>,
 }
 
 #[derive(Debug)]
@@ -611,9 +614,13 @@ impl RunConfigOpts {
             job_templates_for_insert,
             benchmarking_job_settings: benchmarking_job_settings.clone_arc(),
             remote_repository,
-            output_base_dir: output_base_dir.clone_arc(),
+            output_base_dir: output_base_dir.resolve()?.into(),
             targets,
-            versioned_datasets_base_dir: versioned_datasets_base_dir.clone(),
+            versioned_datasets_base_dir: versioned_datasets_base_dir
+                .as_ref()
+                .map(|d| d.resolve())
+                .transpose()?
+                .map(Arc::<Path>::from),
         })
     }
 }
