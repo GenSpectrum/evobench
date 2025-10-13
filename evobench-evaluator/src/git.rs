@@ -12,8 +12,8 @@ use itertools::Itertools;
 use kstring::KString;
 use smallvec::SmallVec;
 
+use crate::date_and_time::unixtime::Unixtime;
 pub use crate::serde::git_hash::GitHash;
-use crate::{date_and_time::unixtime::Unixtime, debug};
 
 #[derive(Debug)]
 pub struct GitCommit<RefType> {
@@ -340,9 +340,9 @@ impl GitReference {
             parents,
         } in commits
         {
-            debug!("processing commit {commit_hash}");
+            // debug!("processing commit {commit_hash}");
             if let Some(id) = graph_lock.get_by_hash(commit_hash) {
-                debug!("already recorded {commit_hash} earlier, ignoring the rest");
+                // debug!("already recorded {commit_hash} earlier, ignoring the rest");
                 // But need to continue, as there can be other merged
                 // branches that come up later in the git log output.
                 entry_commit_id = Some(id);
