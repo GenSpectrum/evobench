@@ -39,7 +39,8 @@ impl<'t> From<&'t ProperDirname> for &'t str {
 }
 
 const ERR_MSG: &str = "a file name (not path), must not contain '/', '\\n', '\\0', \
-     and must not be \".\", \"..\", the empty string, or longer than 255 bytes";
+     and must not be \".\", \"..\", the empty string, or longer than 255 bytes, \
+     and not have a file extension";
 // XX Windows will be different than "bytes" and 255.
 
 impl FromStr for ProperDirname {
