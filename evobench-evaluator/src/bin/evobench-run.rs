@@ -261,6 +261,7 @@ fn run_queues(
         let versioned_dataset_base_dir = path_resolve_home(&versioned_dataset_base_dir)?;
 
         let working_directory_id = working_directory_pool.get_first()?;
+        working_directory_pool.clear_current_working_directory()?;
         let ((), token) = working_directory_pool.process_in_working_directory(
             working_directory_id,
             &DateTimeWithOffset::now(),

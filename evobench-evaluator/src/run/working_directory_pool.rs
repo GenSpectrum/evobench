@@ -520,8 +520,15 @@ impl WorkingDirectoryPool {
         }
     }
 
-    /// Remove the symlink to the currently used working directory
-    pub(crate) fn clear_current_working_directory(&self) -> Result<()> {
+    /// Remove the symlink to the currently used working
+    /// directory. TODO: this is a mess, always forgetting; at least
+    /// move to a compile time checked API? What was the purpose,
+    /// really: sure, it was to put in some check that the dir was
+    /// actually removed normally? But then that 'never' happens
+    /// anyway? Do the removal statically (and for the case of errors
+    /// preventing the removal, just always remove at runtime when
+    /// setting it anew / do tmp-and-rename)?
+    pub fn clear_current_working_directory(&self) -> Result<()> {
         let path = self.base_dir.current_working_directory_symlink_path();
         if let Err(e) = std::fs::remove_file(&path) {
             match e.kind() {
