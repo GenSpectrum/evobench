@@ -232,10 +232,7 @@ impl WorkingDirectoryPool {
                 ))?;
 
         let lock = StandaloneExclusiveFileLock::try_lock_path(base_dir.path(), || {
-            format!(
-                "working directory pool {:?} is already locked",
-                base_dir.path()
-            )
+            "locking working directory pool".into()
         })?;
 
         let slf = Self {
