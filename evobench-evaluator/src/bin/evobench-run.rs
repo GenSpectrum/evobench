@@ -256,19 +256,21 @@ fn run_queues(
     if let Some(versioned_dataset_base_dir) =
         &config_with_reload.run_config.versioned_datasets_base_dir
     {
-        let versioned_dataset_base_dir = path_resolve_home(&versioned_dataset_base_dir)?;
         debug!("Test-running versioned dataset search");
-        // XX polling pool stuff is hacky, should really abstract
-        let mut polling_pool = PollingPool::open(
-            &config_with_reload.run_config.remote_repository.url,
-            &global_app_state_dir.working_directory_for_polling_pool_base()?,
-        )?;
-        let working_directory_id = polling_pool.updated_working_dir()?;
 
-        polling_pool.process_in_working_directory(
+        let versioned_dataset_base_dir = path_resolve_home(&versioned_dataset_base_dir)?;
+
+        let working_directory_id = working_directory_pool.get_first()?;
+        let ((), token) = working_directory_pool.process_in_working_directory(
             working_directory_id,
             &DateTimeWithOffset::now(),
             |working_directory| -> Result<()> {
+                // Avoid the risk of an old working directory having
+                // an older HEAD than all dataset versions.
+                working_directory
+                    .git_working_dir
+                    .git(&["fetch", "--tags"], true)?;
+
                 // XX capture all errors and return as Ok? Or is it OK
                 // to re-clone the repo on all such errors?
                 let head_commit_str = working_directory
@@ -301,8 +303,11 @@ fn run_queues(
                 }
                 Ok(())
             },
+            None,
             "test-running versioned dataset search",
+            None,
         )?;
+        working_directory_pool.working_directory_cleanup(token)?;
     }
 
     loop {
