@@ -499,6 +499,20 @@ pub struct RunConfigOpts {
     /// The base of the directory hierarchy where the output files
     /// should be placed
     pub output_base_dir: Arc<Path>,
+
+    /// Optional directory holding directories whose name is taken
+    /// from the (optional, depending on the configuration) `DATASET`
+    /// custom variable (hacky to mis-use a custom variable for
+    /// this?), inside which are directories named after git revision
+    /// names (tags or commit ids), the latest which is an ancestor or
+    /// the commit itself to be benchmarked,
+    /// i.e. `$versioned_datasets_base_dir/$DATASET/$best_rev_name`. The
+    /// resolved path (only when both this option and `DATASET` are
+    /// provided) is stored in the `DATASET_DIR` env var when calling
+    /// the benchmarking entry point of the client app.
+    // XX todo: make serde/FromStr-transparent wrapper that decodes
+    // `~/`
+    pub versioned_datasets_base_dir: Option<Arc<Path>>,
 }
 
 #[derive(Debug)]
@@ -525,10 +539,12 @@ pub struct RunConfig {
     pub benchmarking_job_settings: Arc<BenchmarkingJobSettingsOpts>,
     pub remote_repository: RemoteRepository,
     pub output_base_dir: Arc<Path>,
+    pub versioned_datasets_base_dir: Option<Arc<Path>>,
     pub targets: BTreeMap<ProperDirname, Arc<BenchmarkingTarget>>,
 }
 
 impl RunConfigOpts {
+    /// Don't take ownership since RunConfigWithReload can't give it
     pub fn check(&self) -> Result<RunConfig> {
         let RunConfigOpts {
             queues,
@@ -539,6 +555,7 @@ impl RunConfigOpts {
             benchmarking_job_settings,
             remote_repository,
             output_base_dir,
+            versioned_datasets_base_dir,
         } = self;
 
         let targets: BTreeMap<ProperDirname, Arc<BenchmarkingTarget>> = {
@@ -596,6 +613,7 @@ impl RunConfigOpts {
             remote_repository,
             output_base_dir: output_base_dir.clone_arc(),
             targets,
+            versioned_datasets_base_dir: versioned_datasets_base_dir.clone(),
         })
     }
 }

@@ -252,22 +252,18 @@ impl WorkingDirectory {
         } else {
             let git_working_dir = &self.git_working_dir;
             if !git_working_dir.contains_reference(&commit_str)? {
-                git_working_dir.git(&["remote", "update"], true)?;
+                // XX really rely on "origin"? Seems we don't have a
+                // way to know or even query the default remote?  But
+                // it should be safe as long as we freshly clone those
+                // repositories. Fetching --tags in case
+                // `dataset_dir_for_commit` is used. Note: this does
+                // not update branches, right? But branch names should
+                // never be used for anything, OK? XX document?
+                git_working_dir.git(&["fetch", "origin", "--tags", &commit_str], true)?;
                 info!(
-                    "checkout({:?}, {commit}): ran git remote update",
+                    "checkout({:?}, {commit}): ran git fetch origin --tags {commit_str}",
                     self.git_working_dir.working_dir_path_ref()
                 );
-                if !git_working_dir.contains_reference(&commit_str)? {
-                    // XX really rely on "origin"? Seems we don't have
-                    // a way to know or even query the default remote?
-                    // But it should be safe as long as we freshly
-                    // clone those repositories.
-                    git_working_dir.git(&["fetch", "origin", &commit_str], true)?;
-                    info!(
-                        "checkout({:?}, {commit}): ran git fetch origin {commit_str}",
-                        self.git_working_dir.working_dir_path_ref()
-                    );
-                }
             }
 
             // First stash, merge --abort, cherry-pick --abort, and all

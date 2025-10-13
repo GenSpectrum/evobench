@@ -18,7 +18,9 @@ use std::{
 
 use evobench_evaluator::{
     config_file::{self, ron_to_string_pretty, save_config_file},
+    ctx,
     date_and_time::system_time_with_display::SystemTimeWithDisplay,
+    debug,
     get_terminal_width::get_terminal_width,
     git::GitHash,
     info,
@@ -37,6 +39,7 @@ use evobench_evaluator::{
         run_job::{DryRun, JobRunner},
         run_queue::RunQueue,
         run_queues::RunQueues,
+        versioned_dataset_dir::VersionedDatasetDir,
         working_directory::Status,
         working_directory_pool::{WorkingDirectoryPool, WorkingDirectoryPoolBaseDir},
     },
@@ -247,6 +250,61 @@ fn run_queues(
     };
     let mut run_context = RunContext::default();
     let mut last_config_reload_error = None;
+    let versioned_dataset_dir = VersionedDatasetDir::new();
+
+    // Test-run
+    if let Some(versioned_dataset_base_dir) =
+        &config_with_reload.run_config.versioned_datasets_base_dir
+    {
+        let versioned_dataset_base_dir = path_resolve_home(&versioned_dataset_base_dir)?;
+        debug!("Test-running versioned dataset search");
+        // XX polling pool stuff is hacky, should really abstract
+        let mut polling_pool = PollingPool::open(
+            &config_with_reload.run_config.remote_repository.url,
+            &global_app_state_dir.working_directory_for_polling_pool_base()?,
+        )?;
+        let working_directory_id = polling_pool.updated_working_dir()?;
+
+        polling_pool.process_in_working_directory(
+            working_directory_id,
+            &DateTimeWithOffset::now(),
+            |working_directory| -> Result<()> {
+                // XX capture all errors and return as Ok? Or is it OK
+                // to re-clone the repo on all such errors?
+                let head_commit_str = working_directory
+                    .git_working_dir
+                    .git_rev_parse("HEAD", true)?
+                    .ok_or_else(|| anyhow!("can't resolve HEAD"))?;
+                let head_commit: GitHash = head_commit_str.parse().map_err(|e| {
+                    anyhow!(
+                        "parsing commit id from HEAD from polling working dir: \
+                         {head_commit_str:?}: {e}"
+                    )
+                })?;
+                let lock = versioned_dataset_dir
+                    .updated_git_graph(&working_directory.git_working_dir, &head_commit)?;
+
+                for dataset_name_entry in std::fs::read_dir(&versioned_dataset_base_dir)
+                    .map_err(ctx!("can't open directory {versioned_dataset_base_dir:?}"))?
+                {
+                    let dataset_name_entry = dataset_name_entry?;
+                    let dataset_name = dataset_name_entry.file_name();
+                    let dataset_name_str = dataset_name.to_str().ok_or_else(|| {
+                        anyhow!("can't decode entry {:?}", dataset_name_entry.path())
+                    })?;
+                    let x =
+                        lock.dataset_dir_for_commit(&versioned_dataset_base_dir, dataset_name_str)?;
+                    debug!(
+                        "Test-run of versioned dataset search for HEAD commit {head_commit_str} \
+                     gave path: {x:?}"
+                    );
+                }
+                Ok(())
+            },
+            "test-running versioned dataset search",
+        )?;
+    }
+
     loop {
         // XX handle errors without exiting? Or do that above
 
@@ -262,6 +320,7 @@ fn run_queues(
                 dry_run,
                 timestamp: DateTimeWithOffset::now(),
                 run_config,
+                versioned_dataset_dir: &versioned_dataset_dir,
             },
             &mut run_context,
         )?;

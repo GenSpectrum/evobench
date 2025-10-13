@@ -28,6 +28,7 @@ use crate::{
     run::{
         benchmarking_job::BenchmarkingJob, config::RunConfig, output_directory_structure::KeyDir,
         post_process::compress_file_as, run_queues::RunQueuesData,
+        versioned_dataset_dir::VersionedDatasetDir,
     },
     serde::{
         allowed_env_var::AllowEnvVar, date_and_time::DateTimeWithOffset,
@@ -212,6 +213,8 @@ pub struct JobRunner<'pool> {
     pub timestamp: DateTimeWithOffset,
     // Separate lifetime?
     pub run_config: &'pool RunConfig,
+    // ditto?
+    pub versioned_dataset_dir: &'pool VersionedDatasetDir,
 }
 
 impl<'pool> JobRunner<'pool> {
@@ -300,7 +303,42 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                 working_directory_id,
                 &self.job_runner.timestamp,
                 |working_directory| -> Result<Option<(&ProperDirname, PathBuf)>> {
+                    // `checkout` also fetches the remote tags, which
+                    // is necessary for `dataset_dir_for_commit`
                     working_directory.checkout(commit_id.clone())?;
+
+                    let dataset_dir = {
+                        // Now find the matching
+                        // dataset if both the dataset name and base path
+                        // config values are provided
+                        let dataset_key = "DATASET".parse()?;
+                        if let Some(dataset_name) = custom_parameters.btree_map().get(&dataset_key)
+                        {
+                            // ^ XX hmm, check that the type of the custom env var
+                            // is a directory name?
+                            if let Some(versioned_datasets_base_dir) = self
+                                .job_runner
+                                .run_config
+                                .versioned_datasets_base_dir
+                                .as_ref()
+                            {
+                                let vdirlock =
+                                    self.job_runner.versioned_dataset_dir.updated_git_graph(
+                                        &working_directory.git_working_dir,
+                                        commit_id,
+                                    )?;
+
+                                Some(vdirlock.dataset_dir_for_commit(
+                                    versioned_datasets_base_dir,
+                                    dataset_name.as_str(),
+                                )?)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    };
 
                     if self.job_runner.dry_run.means(DryRun::DoWorkingDir) {
                         println!("checked out working directory: {working_directory_id}");
@@ -340,6 +378,9 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                         .env(check("COMMIT_ID"), commit_id.to_string())
                         .args(arguments)
                         .current_dir(&dir);
+                    if let Some(dataset_dir) = &dataset_dir {
+                        command.env(check("DATASET_DIR"), dataset_dir);
+                    }
 
                     let command_output_file = OutFile::create(
                         &add_extension(

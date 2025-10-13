@@ -9,7 +9,7 @@ use run_git::git::GitWorkingDir;
 
 use crate::{
     git::GitHash,
-    run::working_directory::WorkingDirectoryAutoCleanOpts,
+    run::working_directory::{WorkingDirectory, WorkingDirectoryAutoCleanOpts},
     serde::{date_and_time::DateTimeWithOffset, git_branch_name::GitBranchName, git_url::GitUrl},
     utillib::arc::CloneArc,
 };
@@ -112,6 +112,32 @@ impl PollingPool {
         Ok(res)
     }
 
+    /// Currently `working_directory_id` (get it from
+    /// `updated_working_dir`) always represents the same single
+    /// working directory, but maybe that will change?
+    pub fn process_in_working_directory<R>(
+        &mut self,
+        working_directory_id: WorkingDirectoryId,
+        timestamp: &DateTimeWithOffset,
+        action: impl FnOnce(&mut WorkingDirectory) -> Result<R>,
+        context: &str,
+    ) -> Result<R> {
+        // XX why again can and do we just clear it everywhere? What
+        // was the status implication in the cleared or not
+        // clearedness?
+        self.pool.clear_current_working_directory()?;
+        let (r, token) = self.pool.process_in_working_directory(
+            working_directory_id,
+            timestamp,
+            action,
+            None,
+            context,
+            None,
+        )?;
+        self.pool.working_directory_cleanup(token)?;
+        Ok(r)
+    }
+
     /// Returns the resolved commit ids for the requested names, and
     /// any names that failed to resolve.
     pub fn resolve_branch_names<'b>(
@@ -122,8 +148,7 @@ impl PollingPool {
         Vec<(&'b GitBranchName, GitHash, Arc<[JobTemplate]>)>,
         Vec<String>,
     )> {
-        self.pool.clear_current_working_directory()?;
-        let (res, cleanup) = self.pool.process_in_working_directory(
+        self.process_in_working_directory(
             working_directory_id,
             &DateTimeWithOffset::now(),
             |working_directory| {
@@ -140,11 +165,7 @@ impl PollingPool {
                 }
                 Ok((ids, non_resolving))
             },
-            None,
             &format!("resolving branch names {}", branch_names.keys().join(", ")),
-            None,
-        )?;
-        self.pool.working_directory_cleanup(cleanup)?;
-        Ok(res)
+        )
     }
 }
