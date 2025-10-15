@@ -219,25 +219,29 @@ impl GitGraphData {
         let get_id = |id: Id<ToEnrichedCommit>| self.get(id).expect("internal consistency");
 
         while !current_commits.is_empty() {
-            let matches: Vec<_> = current_commits
+            // Of all the current commits that match the filter,
+            // return the newest one, if any.
+            if let Some(matching_id) = current_commits
                 .iter()
                 .copied()
                 .filter(|id| is_match(*id))
-                .collect();
-            if let Some(id) = matches.iter().copied().max_by_key(|id| {
-                let commit = get_id(*id);
-                commit.commit.committer_time
-            }) {
-                return Ok(Some(id));
+                .max_by_key(|id| {
+                    let commit = get_id(*id);
+                    commit.commit.committer_time
+                })
+            {
+                return Ok(Some(matching_id));
             }
-            let commit_id_to_step = current_commits
+            // Of all the current commits follow the newest one back
+            // to its parents.
+            let commit_id_to_follow = current_commits
                 .iter()
                 .copied()
                 .max_by_key(|id| get_id(*id).commit.committer_time)
                 .expect("exiting before here when current_commits is empty");
-            current_commits.remove(&commit_id_to_step);
-            let commit_to_step = get_id(commit_id_to_step);
-            for commit_id in &commit_to_step.commit.parents {
+            current_commits.remove(&commit_id_to_follow);
+            let commit_to_follow = get_id(commit_id_to_follow);
+            for commit_id in &commit_to_follow.commit.parents {
                 if !seen_commit_ids.contains(commit_id) {
                     current_commits.insert(*commit_id);
                     seen_commit_ids.insert(*commit_id);
