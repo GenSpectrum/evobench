@@ -2,6 +2,7 @@
 //! usable (i.e. is worth trying to use).
 
 use std::{
+    fmt::Display,
     fs::Permissions,
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
@@ -78,6 +79,15 @@ impl Status {
             Status::Finished => false,
         }
     }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Status::CheckedOut => "checked-out",
+            Status::Processing => "processing",
+            Status::Error => "error",
+            Status::Finished => "finished",
+        }
+    }
 }
 
 impl PartialOrd for Status {
@@ -89,6 +99,12 @@ impl PartialOrd for Status {
 impl Ord for Status {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.score().cmp(&other.score())
+    }
+}
+
+impl Display for Status {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 
@@ -117,7 +133,7 @@ pub struct WorkingDirectory {
     pub working_directory_status: WorkingDirectoryStatus,
     working_directory_status_needs_saving: bool,
     /// last use time: mtime of the .status file
-    pub mtime: SystemTime,
+    pub last_use: SystemTime,
 }
 
 impl WorkingDirectory {
@@ -177,7 +193,7 @@ impl WorkingDirectory {
             commit,
             working_directory_status,
             working_directory_status_needs_saving,
-            mtime,
+            last_use: mtime,
         };
         // XX chaos: Do not change the status if it already
         // exists. Does this even work?
@@ -236,7 +252,7 @@ impl WorkingDirectory {
             commit,
             working_directory_status: status,
             working_directory_status_needs_saving: true,
-            mtime,
+            last_use: mtime,
         };
         slf.set_and_save_status(Status::CheckedOut)?;
         Ok(slf)

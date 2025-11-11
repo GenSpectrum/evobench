@@ -271,6 +271,15 @@ impl WorkingDirectoryPool {
         &self.remote_repository_url
     }
 
+    /// This includes working dirs with errors, that (normally) must
+    /// be left aside and not used for processing!  The returned
+    /// entries are sorted by `WorkingDirectoryId`
+    pub fn all_entries(&self) -> impl Iterator<Item = (&WorkingDirectoryId, &WorkingDirectory)> {
+        self.all_entries.iter()
+    }
+
+    /// The entries that can be used for processing. The returned
+    /// entries are sorted by `WorkingDirectoryId`
     pub fn active_entries(&self) -> impl Iterator<Item = (&WorkingDirectoryId, &WorkingDirectory)> {
         self.all_entries
             .iter()
@@ -417,6 +426,25 @@ impl WorkingDirectoryPool {
         }
     }
 
+    /// Note: may leave behind a broken `current` symlink, but that's
+    /// probably the way it should be?
+    pub fn delete_working_directory(
+        &mut self,
+        working_directory_id: WorkingDirectoryId,
+    ) -> Result<()> {
+        let wd = self
+            .all_entries
+            .get_mut(&working_directory_id)
+            .ok_or_else(|| anyhow!("working directory id must still exist"))?;
+        let path = wd.git_working_dir.working_dir_path_arc();
+        info!("delete_working_directory: deleting directory {path:?}");
+        self.all_entries.remove(&working_directory_id);
+        std::fs::remove_dir_all(&*path).map_err(ctx!("deleting directory {path:?}"))?;
+        Ok(())
+    }
+
+    /// Possibly calls `delete_working_directory`, depending on what
+    /// the token says.
     pub fn working_directory_cleanup(
         &mut self,
         cleanup: WorkingDirectoryCleanupToken,
@@ -428,14 +456,7 @@ impl WorkingDirectoryPool {
         } = cleanup;
         linear_token.bury();
         if needs_cleanup {
-            let wd = self
-                .all_entries
-                .get_mut(&working_directory_id)
-                .ok_or_else(|| anyhow!("working directory id must still exist"))?;
-            let path = wd.git_working_dir.working_dir_path_arc();
-            info!("working_directory_cleanup: deleting directory {path:?}");
-            self.all_entries.remove(&working_directory_id);
-            std::fs::remove_dir_all(&*path).map_err(ctx!("deleting directory {path:?}"))?;
+            self.delete_working_directory(working_directory_id)?;
         }
         Ok(())
     }
@@ -513,7 +534,7 @@ impl WorkingDirectoryPool {
                 // get the least-recently used one
                 let id = self
                     .active_entries()
-                    .min_by_key(|(_, entry)| entry.mtime)
+                    .min_by_key(|(_, entry)| entry.last_use)
                     .expect("capacity is guaranteed >= 1")
                     .0
                     .clone();

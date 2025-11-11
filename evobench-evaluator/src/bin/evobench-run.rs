@@ -40,7 +40,7 @@ use evobench_evaluator::{
         run_queue::RunQueue,
         run_queues::RunQueues,
         versioned_dataset_dir::VersionedDatasetDir,
-        working_directory::Status,
+        working_directory::{Status, WorkingDirectoryStatus},
         working_directory_pool::{WorkingDirectoryPool, WorkingDirectoryPoolBaseDir},
     },
     serde::{
@@ -176,6 +176,14 @@ enum SubCommand {
         #[clap(subcommand)]
         mode: RunMode,
     },
+
+    /// Handle working directories
+    Wd {
+        /// The subcommand to run. Use `--help` after the sub-command to
+        /// get a list of the allowed options there.
+        #[clap(subcommand)]
+        subcommand: WdSubCommand,
+    },
 }
 
 #[derive(Debug, Clone, Copy, clap::Subcommand)]
@@ -209,6 +217,44 @@ pub enum RunMode {
         /// the original arguments.
         #[clap(long)]
         restart_on_upgrades: bool,
+    },
+}
+
+#[derive(Debug, clap::Subcommand)]
+enum WdSubCommand {
+    /// List the working directories; by default, show all of them
+    List {
+        /// Show the active working directories
+        #[clap(long)]
+        active: bool,
+
+        /// Show the working directories that have been set aside due to errors
+        #[clap(long)]
+        error: bool,
+    },
+    /// Delete working directories that have been set aside due to
+    /// errors
+    Cleanup {
+        /// Show the list of ids of working directories that were
+        /// deleted
+        #[clap(short, long)]
+        verbose: bool,
+
+        /// Which of the working directories with errors to delete
+        #[clap(subcommand)]
+        mode: WdSubCommandCleanupMode,
+    },
+}
+
+#[derive(Debug, clap::Subcommand)]
+enum WdSubCommandCleanupMode {
+    /// Delete all working directories with errors
+    All,
+    /// Delete those that were set aside at least the given number of
+    /// days ago
+    StaleForDays {
+        /// Number of days
+        n: u16,
     },
 }
 
@@ -932,6 +978,69 @@ fn run() -> Result<Option<PathBuf>> {
                             RunResult::NeedReExec(executable_path) => {
                                 return Ok(Some(executable_path))
                             }
+                        }
+                    }
+                }
+            }
+        }
+        SubCommand::Wd { subcommand } => {
+            // XX COPYPASTE
+            let mut working_directory_pool = WorkingDirectoryPool::open(
+                conf.working_directory_pool.clone_arc(),
+                working_directory_base_dir.clone(),
+                conf.remote_repository.url.clone(),
+                true,
+            )?;
+
+            match subcommand {
+                WdSubCommand::List { active, error } => {
+                    println!("id\tstatus\tnum_runs\tcreation_timestamp\tlast_use");
+                    for (id, wd) in working_directory_pool.all_entries() {
+                        let WorkingDirectoryStatus {
+                            creation_timestamp,
+                            num_runs,
+                            status,
+                        } = &wd.working_directory_status;
+
+                        let show = match (active, error) {
+                            (true, true) | (false, false) => true,
+                            (true, false) => !wd.working_directory_status.status.is_error(),
+                            (false, true) => wd.working_directory_status.status.is_error(),
+                        };
+                        if show {
+                            println!(
+                                "{id}\t{status}\t{num_runs}\t{creation_timestamp}\t{}",
+                                system_time_to_rfc3339(wd.last_use)
+                            );
+                        }
+                    }
+                }
+                WdSubCommand::Cleanup { verbose, mode } => {
+                    let stale_days = match mode {
+                        WdSubCommandCleanupMode::All => 0,
+                        WdSubCommandCleanupMode::StaleForDays { n } => n,
+                    };
+                    let stale_seconds = u64::from(stale_days) * 24 * 3600;
+
+                    let now = SystemTime::now();
+
+                    let mut cleanup_ids = Vec::new();
+                    for (id, wd) in working_directory_pool
+                        .all_entries()
+                        .filter(|(_, wd)| wd.working_directory_status.status.is_error())
+                    {
+                        let d = now.duration_since(wd.last_use).map_err(ctx!(
+                            "calculating time since last use of working directory {id}"
+                        ))?;
+                        if d.as_secs() > stale_seconds {
+                            cleanup_ids.push(*id);
+                        }
+                    }
+
+                    for id in cleanup_ids {
+                        working_directory_pool.delete_working_directory(id)?;
+                        if verbose {
+                            println!("{id}");
                         }
                     }
                 }
