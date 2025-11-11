@@ -178,6 +178,9 @@ pub struct ProcessingError {
 
 impl WorkingDirectoryPool {
     pub fn open(
+        // XX why do we have working directory pool base dir twice,
+        // via opts and base_dir? Just because of some weird
+        // defaulting logic? I.e. the one in `opts` has to be ignored?
         opts: Arc<WorkingDirectoryPoolOpts>,
         base_dir: WorkingDirectoryPoolBaseDir,
         remote_repository_url: GitUrl,
