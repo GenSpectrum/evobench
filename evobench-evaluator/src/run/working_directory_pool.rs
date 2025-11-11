@@ -190,6 +190,10 @@ impl WorkingDirectoryPool {
             io_utils::div::create_dir_if_not_exists(base_dir.path(), "working pool directory")?;
         }
 
+        let lock = StandaloneExclusiveFileLock::try_lock_path(base_dir.path(), || {
+            "locking working directory pool".into()
+        })?;
+
         let mut next_id: u64 = 0;
 
         let all_entries: BTreeMap<WorkingDirectoryId, WorkingDirectory> =
@@ -233,10 +237,6 @@ impl WorkingDirectoryPool {
                 .map_err(ctx!(
                     "reading contents of working pool directory {base_dir:?}"
                 ))?;
-
-        let lock = StandaloneExclusiveFileLock::try_lock_path(base_dir.path(), || {
-            "locking working directory pool".into()
-        })?;
 
         let slf = Self {
             opts,
