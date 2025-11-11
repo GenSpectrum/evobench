@@ -64,8 +64,11 @@ impl PollingPool {
     /// Updates the remotes, but only if the commit isn't already in
     /// the local clone.
     pub fn commit_is_valid(&mut self, commit: &GitHash) -> Result<bool> {
-        self.pool.clear_current_working_directory()?;
-        let working_directory_id = self.pool.get_first()?;
+        let working_directory_id = {
+            let mut pool = self.pool.lock()?;
+            pool.clear_current_working_directory()?;
+            pool.get_first()?
+        };
         let (res, cleanup) = self.pool.process_in_working_directory(
             working_directory_id,
             &DateTimeWithOffset::now(),
@@ -90,8 +93,11 @@ impl PollingPool {
     /// Get working dir, git remote update it, and return its id for
     /// subsequent work on it
     pub fn updated_working_dir(&mut self) -> Result<WorkingDirectoryId> {
-        self.pool.clear_current_working_directory()?;
-        let working_directory_id = self.pool.get_first()?;
+        let working_directory_id = {
+            let mut pool = self.pool.lock()?;
+            pool.clear_current_working_directory()?;
+            pool.get_first()?
+        };
         let (res, cleanup) = self.pool.process_in_working_directory(
             working_directory_id,
             &DateTimeWithOffset::now(),
@@ -122,10 +128,13 @@ impl PollingPool {
         action: impl FnOnce(&mut WorkingDirectory) -> Result<R>,
         context: &str,
     ) -> Result<R> {
-        // XX why again can and do we just clear it everywhere? What
-        // was the status implication in the cleared or not
-        // clearedness?
-        self.pool.clear_current_working_directory()?;
+        {
+            let pool = self.pool.lock()?;
+            // XX why again can and do we just clear it everywhere? What
+            // was the status implication in the cleared or not
+            // clearedness?
+            pool.clear_current_working_directory()?;
+        }
         let (r, token) = self.pool.process_in_working_directory(
             working_directory_id,
             timestamp,

@@ -5,7 +5,12 @@
 //! names that are parseable as u64 are treated as usable entries.)
 
 use std::{
-    collections::BTreeMap, fmt::Display, num::NonZeroU8, path::PathBuf, str::FromStr, sync::Arc,
+    collections::BTreeMap,
+    fmt::Display,
+    num::NonZeroU8,
+    path::{Path, PathBuf},
+    str::FromStr,
+    sync::Arc,
     u64,
 };
 
@@ -162,8 +167,11 @@ pub struct WorkingDirectoryPool {
     /// Contains working dirs with Status::Error, too, must be ignored
     /// when picking a dir!
     all_entries: BTreeMap<WorkingDirectoryId, WorkingDirectory>,
-    /// Only one process may use this pool at the same time
+}
+
+pub struct WorkingDirectoryPoolGuard<'t> {
     _lock: StandaloneExclusiveFileLock,
+    pool: &'t mut WorkingDirectoryPool,
 }
 
 #[derive(Debug, Serialize)]
@@ -177,6 +185,18 @@ pub struct ProcessingError {
 }
 
 impl WorkingDirectoryPool {
+    /// Lock the base dir of the pool, blocking (this is *not* the
+    /// global job-running lock any more!)
+    fn get_lock(base_dir: &Path) -> Result<StandaloneExclusiveFileLock> {
+        StandaloneExclusiveFileLock::lock_path(base_dir)
+            .map_err(ctx!("locking working directory pool base dir {base_dir:?}"))
+    }
+
+    pub fn lock<'t>(&'t mut self) -> Result<WorkingDirectoryPoolGuard<'t>> {
+        let _lock = Self::get_lock(&self.base_dir.base_dir)?;
+        Ok(WorkingDirectoryPoolGuard { _lock, pool: self })
+    }
+
     pub fn open(
         // XX why do we have working directory pool base dir twice,
         // via opts and base_dir? Just because of some weird
@@ -190,9 +210,9 @@ impl WorkingDirectoryPool {
             io_utils::div::create_dir_if_not_exists(base_dir.path(), "working pool directory")?;
         }
 
-        let lock = StandaloneExclusiveFileLock::try_lock_path(base_dir.path(), || {
-            "locking working directory pool".into()
-        })?;
+        // Need to have exclusive access while, at least, reading ron
+        // files
+        let _lock = Self::get_lock(base_dir.path())?;
 
         let mut next_id: u64 = 0;
 
@@ -242,7 +262,6 @@ impl WorkingDirectoryPool {
             opts,
             remote_repository_url,
             base_dir,
-            _lock: lock,
             next_id,
             all_entries,
         };
@@ -281,8 +300,7 @@ impl WorkingDirectoryPool {
     /// The entries that can be used for processing. The returned
     /// entries are sorted by `WorkingDirectoryId`
     pub fn active_entries(&self) -> impl Iterator<Item = (&WorkingDirectoryId, &WorkingDirectory)> {
-        self.all_entries
-            .iter()
+        self.all_entries()
             .filter(|(_, wd)| !wd.working_directory_status.status.is_error())
     }
 
@@ -293,51 +311,6 @@ impl WorkingDirectoryPool {
         self.active_entries().count()
     }
 
-    /// Always gets a working directory, but doesn't check for any
-    /// best fit. If none was cloned yet, that is done now.
-    pub fn get_first(&mut self) -> Result<WorkingDirectoryId> {
-        if let Some((key, _)) = self.active_entries().next() {
-            return Ok(*key);
-        }
-        self.get_new()
-    }
-
-    /// This is *not* public as it is not checking whether there is
-    /// capacity left for a new one!
-    fn get_new(&mut self) -> Result<WorkingDirectoryId> {
-        let id = self.next_id();
-        let dir = WorkingDirectory::clone_repo(
-            self.base_dir().path(),
-            &id.to_directory_file_name(),
-            self.git_url(),
-        )?;
-        self.all_entries.insert(id, dir);
-        Ok(id)
-    }
-
-    /// Save a processing error (not doing that to the status since
-    /// that would get overwritten when changing it back to an active
-    /// status). This method does *not* change the status of the
-    /// working directory, that must be done separately.
-    fn save_processing_error(
-        &mut self,
-        id: WorkingDirectoryId,
-        processing_error: ProcessingError,
-        timestamp: &DateTimeWithOffset,
-    ) -> Result<()> {
-        let error_file_path = self.base_dir().path().append(format!(
-            "{}.error_at_{timestamp}",
-            id.to_directory_file_name()
-        ));
-        let processing_error_string = serde_yml::to_string(&processing_error)?;
-        std::fs::write(&error_file_path, &processing_error_string)
-            .map_err(ctx!("writing to {error_file_path:?}"))?;
-
-        info!("saved processing error to {error_file_path:?}");
-
-        Ok(())
-    }
-
     ///  Runs the given action on the requested working directory and
     ///  with the timestamp of the action start (used in error paths),
     ///  and if there are errors, store them as metadata with the
@@ -346,7 +319,8 @@ impl WorkingDirectoryPool {
     ///  exist. `run_parameters` and `context` are only used to be
     ///  stored with the error, if any. The returned
     ///  `WorkingDirectoryCleanupToken` must be passed to
-    ///  `working_directory_cleanup`.
+    ///  `working_directory_cleanup`. NOTE: is getting the lock
+    ///  internally (multiple times for short durations).
     pub fn process_in_working_directory<T>(
         &mut self,
         working_directory_id: WorkingDirectoryId,
@@ -356,7 +330,10 @@ impl WorkingDirectoryPool {
         context: &str,
         have_other_jobs_for_same_commit: Option<&dyn Fn() -> bool>,
     ) -> Result<(T, WorkingDirectoryCleanupToken)> {
-        self.set_current_working_directory(working_directory_id)?;
+        {
+            let lock = self.lock()?;
+            lock.set_current_working_directory(working_directory_id)?;
+        }
 
         let wd = self
             .all_entries
@@ -411,7 +388,8 @@ impl WorkingDirectoryPool {
                 );
 
                 let err = format!("{error:#?}");
-                self.save_processing_error(
+                let mut lock = self.lock()?;
+                lock.save_processing_error(
                     working_directory_id,
                     ProcessingError {
                         benchmarking_job_parameters: benchmarking_job_parameters.cloned(),
@@ -426,25 +404,9 @@ impl WorkingDirectoryPool {
         }
     }
 
-    /// Note: may leave behind a broken `current` symlink, but that's
-    /// probably the way it should be?
-    pub fn delete_working_directory(
-        &mut self,
-        working_directory_id: WorkingDirectoryId,
-    ) -> Result<()> {
-        let wd = self
-            .all_entries
-            .get_mut(&working_directory_id)
-            .ok_or_else(|| anyhow!("working directory id must still exist"))?;
-        let path = wd.git_working_dir.working_dir_path_arc();
-        info!("delete_working_directory: deleting directory {path:?}");
-        self.all_entries.remove(&working_directory_id);
-        std::fs::remove_dir_all(&*path).map_err(ctx!("deleting directory {path:?}"))?;
-        Ok(())
-    }
-
     /// Possibly calls `delete_working_directory`, depending on what
-    /// the token says.
+    /// the token says. NOTE: takes the lock internally, only when
+    /// needed.
     pub fn working_directory_cleanup(
         &mut self,
         cleanup: WorkingDirectoryCleanupToken,
@@ -456,14 +418,80 @@ impl WorkingDirectoryPool {
         } = cleanup;
         linear_token.bury();
         if needs_cleanup {
-            self.delete_working_directory(working_directory_id)?;
+            let mut lock = self.lock()?;
+            lock.delete_working_directory(working_directory_id)?;
         }
+        Ok(())
+    }
+}
+
+impl<'t> WorkingDirectoryPoolGuard<'t> {
+    /// Always gets a working directory, but doesn't check for any
+    /// best fit. If none was cloned yet, that is done now.
+    pub fn get_first(&mut self) -> Result<WorkingDirectoryId> {
+        if let Some((key, _)) = self.pool.active_entries().next() {
+            return Ok(*key);
+        }
+        self.get_new()
+    }
+
+    /// This is *not* public as it is not checking whether there is
+    /// capacity left for a new one!
+    fn get_new(&mut self) -> Result<WorkingDirectoryId> {
+        let id = self.next_id();
+        let dir = WorkingDirectory::clone_repo(
+            self.pool.base_dir().path(),
+            &id.to_directory_file_name(),
+            self.pool.git_url(),
+        )?;
+        self.pool.all_entries.insert(id, dir);
+        Ok(id)
+    }
+
+    /// Save a processing error (not doing that to the status since
+    /// that would get overwritten when changing it back to an active
+    /// status). This method does *not* change the status of the
+    /// working directory, that must be done separately.
+    fn save_processing_error(
+        &mut self,
+        id: WorkingDirectoryId,
+        processing_error: ProcessingError,
+        timestamp: &DateTimeWithOffset,
+    ) -> Result<()> {
+        let error_file_path = self.pool.base_dir().path().append(format!(
+            "{}.error_at_{timestamp}",
+            id.to_directory_file_name()
+        ));
+        let processing_error_string = serde_yml::to_string(&processing_error)?;
+        std::fs::write(&error_file_path, &processing_error_string)
+            .map_err(ctx!("writing to {error_file_path:?}"))?;
+
+        info!("saved processing error to {error_file_path:?}");
+
+        Ok(())
+    }
+
+    /// Note: may leave behind a broken `current` symlink, but that's
+    /// probably the way it should be?
+    pub fn delete_working_directory(
+        &mut self,
+        working_directory_id: WorkingDirectoryId,
+    ) -> Result<()> {
+        let wd = self
+            .pool
+            .all_entries
+            .get_mut(&working_directory_id)
+            .ok_or_else(|| anyhow!("working directory id must still exist"))?;
+        let path = wd.git_working_dir.working_dir_path_arc();
+        info!("delete_working_directory: deleting directory {path:?}");
+        self.pool.all_entries.remove(&working_directory_id);
+        std::fs::remove_dir_all(&*path).map_err(ctx!("deleting directory {path:?}"))?;
         Ok(())
     }
 
     fn next_id(&mut self) -> WorkingDirectoryId {
-        let id = self.next_id;
-        self.next_id += 1;
+        let id = self.pool.next_id;
+        self.pool.next_id += 1;
         WorkingDirectoryId(id)
     }
 
@@ -483,6 +511,7 @@ impl WorkingDirectoryPool {
 
         // Find one with the same commit
         if let Some((id, _dir)) = self
+            .pool
             .active_entries()
             .filter(|(_, dir)| dir.commit == *commit)
             // Prefer one that proceeded further and is matching
@@ -496,6 +525,7 @@ impl WorkingDirectoryPool {
         // Find one that is *not* used by other jobs in the pipeline (i.e. obsolete),
         // and todo: similar parameters
         if let Some((id, _dir)) = self
+            .pool
             .active_entries()
             .filter(|(_, dir)| !run_queues_data.have_job_with_commit_id(&dir.commit))
             .max_by_key(|(_, dir)| dir.working_directory_status.status)
@@ -525,7 +555,7 @@ impl WorkingDirectoryPool {
             info!("get_a_working_directory_for -> good old {id:?}");
             Ok(id)
         } else {
-            if self.active_len() < self.capacity() {
+            if self.pool.active_len() < self.pool.capacity() {
                 // allocate a new one
                 let id = self.get_new()?;
                 info!("get_a_working_directory_for -> new {id:?}");
@@ -533,6 +563,7 @@ impl WorkingDirectoryPool {
             } else {
                 // get the least-recently used one
                 let id = self
+                    .pool
                     .active_entries()
                     .min_by_key(|(_, entry)| entry.last_use)
                     .expect("capacity is guaranteed >= 1")
@@ -553,7 +584,7 @@ impl WorkingDirectoryPool {
     /// preventing the removal, just always remove at runtime when
     /// setting it anew / do tmp-and-rename)?
     pub fn clear_current_working_directory(&self) -> Result<()> {
-        let path = self.base_dir.current_working_directory_symlink_path();
+        let path = self.pool.base_dir.current_working_directory_symlink_path();
         if let Err(e) = std::fs::remove_file(&path) {
             match e.kind() {
                 std::io::ErrorKind::NotFound => (),
@@ -568,7 +599,7 @@ impl WorkingDirectoryPool {
     /// `clear_current_working_directory`.
     fn set_current_working_directory(&self, id: WorkingDirectoryId) -> Result<()> {
         let source_path = id.to_directory_file_name();
-        let target_path = self.base_dir.current_working_directory_symlink_path();
+        let target_path = self.pool.base_dir.current_working_directory_symlink_path();
         std::os::unix::fs::symlink(&source_path, &target_path).map_err(ctx!(
             "creating symlink at {target_path:?} to {source_path:?}"
         ))

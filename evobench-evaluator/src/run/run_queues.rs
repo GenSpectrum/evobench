@@ -634,13 +634,16 @@ impl<'run_queues> RunQueuesData<'run_queues> {
                 run_context.running_job_in_windowed_queue(rq, dtr);
             }
 
-            let working_directory_id = job_runner
-                .working_directory_pool
-                .get_a_working_directory_for(&job.benchmarking_job_public.run_parameters, self)?;
+            let working_directory_id;
+            {
+                let mut lock = job_runner.working_directory_pool.lock()?;
+                working_directory_id = lock.get_a_working_directory_for(
+                    &job.benchmarking_job_public.run_parameters,
+                    self,
+                )?;
 
-            job_runner
-                .working_directory_pool
-                .clear_current_working_directory()?;
+                lock.clear_current_working_directory()?;
+            }
 
             rqdwn.run_queue_with_next().run_job(
                 &item,

@@ -308,8 +308,12 @@ fn run_queues(
     {
         debug!("Test-running versioned dataset search");
 
-        let working_directory_id = working_directory_pool.get_first()?;
-        working_directory_pool.clear_current_working_directory()?;
+        let working_directory_id;
+        {
+            let mut pool = working_directory_pool.lock()?;
+            working_directory_id = pool.get_first()?;
+            pool.clear_current_working_directory()?;
+        }
         let ((), token) = working_directory_pool.process_in_working_directory(
             working_directory_id,
             &DateTimeWithOffset::now(),
@@ -1075,10 +1079,15 @@ fn run() -> Result<Option<PathBuf>> {
                         }
                     }
 
-                    for id in cleanup_ids {
-                        working_directory_pool.delete_working_directory(id)?;
-                        if verbose {
-                            println!("{id}");
+                    {
+                        let mut lock = working_directory_pool.lock()?;
+                        for id in cleanup_ids {
+                            // XX Note: can this fail if a concurrent
+                            // instance deletes it in the mean time?
+                            lock.delete_working_directory(id)?;
+                            if verbose {
+                                println!("{id}");
+                            }
                         }
                     }
                 }
