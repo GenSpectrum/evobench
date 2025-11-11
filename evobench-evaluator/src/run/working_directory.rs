@@ -57,6 +57,9 @@ pub enum Status {
     Error,
     /// Project benchmarking ran through for that commit
     Finished,
+    /// Marked for examination, probably after an Error happened and
+    /// it was decided to keep the directory around
+    Examination,
 }
 
 impl Status {
@@ -67,6 +70,7 @@ impl Status {
             Status::Processing => 2,
             Status::Error => 3,
             Status::Finished => 4,
+            Status::Examination => 5,
         }
     }
 
@@ -77,6 +81,7 @@ impl Status {
             Status::Processing => false,
             Status::Error => true,
             Status::Finished => false,
+            Status::Examination => false,
         }
     }
 
@@ -88,6 +93,7 @@ impl Status {
             Status::Processing => "processing",
             Status::Error => "error",
             Status::Finished => "finished",
+            Status::Examination => "examination",
         }
     }
 }

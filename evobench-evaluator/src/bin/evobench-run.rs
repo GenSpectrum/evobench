@@ -728,6 +728,7 @@ fn run() -> Result<Option<PathBuf>> {
                                         Status::Processing => "R", // running
                                         Status::Error => "F",      // failure
                                         Status::Finished => "E",   // evaluating
+                                        Status::Examination => "X", // manually marked
                                     }
                                 } else {
                                     "R"
