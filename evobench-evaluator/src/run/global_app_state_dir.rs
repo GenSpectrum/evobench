@@ -33,6 +33,10 @@ impl GlobalAppStateDir {
         Ok(dir)
     }
 
+    pub fn default_run_jobs_lock_path(&self) -> PathBuf {
+        (&self.base_dir).append("run_jobs.lock")
+    }
+
     pub fn run_queues_basedir(&self) -> Result<PathBuf> {
         self.subdir("queues")
     }

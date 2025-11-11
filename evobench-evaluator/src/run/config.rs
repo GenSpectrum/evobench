@@ -468,6 +468,11 @@ impl JobTemplateOpts {
 pub struct RunConfigOpts {
     pub queues: Arc<QueuesConfig>,
 
+    /// The path to a file which commands running jobs (`evobench-run
+    /// run ...`) lock (with error when taken). By default,
+    /// `~/.evobench-run/run_jobs.lock`.
+    pub run_jobs_lock_path: Option<Arc<TildePath<PathBuf>>>,
+
     pub working_directory_pool: Arc<WorkingDirectoryPoolOpts>,
 
     /// What command to run on the target project to execute a
@@ -535,6 +540,7 @@ impl DefaultConfigPath for RunConfigOpts {
 /// Checked, produced from `RunConfigOpts`, for docs see there.
 pub struct RunConfig {
     pub queues: Arc<QueuesConfig>,
+    run_jobs_lock_path: Option<PathBuf>,
     pub working_directory_pool: Arc<WorkingDirectoryPoolOpts>,
     // targets: BTreeMap<ProperDirname, Arc<BenchmarkingTarget>>,
     pub job_template_lists: BTreeMap<KString, Arc<[JobTemplate]>>,
@@ -546,11 +552,23 @@ pub struct RunConfig {
     pub targets: BTreeMap<ProperDirname, Arc<BenchmarkingTarget>>,
 }
 
+impl RunConfig {
+    // (XX is this really the only such method that does the default dance?)
+    pub fn run_jobs_lock_path(&self, global_app_state_dir: &GlobalAppStateDir) -> PathBuf {
+        if let Some(path) = &self.run_jobs_lock_path {
+            path.into()
+        } else {
+            global_app_state_dir.default_run_jobs_lock_path()
+        }
+    }
+}
+
 impl RunConfigOpts {
     /// Don't take ownership since RunConfigWithReload can't give it
     pub fn check(&self) -> Result<RunConfig> {
         let RunConfigOpts {
             queues,
+            run_jobs_lock_path,
             working_directory_pool,
             targets,
             job_template_lists,
@@ -609,6 +627,11 @@ impl RunConfigOpts {
 
         Ok(RunConfig {
             queues: queues.clone_arc(),
+            run_jobs_lock_path: run_jobs_lock_path
+                .as_ref()
+                .map(|p| p.resolve())
+                .transpose()?
+                .map(|r| r.into()),
             working_directory_pool: working_directory_pool.clone_arc(),
             job_template_lists,
             job_templates_for_insert,

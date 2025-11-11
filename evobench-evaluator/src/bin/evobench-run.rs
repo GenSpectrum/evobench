@@ -26,7 +26,7 @@ use evobench_evaluator::{
     info,
     key::{BenchmarkingJobParameters, RunParameters, RunParametersOpts},
     key_val_fs::key_val::Entry,
-    lockable_file::LockStatus,
+    lockable_file::{LockStatus, StandaloneExclusiveFileLock},
     run::{
         benchmarking_job::{
             BenchmarkingJobOpts, BenchmarkingJobReasonOpt, BenchmarkingJobSettingsOpts,
@@ -167,7 +167,8 @@ enum SubCommand {
         no_fail: bool,
     },
 
-    /// Run the existing jobs
+    /// Run the existing jobs; this takes a lock or stops with an
+    /// error if the lock is already taken
     Run {
         /// Do not run the jobs, but still consume the queue
         /// entries--XX partially removed, not working anymore?
@@ -932,6 +933,14 @@ fn run() -> Result<Option<PathBuf>> {
         }
 
         SubCommand::Run { dry_run, mode } => {
+            let run_lock_path = conf.run_jobs_lock_path(&global_app_state_dir);
+            // Should StandaloneExclusiveFileLock have an option to
+            // create itself?
+            let _ = std::fs::write(&run_lock_path, "");
+            let _run_lock = StandaloneExclusiveFileLock::try_lock_path(run_lock_path, || {
+                "getting the global lock for running jobs".into()
+            })?;
+
             let working_directory_pool = WorkingDirectoryPool::open(
                 conf.working_directory_pool.clone_arc(),
                 working_directory_base_dir.clone(),
