@@ -171,6 +171,7 @@ impl WorkingDirectory {
                 .modified()?
         };
         let commit: GitHash = git_working_dir.get_head_commit_id()?.parse()?;
+        let status = working_directory_status.status;
         let mut slf = Self {
             git_working_dir,
             commit,
@@ -178,7 +179,9 @@ impl WorkingDirectory {
             working_directory_status_needs_saving,
             mtime,
         };
-        slf.set_and_save_status(Status::CheckedOut)?;
+        // XX chaos: Do not change the status if it already
+        // exists. Does this even work?
+        slf.set_and_save_status(status)?;
         Ok(slf)
     }
 
