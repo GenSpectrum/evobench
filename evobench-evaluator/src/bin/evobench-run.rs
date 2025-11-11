@@ -169,7 +169,8 @@ enum SubCommand {
 
     /// Run the existing jobs
     Run {
-        /// Do not run the jobs, but still consume the queue entries
+        /// Do not run the jobs, but still consume the queue
+        /// entries--XX partially removed, not working anymore?
         #[clap(short, long, default_value = "DoAll")]
         dry_run: DryRun,
 
