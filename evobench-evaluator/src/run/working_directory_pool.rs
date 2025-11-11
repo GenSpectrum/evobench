@@ -274,7 +274,7 @@ impl WorkingDirectoryPool {
     pub fn active_entries(&self) -> impl Iterator<Item = (&WorkingDirectoryId, &WorkingDirectory)> {
         self.all_entries
             .iter()
-            .filter(|(_, wd)| !wd.working_directory_status.status.is_set_aside())
+            .filter(|(_, wd)| !wd.working_directory_status.status.is_error())
     }
 
     /// The number of entries that are not of Status::Error
@@ -357,7 +357,7 @@ impl WorkingDirectoryPool {
             // very well might disappear), thus:
             .ok_or_else(|| anyhow!("working directory id must still exist"))?;
 
-        if wd.working_directory_status.status.is_set_aside() {
+        if wd.working_directory_status.status.is_error() {
             bail!("working directory {working_directory_id} is set aside (in error state)")
         }
 

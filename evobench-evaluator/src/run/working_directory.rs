@@ -69,8 +69,8 @@ impl Status {
         }
     }
 
-    /// Being set aside means, can't be allocated for jobs
-    pub fn is_set_aside(self) -> bool {
+    /// True means, can't be allocated for jobs
+    pub fn is_error(self) -> bool {
         match self {
             Status::CheckedOut => false,
             Status::Processing => false,
@@ -206,7 +206,7 @@ impl WorkingDirectory {
             let working_directory_status = &self.working_directory_status;
             let path = self.status_path()?;
             ron_to_file_pretty(working_directory_status, &path, false, None)?;
-            if working_directory_status.status.is_set_aside() {
+            if working_directory_status.status.is_error() {
                 // Mis-use executable bit to easily see error status files
                 // in dir listings on the command line.
                 std::fs::set_permissions(&path, Permissions::from_mode(0o755))
