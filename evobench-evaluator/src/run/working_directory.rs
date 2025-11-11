@@ -80,6 +80,8 @@ impl Status {
         }
     }
 
+    pub const MAX_STR_LEN: usize = 11;
+
     pub fn as_str(self) -> &'static str {
         match self {
             Status::CheckedOut => "checked-out",

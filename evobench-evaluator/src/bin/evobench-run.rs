@@ -224,6 +224,9 @@ pub enum RunMode {
 enum WdSubCommand {
     /// List the working directories; by default, show all of them
     List {
+        #[clap(flatten)]
+        terminal_table_opts: TerminalTableOpts,
+
         /// Show the active working directories
         #[clap(long)]
         active: bool,
@@ -993,8 +996,25 @@ fn run() -> Result<Option<PathBuf>> {
             )?;
 
             match subcommand {
-                WdSubCommand::List { active, error } => {
-                    println!("id\tstatus\tnum_runs\tcreation_timestamp\tlast_use");
+                WdSubCommand::List {
+                    terminal_table_opts,
+                    active,
+                    error,
+                } => {
+                    let titles = &["id", "status", "num_runs", "creation_timestamp", "last_use"]
+                        .map(|s| TerminalTableTitle {
+                            text: Cow::Borrowed(s),
+                            span: 1,
+                        });
+
+                    let mut table = TerminalTable::start(
+                        &[3 + 2, Status::MAX_STR_LEN + 2, 8 + 2, 35 + 2],
+                        titles,
+                        None,
+                        terminal_table_opts,
+                        stdout().lock(),
+                    )?;
+
                     for (id, wd) in working_directory_pool.all_entries() {
                         let WorkingDirectoryStatus {
                             creation_timestamp,
@@ -1008,12 +1028,20 @@ fn run() -> Result<Option<PathBuf>> {
                             (false, true) => wd.working_directory_status.status.is_error(),
                         };
                         if show {
-                            println!(
-                                "{id}\t{status}\t{num_runs}\t{creation_timestamp}\t{}",
-                                system_time_to_rfc3339(wd.last_use)
-                            );
+                            table.write_data_row(
+                                &[
+                                    id.to_number_string(),
+                                    status.to_string(),
+                                    num_runs.to_string(),
+                                    creation_timestamp.to_string(),
+                                    system_time_to_rfc3339(wd.last_use),
+                                ],
+                                None,
+                            )?;
                         }
                     }
+
+                    let _ = table.finish()?;
                 }
                 WdSubCommand::Cleanup { verbose, mode } => {
                     let stale_days = match mode {
