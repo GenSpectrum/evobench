@@ -105,7 +105,9 @@ impl<'l, P: AsRef<Path>> CommandLog<'l, P> {
         self.path().to_string_lossy()
     }
 
-    /// Parse the head (not cached)
+    /// Parse the head (not cached). Option because of compatibility
+    /// with older log files that didn't have the head (should perhaps
+    /// be changed at some point soon, and give an error instead?)
     pub fn parse_log_file_params(&self) -> Result<Option<BenchmarkingJobParameters>> {
         self.borrow_head_and_rest()
             .map(|(head, _rest, _lineno)| -> Result<_> {
