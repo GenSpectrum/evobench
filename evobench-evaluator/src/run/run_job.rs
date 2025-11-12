@@ -12,7 +12,7 @@ use std::{
 use anyhow::{bail, Result};
 use chrono::{DateTime, Local};
 use nix::{unistd::getpid, unistd::getuid};
-use run_git::path_util::{add_extension, AppendToPath};
+use run_git::path_util::AppendToPath;
 use strum_macros::EnumString;
 
 use crate::{
@@ -386,14 +386,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                     }
 
                     let command_output_file = OutFile::create(
-                        &add_extension(
-                            working_directory.git_working_dir.working_dir_path_ref(),
-                            format!(
-                                "output_of_benchmarking_command_at_{}",
-                                self.job_runner.timestamp
-                            ),
-                        )
-                        .expect("has filename"),
+                        &working_directory.standard_log_path(&self.job_runner.timestamp)?,
                     )?;
 
                     // Add info header in YAML -- XX abstraction, and

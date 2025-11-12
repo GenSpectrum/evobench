@@ -174,9 +174,26 @@ impl WorkingDirectory {
         add_extension(&path, "status")
             .ok_or_else(|| anyhow!("can't add extension to path {path:?}"))
     }
-
     fn status_path(&self) -> Result<PathBuf> {
         Self::status_path_from_working_dir_path(self.git_working_dir.working_dir_path_ref())
+    }
+
+    const STANDARD_LOG_EXTENSION_BASE: &str = "output_of_benchmarking_command_at_";
+    pub fn standard_log_path_from_working_dir_path(
+        path: &Path,
+        timestamp: &DateTimeWithOffset,
+    ) -> Result<PathBuf> {
+        add_extension(
+            path,
+            format!("{}{timestamp}", Self::STANDARD_LOG_EXTENSION_BASE),
+        )
+        .ok_or_else(|| anyhow!("can't add extension to path {path:?}"))
+    }
+    pub fn standard_log_path(&self, timestamp: &DateTimeWithOffset) -> Result<PathBuf> {
+        Self::standard_log_path_from_working_dir_path(
+            self.git_working_dir.working_dir_path_ref(),
+            timestamp,
+        )
     }
 
     pub fn open<'pool>(path: PathBuf, guard: &WorkingDirectoryPoolGuard<'pool>) -> Result<Self> {
