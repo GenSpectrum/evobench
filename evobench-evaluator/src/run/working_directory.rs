@@ -196,6 +196,52 @@ impl WorkingDirectory {
         )
     }
 
+    /// Originally thought `id` is a pool matter only, but now need it
+    /// to filter for standard_log paths. Leaving id as string,
+    /// though.)
+    fn parent_path_and_id(&self) -> Result<(&Path, &str)> {
+        let p = self.git_working_dir.working_dir_path_ref();
+        let parent = p
+            .parent()
+            .ok_or_else(|| anyhow!("working directory path {p:?} doesn't have parent path"))?;
+        let file_name = p
+            .file_name()
+            .ok_or_else(|| anyhow!("working directory path {p:?} doesn't have file_name"))?;
+        let file_name = file_name.to_str().ok_or_else(|| {
+            anyhow!("working directory path {p:?} does not have a file name in unicode")
+        })?;
+        Ok((parent, file_name))
+    }
+
+    /// All stdout log files that were written for this working
+    /// directory: path including file name, just the
+    /// timestamp. Sorted by timestamp, newest last.
+    pub fn standard_log_paths(&self) -> Result<Vec<(PathBuf, String)>> {
+        let (parent_path, id_str) = self.parent_path_and_id()?;
+        let filename_prefix = format!("{id_str}.{}", Self::STANDARD_LOG_EXTENSION_BASE,);
+
+        (|| -> Result<Vec<(PathBuf, String)>> {
+            let mut paths = vec![];
+            for item in std::fs::read_dir(&parent_path)? {
+                let item = item?;
+                if let Ok(file_name) = item.file_name().into_string() {
+                    if let Some(timestamp) = file_name.strip_prefix(&filename_prefix) {
+                        paths.push((item.path(), timestamp.to_owned()));
+                    }
+                }
+            }
+            paths.sort_by(|a, b| a.1.cmp(&b.1));
+            Ok(paths)
+        })()
+        .map_err(ctx!(
+            "opening working directory parent dir {parent_path:?} for reading"
+        ))
+    }
+
+    pub fn last_standard_log_path(&self) -> Result<Option<(PathBuf, String)>> {
+        Ok(self.standard_log_paths()?.pop())
+    }
+
     pub fn open<'pool>(path: PathBuf, guard: &WorkingDirectoryPoolGuard<'pool>) -> Result<Self> {
         // let quiet = false;
 
