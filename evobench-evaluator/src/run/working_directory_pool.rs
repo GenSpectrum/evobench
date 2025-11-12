@@ -169,9 +169,9 @@ pub struct WorkingDirectoryPool {
     all_entries: BTreeMap<WorkingDirectoryId, WorkingDirectory>,
 }
 
-pub struct WorkingDirectoryPoolGuard<'t> {
+pub struct WorkingDirectoryPoolGuard<'pool> {
     _lock: StandaloneExclusiveFileLock,
-    pool: &'t mut WorkingDirectoryPool,
+    pool: &'pool mut WorkingDirectoryPool,
 }
 
 #[derive(Debug, Serialize)]
@@ -425,7 +425,7 @@ impl WorkingDirectoryPool {
     }
 }
 
-impl<'t> WorkingDirectoryPoolGuard<'t> {
+impl<'pool> WorkingDirectoryPoolGuard<'pool> {
     /// Always gets a working directory, but doesn't check for any
     /// best fit. If none was cloned yet, that is done now.
     pub fn get_first(&mut self) -> Result<WorkingDirectoryId> {
