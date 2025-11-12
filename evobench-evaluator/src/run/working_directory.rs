@@ -318,7 +318,7 @@ impl WorkingDirectory {
             wait_until_commit_done,
         }) = opts
         {
-            let is_old_enough = {
+            let is_old_enough: bool = {
                 let min_age_days: u64 = (*min_age_days).into();
                 let min_age = Duration::from_secs(24 * 3600 * min_age_days);
                 let now = SystemTime::now();
@@ -332,7 +332,7 @@ impl WorkingDirectory {
                 ))?;
                 age >= min_age
             };
-            let is_used_enough = { self.working_directory_status.num_runs >= *min_num_runs };
+            let is_used_enough: bool = self.working_directory_status.num_runs >= *min_num_runs;
             Ok(is_old_enough
                 && is_used_enough
                 && ((!*wait_until_commit_done) || {
@@ -348,7 +348,7 @@ impl WorkingDirectory {
         } else {
             info!(
                 "never cleaning up working directories since there is no \
-             `auto_clean` configuration"
+                 `auto_clean` configuration"
             );
             Ok(false)
         }
