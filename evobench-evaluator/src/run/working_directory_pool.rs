@@ -25,7 +25,10 @@ use crate::{
     key::{BenchmarkingJobParameters, RunParameters},
     lockable_file::StandaloneExclusiveFileLock,
     path_util::AppendToPath,
-    run::working_directory::WorkingDirectoryAutoCleanOpts,
+    run::working_directory::{
+        WorkingDirectoryAutoCleanOpts, WorkingDirectoryWithPoolLock,
+        WorkingDirectoryWithPoolLockMut,
+    },
     serde::{date_and_time::DateTimeWithOffset, git_url::GitUrl},
 };
 
@@ -170,8 +173,32 @@ pub struct WorkingDirectoryPool {
 }
 
 pub struct WorkingDirectoryPoolGuard<'pool> {
+    // Option since it is also used via `to_non_mut`
+    _lock: Option<StandaloneExclusiveFileLock>,
+    pool: &'pool WorkingDirectoryPool,
+}
+
+impl<'pool> WorkingDirectoryPoolGuard<'pool> {
+    pub(crate) fn locked_working_directory_mut<'s: 'pool>(
+        &'s self,
+        wd: &'pool mut WorkingDirectory,
+    ) -> WorkingDirectoryWithPoolLockMut<'pool> {
+        WorkingDirectoryWithPoolLockMut { wd }
+    }
+}
+
+pub struct WorkingDirectoryPoolGuardMut<'pool> {
     _lock: StandaloneExclusiveFileLock,
     pool: &'pool mut WorkingDirectoryPool,
+}
+
+impl<'pool> WorkingDirectoryPoolGuardMut<'pool> {
+    fn to_non_mut<'s: 'pool>(&'s self) -> WorkingDirectoryPoolGuard<'pool> {
+        WorkingDirectoryPoolGuard {
+            _lock: None,
+            pool: self.pool,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -192,9 +219,14 @@ impl WorkingDirectoryPool {
             .map_err(ctx!("locking working directory pool base dir {base_dir:?}"))
     }
 
-    pub fn lock<'t>(&'t mut self) -> Result<WorkingDirectoryPoolGuard<'t>> {
-        let _lock = Self::get_lock(&self.base_dir.base_dir)?;
+    pub fn lock<'t>(&'t self) -> Result<WorkingDirectoryPoolGuard<'t>> {
+        let _lock = Some(Self::get_lock(&self.base_dir.base_dir)?);
         Ok(WorkingDirectoryPoolGuard { _lock, pool: self })
+    }
+
+    pub fn lock_mut<'t>(&'t mut self) -> Result<WorkingDirectoryPoolGuardMut<'t>> {
+        let _lock = Self::get_lock(&self.base_dir.base_dir)?;
+        Ok(WorkingDirectoryPoolGuardMut { _lock, pool: self })
     }
 
     pub fn open(
@@ -212,9 +244,25 @@ impl WorkingDirectoryPool {
 
         // Need to have exclusive access while, at least, reading ron
         // files
-        let _lock = Self::get_lock(base_dir.path())?;
+        let lock = Self::get_lock(base_dir.path())?;
 
         let mut next_id: u64 = 0;
+
+        // To tell WorkingDirectory::open that we do have the lock we
+        // need to make a guard, and for that we need a slf already,
+        // thus make it early with a fale `all_entries` entry.
+        let mut slf = Self {
+            opts,
+            remote_repository_url,
+            base_dir: base_dir.clone(),
+            next_id,
+            all_entries: Default::default(),
+        };
+
+        let mut guard = WorkingDirectoryPoolGuard {
+            _lock: Some(lock),
+            pool: &mut slf,
+        };
 
         let all_entries: BTreeMap<WorkingDirectoryId, WorkingDirectory> =
             std::fs::read_dir(base_dir.path())
@@ -248,7 +296,7 @@ impl WorkingDirectoryPool {
                             return Ok(None);
                         };
                         let path = entry.path();
-                        let wd = WorkingDirectory::open(path)?;
+                        let wd = WorkingDirectory::open(path, &mut guard)?;
                         Ok(Some((id, wd)))
                     },
                 )
@@ -258,13 +306,8 @@ impl WorkingDirectoryPool {
                     "reading contents of working pool directory {base_dir:?}"
                 ))?;
 
-        let slf = Self {
-            opts,
-            remote_repository_url,
-            base_dir,
-            next_id,
-            all_entries,
-        };
+        drop(guard);
+        slf.all_entries = all_entries;
 
         info!(
             "opened directory pool {:?} with next_id {next_id}, len {}/{}",
@@ -276,7 +319,7 @@ impl WorkingDirectoryPool {
         Ok(slf)
     }
 
-    /// There's also a method on `WorkingDirectoryPoolGuard`!
+    /// Also see the method on `WorkingDirectoryPoolGuard`!
     pub fn get_working_directory(
         &self,
         working_directory_id: WorkingDirectoryId,
@@ -284,7 +327,7 @@ impl WorkingDirectoryPool {
         self.all_entries.get(&working_directory_id)
     }
 
-    /// There's also a method on `WorkingDirectoryPoolGuard`!
+    /// Also see the method on `WorkingDirectoryPoolGuard`!
     pub fn get_working_directory_mut(
         &mut self,
         working_directory_id: WorkingDirectoryId,
@@ -327,39 +370,42 @@ impl WorkingDirectoryPool {
         self.active_entries().count()
     }
 
-    ///  Runs the given action on the requested working directory and
-    ///  with the timestamp of the action start (used in error paths),
-    ///  and if there are errors, store them as metadata with the
-    ///  directory and remove it from the pool. Returns an error if a
-    ///  working directory with the given id doesn't
-    ///  exist. `run_parameters` and `context` are only used to be
-    ///  stored with the error, if any. The returned
-    ///  `WorkingDirectoryCleanupToken` must be passed to
-    ///  `working_directory_cleanup`. NOTE: is getting the lock
-    ///  internally (multiple times for short durations).
-    pub fn process_in_working_directory<T>(
-        &mut self,
+    ///  Runs the given action on the requested working directory with
+    ///  the pool lock; the lock allows to use working directory
+    ///  actions that require the lock, but it's important to release
+    ///  the lock as soon as possible via `into_inner()` (giving the
+    ///  bare working directory, which can still be used for methods
+    ///  that don't require the lock), so that e.g. `evobench-run wd`
+    ///  actions don't block for the whole duration of an action
+    ///  (i.e. a whole benchmarking run)!  If the action returns with
+    ///  an error, stores it as metadata with the directory and
+    ///  changes the working directory to status `Error`. Returns an
+    ///  error if a working directory with the given id doesn't
+    ///  exist. The returned `WorkingDirectoryCleanupToken` must be
+    ///  passed to `working_directory_cleanup`. NOTE: is getting the
+    ///  lock internally (multiple times for short durations, but also
+    ///  passes the lock to `action` as mentioned above).
+    pub fn process_in_working_directory<'pool, T>(
+        &'pool mut self,
         working_directory_id: WorkingDirectoryId,
         timestamp: &DateTimeWithOffset,
-        action: impl FnOnce(&mut WorkingDirectory) -> Result<T>,
+        action: impl FnOnce(WorkingDirectoryWithPoolLockMut) -> Result<T>,
         benchmarking_job_parameters: Option<&BenchmarkingJobParameters>,
         context: &str,
         have_other_jobs_for_same_commit: Option<&dyn Fn() -> bool>,
     ) -> Result<(T, WorkingDirectoryCleanupToken)> {
-        {
-            let lock = self.lock()?;
-            lock.set_current_working_directory(working_directory_id)?;
-        }
+        let mut guard = self.lock_mut()?;
 
-        let wd = self
-            .all_entries
-            .get_mut(&working_directory_id)
+        guard.set_current_working_directory(working_directory_id)?;
+
+        let mut wd = guard
+            .get_working_directory_mut(working_directory_id)
             // Can't just .expect here because the use cases seem too
             // complex (concurrency means that a working directory
             // very well might disappear), thus:
             .ok_or_else(|| anyhow!("working directory id must still exist"))?;
 
-        if wd.working_directory_status.status.is_error() {
+        if wd.wd.working_directory_status.status.is_error() {
             bail!("working directory {working_directory_id} is set aside (in error state)")
         }
 
@@ -373,13 +419,20 @@ impl WorkingDirectoryPool {
 
         match action(wd) {
             Ok(v) => {
-                wd.set_and_save_status(Status::Finished)?;
+                self.lock_mut()?
+                    .get_working_directory_mut(working_directory_id)
+                    .expect("we're not removing it in the mean time")
+                    .set_and_save_status(Status::Finished)?;
 
                 info!(
                     "process_working_directory {working_directory_id} \
                      ({:?} for {context} at_{timestamp}) succeeded.",
                     benchmarking_job_parameters.map(BenchmarkingJobParameters::slow_hash)
                 );
+
+                let wd = self
+                    .get_working_directory(working_directory_id)
+                    .expect("we're not removing it in the mean time");
 
                 let needs_cleanup = wd.needs_cleanup(
                     self.opts.auto_clean.as_ref(),
@@ -393,7 +446,10 @@ impl WorkingDirectoryPool {
                 Ok((v, token))
             }
             Err(error) => {
-                wd.set_and_save_status(Status::Error)?;
+                self.lock_mut()?
+                    .get_working_directory_mut(working_directory_id)
+                    .expect("we're not removing it in the mean time")
+                    .set_and_save_status(Status::Error)?;
 
                 info!(
                     // Do not show error as it might be large; XX
@@ -404,7 +460,7 @@ impl WorkingDirectoryPool {
                 );
 
                 let err = format!("{error:#?}");
-                let mut lock = self.lock()?;
+                let mut lock = self.lock_mut()?;
                 lock.save_processing_error(
                     working_directory_id,
                     ProcessingError {
@@ -434,7 +490,7 @@ impl WorkingDirectoryPool {
         } = cleanup;
         linear_token.bury();
         if needs_cleanup {
-            let mut lock = self.lock()?;
+            let mut lock = self.lock_mut()?;
             lock.delete_working_directory(working_directory_id)?;
         }
         Ok(())
@@ -443,19 +499,25 @@ impl WorkingDirectoryPool {
 
 impl<'pool> WorkingDirectoryPoolGuard<'pool> {
     /// There's also a method on `WorkingDirectoryPool`!
-    pub fn get_working_directory(
-        &self,
+    pub fn get_working_directory<'guard: 'pool>(
+        &'guard self,
         working_directory_id: WorkingDirectoryId,
-    ) -> Option<&WorkingDirectory> {
-        self.pool.all_entries.get(&working_directory_id)
+    ) -> Option<WorkingDirectoryWithPoolLock<'guard>> {
+        Some(WorkingDirectoryWithPoolLock {
+            wd: self.pool.all_entries.get(&working_directory_id)?,
+        })
     }
+}
 
+impl<'pool> WorkingDirectoryPoolGuardMut<'pool> {
     /// There's also a method on `WorkingDirectoryPool`!
-    pub fn get_working_directory_mut(
-        &mut self,
+    pub fn get_working_directory_mut<'guard>(
+        &'guard mut self,
         working_directory_id: WorkingDirectoryId,
-    ) -> Option<&mut WorkingDirectory> {
-        self.pool.all_entries.get_mut(&working_directory_id)
+    ) -> Option<WorkingDirectoryWithPoolLockMut<'guard>> {
+        Some(WorkingDirectoryWithPoolLockMut {
+            wd: self.pool.all_entries.get_mut(&working_directory_id)?,
+        })
     }
 
     /// Always gets a working directory, but doesn't check for any
@@ -475,6 +537,7 @@ impl<'pool> WorkingDirectoryPoolGuard<'pool> {
             self.pool.base_dir().path(),
             &id.to_directory_file_name(),
             self.pool.git_url(),
+            &self.to_non_mut(),
         )?;
         self.pool.all_entries.insert(id, dir);
         Ok(id)

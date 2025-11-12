@@ -21,6 +21,7 @@ use crate::{
     ctx, debug,
     git::GitHash,
     info,
+    run::working_directory_pool::WorkingDirectoryPoolGuard,
     serde::{date_and_time::DateTimeWithOffset, git_url::GitUrl},
 };
 
@@ -144,6 +145,30 @@ pub struct WorkingDirectory {
     pub last_use: SystemTime,
 }
 
+pub struct WorkingDirectoryWithPoolLock<'guard> {
+    // Don't make it plain `pub` as then could be constructed without
+    // requiring going through the guard.
+    pub(crate) wd: &'guard WorkingDirectory,
+}
+
+impl<'guard> WorkingDirectoryWithPoolLock<'guard> {
+    pub fn into_inner(self) -> &'guard WorkingDirectory {
+        self.wd
+    }
+}
+
+pub struct WorkingDirectoryWithPoolLockMut<'guard> {
+    // Don't make it plain `pub` as then could be constructed without
+    // requiring going through the guard.
+    pub(crate) wd: &'guard mut WorkingDirectory,
+}
+
+impl<'guard> WorkingDirectoryWithPoolLockMut<'guard> {
+    pub fn into_inner(self) -> &'guard mut WorkingDirectory {
+        self.wd
+    }
+}
+
 impl WorkingDirectory {
     pub fn status_path_from_working_dir_path(path: &Path) -> Result<PathBuf> {
         add_extension(&path, "status")
@@ -154,7 +179,7 @@ impl WorkingDirectory {
         Self::status_path_from_working_dir_path(self.git_working_dir.working_dir_path_ref())
     }
 
-    pub fn open(path: PathBuf) -> Result<Self> {
+    pub fn open<'pool>(path: PathBuf, guard: &WorkingDirectoryPoolGuard<'pool>) -> Result<Self> {
         // let quiet = false;
 
         let working_directory_status_needs_saving;
@@ -203,52 +228,19 @@ impl WorkingDirectory {
             working_directory_status_needs_saving,
             last_use: mtime,
         };
+        let mut slf_lck = guard.locked_working_directory_mut(&mut slf);
         // XX chaos: Do not change the status if it already
         // exists. Does this even work?
-        slf.set_and_save_status(status)?;
+        slf_lck.set_and_save_status(status)?;
         Ok(slf)
     }
 
-    /// Set status to `status`. Also increments the run count if the
-    /// status changed to Status::Processing, and (re-)saves
-    /// `$n.status` file if needed.
-    // (pool is locked (races?, when is
-    // the lock taken?--XXX OH, actually there is no lock!), nobody
-    // can change such a file, thus we do not have to re-check if it
-    // was changed on disk)
-    pub fn set_and_save_status(&mut self, status: Status) -> Result<()> {
-        debug!("{:?} set_and_save_status({status:?})", self.git_working_dir);
-        let old_status = self.working_directory_status.status;
-        self.working_directory_status.status = status;
-        let needs_saving;
-        if old_status != status {
-            needs_saving = true;
-            if status == Status::Processing {
-                self.working_directory_status.num_runs += 1;
-            }
-        } else {
-            needs_saving = self.working_directory_status_needs_saving;
-        }
-        if needs_saving {
-            let working_directory_status = &self.working_directory_status;
-            let path = self.status_path()?;
-            ron_to_file_pretty(working_directory_status, &path, false, None)?;
-            if working_directory_status.status.is_error() {
-                // Mis-use executable bit to easily see error status files
-                // in dir listings on the command line.
-                std::fs::set_permissions(&path, Permissions::from_mode(0o755))
-                    .map_err(ctx!("setting executable permission on file {path:?}"))?;
-            }
-            debug!(
-                "{:?} set_and_save_status({status:?}): file saved",
-                self.git_working_dir
-            );
-        }
-        self.working_directory_status_needs_saving = false;
-        Ok(())
-    }
-
-    pub fn clone_repo(base_dir: &Path, dir_file_name: &str, url: &GitUrl) -> Result<Self> {
+    pub fn clone_repo<'pool>(
+        base_dir: &Path,
+        dir_file_name: &str,
+        url: &GitUrl,
+        guard: &WorkingDirectoryPoolGuard<'pool>,
+    ) -> Result<Self> {
         let quiet = false;
         let git_working_dir = git_clone(&base_dir, [], url.as_str(), dir_file_name, quiet)?;
         let commit: GitHash = git_working_dir.get_head_commit_id()?.parse()?;
@@ -262,49 +254,9 @@ impl WorkingDirectory {
             working_directory_status_needs_saving: true,
             last_use: mtime,
         };
-        slf.set_and_save_status(Status::CheckedOut)?;
+        let mut slf_lck = guard.locked_working_directory_mut(&mut slf);
+        slf_lck.set_and_save_status(Status::CheckedOut)?;
         Ok(slf)
-    }
-
-    /// Checks and is a no-op if already on the commit.
-    pub fn checkout(&mut self, commit: GitHash) -> Result<()> {
-        let commit_str = commit.to_string();
-        let quiet = false;
-        let current_commit = self.git_working_dir.get_head_commit_id()?;
-        if current_commit == commit_str {
-            if self.commit != commit {
-                bail!("consistency failure: dir on disk has different commit id from obj")
-            }
-            Ok(())
-        } else {
-            let git_working_dir = &self.git_working_dir;
-            if !git_working_dir.contains_reference(&commit_str)? {
-                // XX really rely on "origin"? Seems we don't have a
-                // way to know or even query the default remote?  But
-                // it should be safe as long as we freshly clone those
-                // repositories. Fetching --tags in case
-                // `dataset_dir_for_commit` is used. Note: this does
-                // not update branches, right? But branch names should
-                // never be used for anything, OK? XX document?
-                git_working_dir.git(&["fetch", "origin", "--tags", &commit_str], true)?;
-                info!(
-                    "checkout({:?}, {commit}): ran git fetch origin --tags {commit_str}",
-                    self.git_working_dir.working_dir_path_ref()
-                );
-            }
-
-            // First stash, merge --abort, cherry-pick --abort, and all
-            // that jazz? No, have such a dir just go set aside with error
-            // for manual fixing/removal.
-            git_working_dir.git_reset(GitResetMode::Hard, NO_OPTIONS, &commit_str, quiet)?;
-            info!(
-                "checkout({:?}, {commit}): ran git reset --hard",
-                self.git_working_dir.working_dir_path_ref()
-            );
-            self.commit = commit;
-            self.set_and_save_status(Status::CheckedOut)?;
-            Ok(())
-        }
     }
 
     pub fn needs_cleanup(
@@ -352,5 +304,90 @@ impl WorkingDirectory {
             );
             Ok(false)
         }
+    }
+}
+
+impl<'guard> WorkingDirectoryWithPoolLockMut<'guard> {
+    /// Checks and is a no-op if already on the commit.
+    pub fn checkout(&mut self, commit: GitHash) -> Result<()> {
+        let commit_str = commit.to_string();
+        let quiet = false;
+        let current_commit = self.wd.git_working_dir.get_head_commit_id()?;
+        if current_commit == commit_str {
+            if self.wd.commit != commit {
+                bail!("consistency failure: dir on disk has different commit id from obj")
+            }
+            Ok(())
+        } else {
+            let git_working_dir = &self.wd.git_working_dir;
+            if !git_working_dir.contains_reference(&commit_str)? {
+                // XX really rely on "origin"? Seems we don't have a
+                // way to know or even query the default remote?  But
+                // it should be safe as long as we freshly clone those
+                // repositories. Fetching --tags in case
+                // `dataset_dir_for_commit` is used. Note: this does
+                // not update branches, right? But branch names should
+                // never be used for anything, OK? XX document?
+                git_working_dir.git(&["fetch", "origin", "--tags", &commit_str], true)?;
+                info!(
+                    "checkout({:?}, {commit}): ran git fetch origin --tags {commit_str}",
+                    self.wd.git_working_dir.working_dir_path_ref()
+                );
+            }
+
+            // First stash, merge --abort, cherry-pick --abort, and all
+            // that jazz? No, have such a dir just go set aside with error
+            // for manual fixing/removal.
+            git_working_dir.git_reset(GitResetMode::Hard, NO_OPTIONS, &commit_str, quiet)?;
+            info!(
+                "checkout({:?}, {commit}): ran git reset --hard",
+                self.wd.git_working_dir.working_dir_path_ref()
+            );
+            self.wd.commit = commit;
+            self.set_and_save_status(Status::CheckedOut)?;
+            Ok(())
+        }
+    }
+
+    /// Set status to `status`. Also increments the run count if the
+    /// status changed to Status::Processing, and (re-)saves
+    /// `$n.status` file if needed.
+    // (pool is locked (races?, when is
+    // the lock taken?--XXX OH, actually there is no lock!), nobody
+    // can change such a file, thus we do not have to re-check if it
+    // was changed on disk)-- XX what about this comment?
+    pub fn set_and_save_status(&mut self, status: Status) -> Result<()> {
+        debug!(
+            "{:?} set_and_save_status({status:?})",
+            self.wd.git_working_dir
+        );
+        let old_status = self.wd.working_directory_status.status;
+        self.wd.working_directory_status.status = status;
+        let needs_saving;
+        if old_status != status {
+            needs_saving = true;
+            if status == Status::Processing {
+                self.wd.working_directory_status.num_runs += 1;
+            }
+        } else {
+            needs_saving = self.wd.working_directory_status_needs_saving;
+        }
+        if needs_saving {
+            let working_directory_status = &self.wd.working_directory_status;
+            let path = self.wd.status_path()?;
+            ron_to_file_pretty(working_directory_status, &path, false, None)?;
+            if working_directory_status.status.is_error() {
+                // Mis-use executable bit to easily see error status files
+                // in dir listings on the command line.
+                std::fs::set_permissions(&path, Permissions::from_mode(0o755))
+                    .map_err(ctx!("setting executable permission on file {path:?}"))?;
+            }
+            debug!(
+                "{:?} set_and_save_status({status:?}): file saved",
+                self.wd.git_working_dir
+            );
+        }
+        self.wd.working_directory_status_needs_saving = false;
+        Ok(())
     }
 }

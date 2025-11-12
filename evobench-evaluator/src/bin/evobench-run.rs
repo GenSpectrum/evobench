@@ -328,7 +328,7 @@ fn run_queues(
 
         let working_directory_id;
         {
-            let mut pool = working_directory_pool.lock()?;
+            let mut pool = working_directory_pool.lock_mut()?;
             working_directory_id = pool.get_first()?;
             pool.clear_current_working_directory()?;
         }
@@ -336,6 +336,8 @@ fn run_queues(
             working_directory_id,
             &DateTimeWithOffset::now(),
             |working_directory| -> Result<()> {
+                let working_directory = working_directory.into_inner();
+
                 // Avoid the risk of an old working directory having
                 // an older HEAD than all dataset versions.
                 working_directory
@@ -1099,7 +1101,7 @@ fn run() -> Result<Option<PathBuf>> {
                     }
 
                     {
-                        let mut lock = working_directory_pool.lock()?;
+                        let mut lock = working_directory_pool.lock_mut()?;
                         for id in cleanup_ids {
                             // XX Note: can this fail if a concurrent
                             // instance deletes it in the mean time?
@@ -1110,24 +1112,18 @@ fn run() -> Result<Option<PathBuf>> {
                         }
                     }
                 }
-                WdSubCommand::Examine { mode } => {
-                    match mode {
-                        ExaminationAction::Mark { ids } => {
-                            for id in ids {
-                                // XX BTW todo: currently, working
-                                // with working directories does not
-                                // force taking the lock, even for
-                                // actions like changing the status!
-                                let mut lock = working_directory_pool.lock()?;
-                                if let Some(wd) = lock.get_working_directory_mut(id) {
-                                    wd.set_and_save_status(Status::Examination)?;
-                                } else {
-                                    warn!("there is no working directory for id {id}")
-                                }
+                WdSubCommand::Examine { mode } => match mode {
+                    ExaminationAction::Mark { ids } => {
+                        for id in ids {
+                                let mut guard = working_directory_pool.lock_mut()?;
+                                if let Some(mut wd) = guard.get_working_directory_mut(id) {
+                                wd.set_and_save_status(Status::Examination)?;
+                            } else {
+                                warn!("there is no working directory for id {id}")
                             }
                         }
                     }
-                }
+                },
             }
         }
     }

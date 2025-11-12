@@ -9,7 +9,7 @@ use run_git::git::GitWorkingDir;
 
 use crate::{
     git::GitHash,
-    run::working_directory::{WorkingDirectory, WorkingDirectoryAutoCleanOpts},
+    run::working_directory::{WorkingDirectoryAutoCleanOpts, WorkingDirectoryWithPoolLockMut},
     serde::{date_and_time::DateTimeWithOffset, git_branch_name::GitBranchName, git_url::GitUrl},
     utillib::arc::CloneArc,
 };
@@ -65,7 +65,7 @@ impl PollingPool {
     /// the local clone.
     pub fn commit_is_valid(&mut self, commit: &GitHash) -> Result<bool> {
         let working_directory_id = {
-            let mut pool = self.pool.lock()?;
+            let mut pool = self.pool.lock_mut()?;
             pool.clear_current_working_directory()?;
             pool.get_first()?
         };
@@ -76,7 +76,7 @@ impl PollingPool {
                 // Check for the commit first, then if it fails, try
                 // to update; both for performance, but also to
                 // minimize contact with issues with remote server.
-                let git_working_dir = &working_directory.git_working_dir;
+                let git_working_dir = &working_directory.wd.git_working_dir;
                 Ok(check_exists(git_working_dir, commit)? || {
                     git_working_dir.git(&["remote", "update"], true)?;
                     check_exists(git_working_dir, commit)?
@@ -94,7 +94,7 @@ impl PollingPool {
     /// subsequent work on it
     pub fn updated_working_dir(&mut self) -> Result<WorkingDirectoryId> {
         let working_directory_id = {
-            let mut pool = self.pool.lock()?;
+            let mut pool = self.pool.lock_mut()?;
             pool.clear_current_working_directory()?;
             pool.get_first()?
         };
@@ -102,7 +102,7 @@ impl PollingPool {
             working_directory_id,
             &DateTimeWithOffset::now(),
             |working_directory| {
-                let git_working_dir = &working_directory.git_working_dir;
+                let git_working_dir = &working_directory.wd.git_working_dir;
                 // XX this code was a duplicate of the one for working
                 // dirs, right? But now there "remote fetch" is used,
                 // and should probably do the same here. Thus todo:
@@ -125,11 +125,11 @@ impl PollingPool {
         &mut self,
         working_directory_id: WorkingDirectoryId,
         timestamp: &DateTimeWithOffset,
-        action: impl FnOnce(&mut WorkingDirectory) -> Result<R>,
+        action: impl FnOnce(WorkingDirectoryWithPoolLockMut) -> Result<R>,
         context: &str,
     ) -> Result<R> {
         {
-            let pool = self.pool.lock()?;
+            let pool = self.pool.lock_mut()?;
             // XX why again can and do we just clear it everywhere? What
             // was the status implication in the cleared or not
             // clearedness?
@@ -162,7 +162,7 @@ impl PollingPool {
             &DateTimeWithOffset::now(),
             |working_directory| {
                 let mut non_resolving = Vec::new();
-                let git_working_dir = &working_directory.git_working_dir;
+                let git_working_dir = &working_directory.wd.git_working_dir;
                 let mut ids = Vec::new();
                 for (name, job_templates) in branch_names {
                     let ref_string = name.to_ref_string_in_remote("origin");

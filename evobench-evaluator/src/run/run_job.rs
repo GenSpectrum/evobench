@@ -302,10 +302,13 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             .process_in_working_directory(
                 working_directory_id,
                 &self.job_runner.timestamp,
-                |working_directory| -> Result<Option<(&ProperDirname, PathBuf)>> {
+                |mut working_directory| -> Result<Option<(&ProperDirname, PathBuf)>> {
                     // `checkout` also fetches the remote tags, which
                     // is necessary for `dataset_dir_for_commit`
                     working_directory.checkout(commit_id.clone())?;
+
+                    // Drop the lock on the pool
+                    let working_directory = working_directory.into_inner();
 
                     let dataset_dir = {
                         // Now find the matching
