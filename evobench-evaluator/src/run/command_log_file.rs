@@ -96,6 +96,14 @@ impl<P: AsRef<Path>> CommandLogFile<P> {
     }
 }
 
+#[derive(thiserror::Error, Debug)]
+pub enum ParseCommandLogError {
+    #[error("parsing command log file {0:?}: {1}")]
+    SerdeError(PathBuf, String),
+    #[error("command log file {0:?} is missing a metadata head")]
+    MissingHead(PathBuf),
+}
+
 impl<'l, P: AsRef<Path>> CommandLog<'l, P> {
     pub fn path(&self) -> &Path {
         self.borrow_log_file().path.as_ref()
@@ -105,16 +113,13 @@ impl<'l, P: AsRef<Path>> CommandLog<'l, P> {
         self.path().to_string_lossy()
     }
 
-    /// Parse the head (not cached). Option because of compatibility
-    /// with older log files that didn't have the head (should perhaps
-    /// be changed at some point soon, and give an error instead?)
-    pub fn parse_log_file_params(&self) -> Result<Option<BenchmarkingJobParameters>> {
-        self.borrow_head_and_rest()
-            .map(|(head, _rest, _lineno)| -> Result<_> {
-                let params: BenchmarkingJobParameters = serde_yml::from_str(head)?;
-                Ok(params)
-            })
-            .transpose()
+    /// Parse the head (not cached)
+    pub fn parse_log_file_params(&self) -> Result<BenchmarkingJobParameters, ParseCommandLogError> {
+        let (head, _rest, _lineno) = self
+            .borrow_head_and_rest()
+            .ok_or_else(|| ParseCommandLogError::MissingHead(self.path().to_owned()))?;
+        serde_yml::from_str(head)
+            .map_err(|e| ParseCommandLogError::SerdeError(self.path().to_owned(), e.to_string()))
     }
 
     /// The part of the file contents after the head, together with

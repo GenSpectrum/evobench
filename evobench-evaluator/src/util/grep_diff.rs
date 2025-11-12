@@ -12,7 +12,7 @@ use crate::{
     info,
     key::{BenchmarkingJobParameters, RunParameters},
     run::{
-        command_log_file::{CommandLog, CommandLogFile},
+        command_log_file::{CommandLog, CommandLogFile, ParseCommandLogError},
         run_job::AllowableCustomEnvVar,
     },
     serde::{
@@ -182,14 +182,15 @@ impl GrepDiffRegion {
             let BenchmarkingJobParameters {
                 run_parameters,
                 command,
-            } = if let Some(params) = command_log
-                .parse_log_file_params()
-                .map_err(ctx!("can't parse header of log file {logfile:?}"))?
-            {
-                params
-            } else {
-                warn!("file {logfile:?} has no log file info header, skipping");
-                continue 'logfile;
+            } = match command_log.parse_log_file_params() {
+                Ok(params) => params,
+                Err(e) => match e {
+                    ParseCommandLogError::MissingHead(_) => {
+                        warn!("file {logfile:?} has no log file info header, skipping");
+                        continue 'logfile;
+                    }
+                    e => Err(e)?,
+                },
             };
             #[allow(unused)]
             let log_contents = ();
