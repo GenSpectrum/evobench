@@ -276,6 +276,22 @@ impl WorkingDirectoryPool {
         Ok(slf)
     }
 
+    /// There's also a method on `WorkingDirectoryPoolGuard`!
+    pub fn get_working_directory(
+        &self,
+        working_directory_id: WorkingDirectoryId,
+    ) -> Option<&WorkingDirectory> {
+        self.all_entries.get(&working_directory_id)
+    }
+
+    /// There's also a method on `WorkingDirectoryPoolGuard`!
+    pub fn get_working_directory_mut(
+        &mut self,
+        working_directory_id: WorkingDirectoryId,
+    ) -> Option<&mut WorkingDirectory> {
+        self.all_entries.get_mut(&working_directory_id)
+    }
+
     pub fn base_dir(&self) -> &WorkingDirectoryPoolBaseDir {
         &self.base_dir
     }
@@ -426,6 +442,22 @@ impl WorkingDirectoryPool {
 }
 
 impl<'pool> WorkingDirectoryPoolGuard<'pool> {
+    /// There's also a method on `WorkingDirectoryPool`!
+    pub fn get_working_directory(
+        &self,
+        working_directory_id: WorkingDirectoryId,
+    ) -> Option<&WorkingDirectory> {
+        self.pool.all_entries.get(&working_directory_id)
+    }
+
+    /// There's also a method on `WorkingDirectoryPool`!
+    pub fn get_working_directory_mut(
+        &mut self,
+        working_directory_id: WorkingDirectoryId,
+    ) -> Option<&mut WorkingDirectory> {
+        self.pool.all_entries.get_mut(&working_directory_id)
+    }
+
     /// Always gets a working directory, but doesn't check for any
     /// best fit. If none was cloned yet, that is done now.
     pub fn get_first(&mut self) -> Result<WorkingDirectoryId> {

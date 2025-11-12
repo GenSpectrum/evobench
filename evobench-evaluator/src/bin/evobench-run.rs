@@ -41,7 +41,9 @@ use evobench_evaluator::{
         run_queues::RunQueues,
         versioned_dataset_dir::VersionedDatasetDir,
         working_directory::{Status, WorkingDirectoryStatus},
-        working_directory_pool::{WorkingDirectoryPool, WorkingDirectoryPoolBaseDir},
+        working_directory_pool::{
+            WorkingDirectoryId, WorkingDirectoryPool, WorkingDirectoryPoolBaseDir,
+        },
     },
     serde::{
         date_and_time::{system_time_to_rfc3339, DateTimeWithOffset},
@@ -53,6 +55,7 @@ use evobench_evaluator::{
         logging::{set_log_level, LogLevelOpt},
         re_exec::re_exec_with_existing_args_and_env,
     },
+    warn,
 };
 
 #[derive(clap::Parser, Debug)]
@@ -249,6 +252,21 @@ enum WdSubCommand {
         #[clap(subcommand)]
         mode: WdSubCommandCleanupMode,
     },
+    /// Mark the given working directories for examination, and
+    /// possibly additional actions
+    Examine {
+        #[clap(subcommand)]
+        mode: ExaminationAction,
+    },
+}
+
+#[derive(Debug, clap::Subcommand)]
+enum ExaminationAction {
+    Mark {
+        /// The IDs of the working direcories to mark for examination
+        ids: Vec<WorkingDirectoryId>,
+    },
+    // XX future: Enter
 }
 
 #[derive(Debug, clap::Subcommand)]
@@ -1088,6 +1106,24 @@ fn run() -> Result<Option<PathBuf>> {
                             lock.delete_working_directory(id)?;
                             if verbose {
                                 println!("{id}");
+                            }
+                        }
+                    }
+                }
+                WdSubCommand::Examine { mode } => {
+                    match mode {
+                        ExaminationAction::Mark { ids } => {
+                            for id in ids {
+                                // XX BTW todo: currently, working
+                                // with working directories does not
+                                // force taking the lock, even for
+                                // actions like changing the status!
+                                let mut lock = working_directory_pool.lock()?;
+                                if let Some(wd) = lock.get_working_directory_mut(id) {
+                                    wd.set_and_save_status(Status::Examination)?;
+                                } else {
+                                    warn!("there is no working directory for id {id}")
+                                }
                             }
                         }
                     }
