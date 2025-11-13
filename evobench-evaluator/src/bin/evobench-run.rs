@@ -269,6 +269,13 @@ enum ExaminationAction {
     /// Mark the given working directories for examination, so that
     /// they are not deleted by `evobench-run wd cleanup`
     Mark {
+        /// Mark as 'error' status instead of 'examination'; use if
+        /// done with examination and want cronjob based auto-deletion
+        /// (via `evobench-run wd cleanup stale-for-days`) to take
+        /// care of it.
+        #[clap(long)]
+        error: bool,
+
         /// The IDs of the working direcories to mark
         ids: Vec<WorkingDirectoryId>,
     },
@@ -1151,13 +1158,18 @@ fn run() -> Result<Option<PathBuf>> {
                     };
 
                     match mode {
-                        ExaminationAction::Mark { ids } => {
+                        ExaminationAction::Mark { error, ids } => {
+                            let wanted_status = if error {
+                                Status::Error
+                            } else {
+                                Status::Examination
+                            };
                             for id in ids {
                                 let mut guard = working_directory_pool.lock_mut()?;
                                 if let Some(mut wd) = guard.get_working_directory_mut(id) {
                                     check_original_status(wd.working_directory_status.status)
                                         .map_err(ctx!("refusing working directory {id}"))?;
-                                    wd.set_and_save_status(Status::Examination)?;
+                                    wd.set_and_save_status(wanted_status)?;
                                 } else {
                                     warn!("there is no working directory for id {id}")
                                 }
