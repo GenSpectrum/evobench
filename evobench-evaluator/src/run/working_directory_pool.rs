@@ -219,11 +219,13 @@ impl WorkingDirectoryPool {
             .map_err(ctx!("locking working directory pool base dir {base_dir:?}"))
     }
 
+    /// Get exclusive lock, but sharing self
     pub fn lock<'t>(&'t self) -> Result<WorkingDirectoryPoolGuard<'t>> {
         let _lock = Some(Self::get_lock(&self.base_dir.base_dir)?);
         Ok(WorkingDirectoryPoolGuard { _lock, pool: self })
     }
 
+    /// Get exclusive lock, for exclusive access to self
     pub fn lock_mut<'t>(&'t mut self) -> Result<WorkingDirectoryPoolGuardMut<'t>> {
         let _lock = Self::get_lock(&self.base_dir.base_dir)?;
         Ok(WorkingDirectoryPoolGuardMut { _lock, pool: self })
