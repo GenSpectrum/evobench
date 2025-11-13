@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     config_file::load_ron_file,
-    ctx, def_linear,
+    ctx, debug, def_linear,
     git::GitHash,
     info, io_utils,
     key::{BenchmarkingJobParameters, RunParameters},
@@ -215,6 +215,7 @@ impl WorkingDirectoryPool {
     /// Lock the base dir of the pool, blocking (this is *not* the
     /// global job-running lock any more!)
     fn get_lock(base_dir: &Path) -> Result<StandaloneExclusiveFileLock> {
+        debug!("getting working directory pool lock on {base_dir:?}");
         StandaloneExclusiveFileLock::lock_path(base_dir)
             .map_err(ctx!("locking working directory pool base dir {base_dir:?}"))
     }
@@ -246,6 +247,7 @@ impl WorkingDirectoryPool {
 
         // Need to have exclusive access while, at least, reading ron
         // files
+        debug!("get lock for WorkingDirectoryPool::open");
         let lock = Self::get_lock(base_dir.path())?;
 
         let mut next_id: u64 = 0;
