@@ -9,7 +9,7 @@ use std::{
     borrow::Cow,
     fmt::Display,
     io::{stdout, IsTerminal, Write},
-    os::unix::process::CommandExt,
+    os::unix::process::ExitStatusExt,
     path::PathBuf,
     process::{exit, Command},
     str::FromStr,
@@ -18,6 +18,7 @@ use std::{
 };
 
 use evobench_evaluator::{
+    ask::ask_yn,
     config_file::{self, ron_to_string_pretty, save_config_file},
     ctx,
     date_and_time::system_time_with_display::SystemTimeWithDisplay,
@@ -271,10 +272,20 @@ enum ExaminationAction {
         /// The IDs of the working direcories to mark
         ids: Vec<WorkingDirectoryId>,
     },
-    /// Mark the given working directory for examination, then open
-    /// a shell inside it. The shell in the `SHELL` environment
-    /// variable is used, falling back to "bash".
+    /// Mark the given working directory for examination, then open a
+    /// shell inside it. The shell in the `SHELL` environment variable
+    /// is used, falling back to "bash".
     Enter {
+        /// Keep the working directory marked for examination even
+        /// after exiting the shell (default: ask interactively)
+        #[clap(long)]
+        mark: bool,
+
+        /// Unmark the working directory after exiting the shell
+        /// without asking
+        #[clap(long)]
+        unmark: bool,
+
         /// The ID of the working directory to mark and enter
         id: WorkingDirectoryId,
     },
@@ -1136,13 +1147,18 @@ fn run() -> Result<Option<PathBuf>> {
                                 }
                             }
                         }
-                        ExaminationAction::Enter { id } => {
+                        ExaminationAction::Enter { mark, unmark, id } => {
+                            if mark && unmark {
+                                bail!("please only give one of the --mark or --unmark options")
+                            }
+
                             let mut wd = working_directory_pool
                                 .lock_mut()?
                                 .into_get_working_directory_mut(id);
                             let mut working_directory = wd.get().ok_or_else(|| {
                                 anyhow!("there is no working directory for id {id}")
                             })?;
+                            let original_status = working_directory.working_directory_status.status;
                             working_directory.set_and_save_status(Status::Examination)?;
                             let working_directory = wd.into_inner().expect("still there");
 
@@ -1214,8 +1230,41 @@ fn run() -> Result<Option<PathBuf>> {
                                     .working_dir_path_ref()
                                     .append(subdir),
                             );
-                            let err = cmd.exec();
-                            bail!("can't exec shell {shell:?}: {err}")
+                            let status = cmd.status()?;
+
+                            if original_status != Status::Examination {
+                                if !mark {
+                                    let do_revert = unmark
+                                        || ask_yn(&format!(
+                                            "Should the working directory status be reverted to \
+                                         '{original_status}' (i.e. are you done)?"
+                                        ))?;
+
+                                    if do_revert {
+                                        let mut wd = working_directory_pool
+                                            .lock_mut()?
+                                            .into_get_working_directory_mut(id);
+                                        let mut working_directory = wd.get().ok_or_else(|| {
+                                            anyhow!("there is no working directory for id {id}")
+                                        })?;
+                                        working_directory.set_and_save_status(original_status)?;
+                                        println!("Changed status back to '{original_status}'");
+                                    } else {
+                                        println!("Leaving status as 'examination'");
+                                    }
+                                }
+                            }
+
+                            // XX I do have this somewhere, right?
+                            let exitcode = if status.success() {
+                                0
+                            } else {
+                                status
+                                    .code()
+                                    .or_else(|| status.signal().map(|x| x + 128))
+                                    .unwrap_or(255)
+                            };
+                            std::process::exit(exitcode);
                         }
                     }
                 }
