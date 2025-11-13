@@ -1188,7 +1188,8 @@ fn run() -> Result<Option<PathBuf>> {
                             let shell = std::env::var_os("SHELL").unwrap_or("bash".into());
                             if shell != "bash" && shell != "/bin/bash" {
                                 println!(
-                                    "Note: SHELL is set to {shell:?}, but the following syntax is for bash.\n"
+                                    "Note: SHELL is set to {shell:?}, but the following syntax \
+                                     is for bash.\n"
                                 );
                             }
 
