@@ -137,9 +137,12 @@ impl<F: FileExt> LockableFile<F> {
     }
 
     pub fn lock_shared<'s>(&'s self) -> std::io::Result<SharedFileLock<'s, F>> {
-        FileExt::lock_shared(&self.file)?;
         if let Some(path) = self.debug.as_ref() {
+            eprintln!("getting SharedFileLock on {path:?}");
+            FileExt::lock_shared(&self.file)?;
             eprintln!("got SharedFileLock on {path:?}");
+        } else {
+            FileExt::lock_shared(&self.file)?;
         }
         Ok(SharedFileLock {
             debug: &self.debug,
@@ -148,9 +151,12 @@ impl<F: FileExt> LockableFile<F> {
     }
 
     pub fn lock_exclusive<'s>(&'s self) -> std::io::Result<ExclusiveFileLock<'s, F>> {
-        FileExt::lock_exclusive(&self.file)?;
         if let Some(path) = self.debug.as_ref() {
+            eprintln!("getting ExclusiveFileLock on {path:?}");
+            FileExt::lock_exclusive(&self.file)?;
             eprintln!("got ExclusiveFileLock on {path:?}");
+        } else {
+            FileExt::lock_exclusive(&self.file)?;
         }
         Ok(ExclusiveFileLock {
             debug: &self.debug,
