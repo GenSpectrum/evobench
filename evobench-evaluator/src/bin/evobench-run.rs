@@ -1135,11 +1135,28 @@ fn run() -> Result<Option<PathBuf>> {
                     }
                 }
                 WdSubCommand::Examine { mode } => {
+                    let check_original_status = |original_status: Status| -> Result<()> {
+                        if original_status.can_be_used_for_jobs() {
+                            bail!(
+                                "marking is meant for working directories in error status, \
+                                 but this dir has status '{original_status}'"
+                            )
+                            // Also can't currently signal working dir
+                            // status changes to the running daemon,
+                            // only Error and Examination are safe as
+                            // those are ignored by the daemon
+                        } else {
+                            Ok(())
+                        }
+                    };
+
                     match mode {
                         ExaminationAction::Mark { ids } => {
                             for id in ids {
                                 let mut guard = working_directory_pool.lock_mut()?;
                                 if let Some(mut wd) = guard.get_working_directory_mut(id) {
+                                    check_original_status(wd.working_directory_status.status)
+                                        .map_err(ctx!("refusing working directory {id}"))?;
                                     wd.set_and_save_status(Status::Examination)?;
                                 } else {
                                     warn!("there is no working directory for id {id}")
@@ -1157,7 +1174,11 @@ fn run() -> Result<Option<PathBuf>> {
                             let mut working_directory = wd.get().ok_or_else(|| {
                                 anyhow!("there is no working directory for id {id}")
                             })?;
+
                             let original_status = working_directory.working_directory_status.status;
+                            check_original_status(original_status)
+                                .map_err(ctx!("refusing working directory {id}"))?;
+
                             working_directory.set_and_save_status(Status::Examination)?;
                             let working_directory = wd.into_inner().expect("still there");
 
