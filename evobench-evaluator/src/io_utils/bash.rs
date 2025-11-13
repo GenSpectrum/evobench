@@ -46,3 +46,11 @@ pub fn bash_string_from_program_and_args(
     }
     cmd
 }
+
+pub fn bash_export_variable_string(name: &str, val: &str, prefix: &str, suffix: &str) -> String {
+    format!(
+        "{prefix}export {}={}{suffix}",
+        bash_string_literal(name),
+        bash_string_literal(val)
+    )
+}

@@ -35,7 +35,7 @@ use crate::{
     crypto_hash::crypto_hash,
     ctx,
     git::GitHash,
-    io_utils::bash::bash_string_literal,
+    io_utils::bash::bash_export_variable_string,
     key_val_fs::as_key::AsKey,
     run::{
         config::BenchmarkingCommand,
@@ -147,14 +147,10 @@ impl CustomParameters {
         Ok(CustomParameters(res))
     }
 
-    pub fn to_bash_export_strings(&self) -> Vec<String> {
+    pub fn to_bash_export_strings(&self, prefix: &str, suffix: &str) -> Vec<String> {
         self.btree_map()
             .iter()
-            .map(|(k, v)| {
-                let varname = bash_string_literal(k.as_str());
-                let value = bash_string_literal(v.as_str());
-                format!("export {varname}={value}")
-            })
+            .map(|(k, v)| bash_export_variable_string(k, v.as_str(), prefix, suffix))
             .collect()
     }
 }
