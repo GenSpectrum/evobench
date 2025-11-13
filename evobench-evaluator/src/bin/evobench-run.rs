@@ -271,7 +271,7 @@ enum ExaminationAction {
         /// The IDs of the working direcories to mark
         ids: Vec<WorkingDirectoryId>,
     },
-    /// Mark the given working directories for examination, then open
+    /// Mark the given working directory for examination, then open
     /// a shell inside it. The shell in the `SHELL` environment
     /// variable is used, falling back to "bash".
     Enter {
