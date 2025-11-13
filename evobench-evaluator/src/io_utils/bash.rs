@@ -36,7 +36,7 @@ pub fn bash_string_from_cmd(cmd: impl IntoIterator<Item = impl AsRef<str>>) -> S
         .join(" ")
 }
 
-pub fn bash_string_from_program_and_args(
+pub fn bash_string_from_program_string_and_args(
     cmd: impl AsRef<str>,
     args: impl IntoIterator<Item = impl AsRef<str>>,
 ) -> String {

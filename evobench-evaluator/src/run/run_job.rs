@@ -19,7 +19,7 @@ use crate::{
     config_file::ron_to_string_pretty,
     ctx, info,
     io_utils::{
-        bash::bash_string_from_program_and_args,
+        bash::bash_string_from_program_string_and_args,
         capture::{CaptureOptions, OutFile},
         temporary_file::TemporaryFile,
     },
@@ -362,8 +362,10 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
 
                     // for debugging info only:
                     let cmd_in_dir = {
-                        let cmd =
-                            bash_string_from_program_and_args(command.to_string_lossy(), arguments);
+                        let cmd = bash_string_from_program_string_and_args(
+                            command.to_string_lossy(),
+                            arguments,
+                        );
                         format!("command {cmd:?} in directory {dir:?}")
                     };
 
