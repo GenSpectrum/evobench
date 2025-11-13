@@ -5,6 +5,8 @@
 //! access to the file handle.
 
 use std::{
+    cell::RefCell,
+    collections::HashSet,
     fmt::Display,
     fs::File,
     ops::Deref,
@@ -31,7 +33,10 @@ impl<'s, F: FileExt> Drop for SharedFileLock<'s, F> {
             .unlock()
             .expect("no way another path to unlock exists");
         if let Some(path) = self.debug {
-            eprintln!("dropped SharedFileLock on {path:?}")
+            eprintln!("dropped SharedFileLock on {path:?}");
+            HELD_LOCKS.with_borrow_mut(|set| {
+                set.remove(&**path);
+            });
         }
     }
 }
@@ -64,7 +69,10 @@ impl<'s, F: FileExt> Drop for ExclusiveFileLock<'s, F> {
             .unlock()
             .expect("no way another path to unlock exists");
         if let Some(path) = self.debug {
-            eprintln!("dropped ExclusiveFileLock on {path:?}")
+            eprintln!("dropped ExclusiveFileLock on {path:?}");
+            HELD_LOCKS.with_borrow_mut(|set| {
+                set.remove(&**path);
+            });
         }
     }
 }
@@ -120,6 +128,10 @@ impl Display for LockStatus {
     }
 }
 
+thread_local! {
+    static HELD_LOCKS: RefCell< HashSet<PathBuf>> = Default::default();
+}
+
 impl<F: FileExt> LockableFile<F> {
     /// Determines lock status by temporarily getting locks in
     /// nonblocking manner, thus not very performant! Also, may
@@ -139,8 +151,16 @@ impl<F: FileExt> LockableFile<F> {
     pub fn lock_shared<'s>(&'s self) -> std::io::Result<SharedFileLock<'s, F>> {
         if let Some(path) = self.debug.as_ref() {
             eprintln!("getting SharedFileLock on {path:?}");
-            FileExt::lock_shared(&self.file)?;
-            eprintln!("got SharedFileLock on {path:?}");
+            HELD_LOCKS.with_borrow_mut(|set| -> std::io::Result<()> {
+                // XXX: ah, todo: allow multiple shared
+                if set.contains(&**path) {
+                    panic!("{path:?} is already locked by this thread")
+                }
+                FileExt::lock_shared(&self.file)?;
+                eprintln!("got SharedFileLock on {path:?}");
+                set.insert((&**path).to_owned());
+                Ok(())
+            })?;
         } else {
             FileExt::lock_shared(&self.file)?;
         }
@@ -153,8 +173,15 @@ impl<F: FileExt> LockableFile<F> {
     pub fn lock_exclusive<'s>(&'s self) -> std::io::Result<ExclusiveFileLock<'s, F>> {
         if let Some(path) = self.debug.as_ref() {
             eprintln!("getting ExclusiveFileLock on {path:?}");
-            FileExt::lock_exclusive(&self.file)?;
-            eprintln!("got ExclusiveFileLock on {path:?}");
+            HELD_LOCKS.with_borrow_mut(|set| -> std::io::Result<()> {
+                if set.contains(&**path) {
+                    panic!("{path:?} is already locked by this thread")
+                }
+                FileExt::lock_exclusive(&self.file)?;
+                eprintln!("got ExclusiveFileLock on {path:?}");
+                set.insert((&**path).to_owned());
+                Ok(())
+            })?;
         } else {
             FileExt::lock_exclusive(&self.file)?;
         }
@@ -169,6 +196,9 @@ impl<F: FileExt> LockableFile<F> {
             Ok(()) => {
                 if let Some(path) = self.debug.as_ref() {
                     eprintln!("got SharedFileLock on {path:?}");
+                    HELD_LOCKS.with_borrow_mut(|set| {
+                        set.insert((&**path).to_owned());
+                    });
                 }
                 Ok(Some(SharedFileLock {
                     debug: &self.debug,
@@ -190,6 +220,9 @@ impl<F: FileExt> LockableFile<F> {
             Ok(()) => {
                 if let Some(path) = self.debug.as_ref() {
                     eprintln!("got ExclusiveFileLock on {path:?}");
+                    HELD_LOCKS.with_borrow_mut(|set| {
+                        set.insert((&**path).to_owned());
+                    });
                 }
                 Ok(Some(ExclusiveFileLock {
                     debug: &self.debug,
