@@ -18,7 +18,7 @@ use ouroboros::self_referencing;
 // -----------------------------------------------------------------------------
 
 pub struct SharedFileLock<'s, F: FileExt> {
-    path: &'s Option<Box<Path>>,
+    debug: &'s Option<Box<Path>>,
     // XX joke: need DerefMut anyway, even reading requires mut
     // access. So the two locks are identical now. TODO: eliminate or
     // ? Parameterize instead?
@@ -30,7 +30,7 @@ impl<'s, F: FileExt> Drop for SharedFileLock<'s, F> {
         self.file
             .unlock()
             .expect("no way another path to unlock exists");
-        if let Some(path) = self.path {
+        if let Some(path) = self.debug {
             eprintln!("dropped SharedFileLock on {path:?}")
         }
     }
@@ -48,13 +48,13 @@ impl<'s, F: FileExt> Deref for SharedFileLock<'s, F> {
 
 #[derive(Debug)]
 pub struct ExclusiveFileLock<'s, F: FileExt> {
-    path: &'s Option<Box<Path>>,
+    debug: &'s Option<Box<Path>>,
     file: &'s F,
 }
 
 impl<'s, F: FileExt> PartialEq for ExclusiveFileLock<'s, F> {
     fn eq(&self, other: &Self) -> bool {
-        self.path == other.path
+        self.debug == other.debug
     }
 }
 
@@ -63,7 +63,7 @@ impl<'s, F: FileExt> Drop for ExclusiveFileLock<'s, F> {
         self.file
             .unlock()
             .expect("no way another path to unlock exists");
-        if let Some(path) = self.path {
+        if let Some(path) = self.debug {
             eprintln!("dropped ExclusiveFileLock on {path:?}")
         }
     }
@@ -81,8 +81,9 @@ impl<'s, F: FileExt> Deref for ExclusiveFileLock<'s, F> {
 
 #[derive(Debug)]
 pub struct LockableFile<F: FileExt> {
-    /// Path for, and only if, debugging
-    path: Option<Box<Path>>,
+    /// Path for, and only if, debugging is set via
+    /// `DEBUG_LOCKABLE_FILE` env var
+    debug: Option<Box<Path>>,
     file: F,
 }
 
@@ -90,7 +91,7 @@ impl<F: FileExt> From<F> for LockableFile<F> {
     fn from(file: F) -> Self {
         Self {
             // XX can't have path here, what to do?
-            path: None,
+            debug: None,
             file,
         }
     }
@@ -137,22 +138,22 @@ impl<F: FileExt> LockableFile<F> {
 
     pub fn lock_shared<'s>(&'s self) -> std::io::Result<SharedFileLock<'s, F>> {
         FileExt::lock_shared(&self.file)?;
-        if let Some(path) = self.path.as_ref() {
+        if let Some(path) = self.debug.as_ref() {
             eprintln!("got SharedFileLock on {path:?}");
         }
         Ok(SharedFileLock {
-            path: &self.path,
+            debug: &self.debug,
             file: &self.file,
         })
     }
 
     pub fn lock_exclusive<'s>(&'s self) -> std::io::Result<ExclusiveFileLock<'s, F>> {
         FileExt::lock_exclusive(&self.file)?;
-        if let Some(path) = self.path.as_ref() {
+        if let Some(path) = self.debug.as_ref() {
             eprintln!("got ExclusiveFileLock on {path:?}");
         }
         Ok(ExclusiveFileLock {
-            path: &self.path,
+            debug: &self.debug,
             file: &self.file,
         })
     }
@@ -160,11 +161,11 @@ impl<F: FileExt> LockableFile<F> {
     pub fn try_lock_shared<'s>(&'s self) -> std::io::Result<Option<SharedFileLock<'s, F>>> {
         match FileExt::try_lock_shared(&self.file) {
             Ok(()) => {
-                if let Some(path) = self.path.as_ref() {
+                if let Some(path) = self.debug.as_ref() {
                     eprintln!("got SharedFileLock on {path:?}");
                 }
                 Ok(Some(SharedFileLock {
-                    path: &self.path,
+                    debug: &self.debug,
                     file: &self.file,
                 }))
             }
@@ -181,11 +182,11 @@ impl<F: FileExt> LockableFile<F> {
     pub fn try_lock_exclusive<'s>(&'s self) -> std::io::Result<Option<ExclusiveFileLock<'s, F>>> {
         match FileExt::try_lock_exclusive(&self.file) {
             Ok(()) => {
-                if let Some(path) = self.path.as_ref() {
+                if let Some(path) = self.debug.as_ref() {
                     eprintln!("got ExclusiveFileLock on {path:?}");
                 }
                 Ok(Some(ExclusiveFileLock {
-                    path: &self.path,
+                    debug: &self.debug,
                     file: &self.file,
                 }))
             }
@@ -225,7 +226,7 @@ impl LockableFile<File> {
                 None
             };
 
-            Ok(LockableFile { path, file })
+            Ok(LockableFile { debug: path, file })
         })
     }
 }
