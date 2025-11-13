@@ -1,5 +1,6 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, path::Path};
 
+use anyhow::{anyhow, Result};
 use itertools::Itertools;
 
 // (Todo?: add randomized tests with these calling bash)
@@ -45,6 +46,23 @@ pub fn bash_string_from_program_and_args(
         cmd.push_str(&*bash_string_literal(arg.as_ref()));
     }
     cmd
+}
+
+/// Gives an error if cmd cannot be decoded as unicode
+pub fn bash_string_from_program_path_and_args(
+    cmd: impl AsRef<Path>,
+    args: impl IntoIterator<Item = impl AsRef<str>>,
+) -> Result<String> {
+    let path = cmd.as_ref();
+    let path_str = path
+        .to_str()
+        .ok_or_else(|| anyhow!("can't decode path as unicode string: {path:?}"))?;
+    let mut cmd = bash_string_literal(path_str).into_owned();
+    for arg in args {
+        cmd.push_str(" ");
+        cmd.push_str(&*bash_string_literal(arg.as_ref()));
+    }
+    Ok(cmd)
 }
 
 pub fn bash_export_variable_string(name: &str, val: &str, prefix: &str, suffix: &str) -> String {
