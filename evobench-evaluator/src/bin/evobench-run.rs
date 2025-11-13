@@ -2,15 +2,16 @@ use anyhow::{anyhow, bail, Result};
 use chrono::{DateTime, Local};
 use clap::Parser;
 use itertools::Itertools;
-use run_git::git::GitWorkingDir;
+use run_git::{git::GitWorkingDir, path_util::AppendToPath};
 use yansi::{Color, Style};
 
 use std::{
     borrow::Cow,
     fmt::Display,
     io::{stdout, IsTerminal, Write},
+    os::unix::process::CommandExt,
     path::PathBuf,
-    process::exit,
+    process::{exit, Command},
     str::FromStr,
     thread,
     time::{Duration, SystemTime},
@@ -24,6 +25,7 @@ use evobench_evaluator::{
     get_terminal_width::get_terminal_width,
     git::GitHash,
     info,
+    io_utils::bash::{bash_export_variable_string, bash_string_from_program_path_and_args},
     key::{BenchmarkingJobParameters, RunParameters, RunParametersOpts},
     key_val_fs::key_val::Entry,
     lockable_file::{LockStatus, StandaloneExclusiveFileLock},
@@ -31,6 +33,7 @@ use evobench_evaluator::{
         benchmarking_job::{
             BenchmarkingJobOpts, BenchmarkingJobReasonOpt, BenchmarkingJobSettingsOpts,
         },
+        command_log_file::CommandLogFile,
         config::{BenchmarkingCommand, RunConfigWithReload},
         global_app_state_dir::GlobalAppStateDir,
         insert_jobs::{insert_jobs, open_already_inserted, ForceOpt, QuietOpt},
@@ -266,7 +269,11 @@ enum ExaminationAction {
         /// The IDs of the working direcories to mark for examination
         ids: Vec<WorkingDirectoryId>,
     },
-    // XX future: Enter
+    Enter {
+        /// The ID of the working directory to mark for examination
+        /// and enter.
+        id: WorkingDirectoryId,
+    },
 }
 
 #[derive(Debug, clap::Subcommand)]
@@ -1021,6 +1028,7 @@ fn run() -> Result<Option<PathBuf>> {
                 }
             }
         }
+
         SubCommand::Wd { subcommand } => {
             // XX COPYPASTE
             let mut working_directory_pool = WorkingDirectoryPool::open(
@@ -1112,18 +1120,98 @@ fn run() -> Result<Option<PathBuf>> {
                         }
                     }
                 }
-                WdSubCommand::Examine { mode } => match mode {
-                    ExaminationAction::Mark { ids } => {
-                        for id in ids {
+                WdSubCommand::Examine { mode } => {
+                    match mode {
+                        ExaminationAction::Mark { ids } => {
+                            for id in ids {
                                 let mut guard = working_directory_pool.lock_mut()?;
                                 if let Some(mut wd) = guard.get_working_directory_mut(id) {
-                                wd.set_and_save_status(Status::Examination)?;
-                            } else {
-                                warn!("there is no working directory for id {id}")
+                                    wd.set_and_save_status(Status::Examination)?;
+                                } else {
+                                    warn!("there is no working directory for id {id}")
+                                }
                             }
                         }
+                        ExaminationAction::Enter { id } => {
+                            let mut guard = working_directory_pool.lock_mut()?;
+                            let mut wd = guard.get_working_directory_mut(id).ok_or_else(|| {
+                                anyhow!("there is no working directory for id {id}")
+                            })?;
+                            wd.set_and_save_status(Status::Examination)?;
+                            let working_directory = wd.into_inner();
+
+                            let (path, _id) =
+                                working_directory.last_standard_log_path()?.ok_or_else(|| {
+                                    anyhow!("could not find a log file for working directory {id}")
+                                })?;
+
+                            let command_log_file = CommandLogFile::from(&path);
+                            let command_log = command_log_file.command_log()?;
+
+                            let BenchmarkingJobParameters {
+                                run_parameters,
+                                command,
+                            } = command_log.parse_log_file_params()?;
+
+                            let RunParameters {
+                                commit_id,
+                                custom_parameters,
+                            } = &*run_parameters;
+
+                            let BenchmarkingCommand {
+                                target_name: _,
+                                subdir,
+                                command,
+                                arguments,
+                            } = &*command;
+
+                            let commit_id = commit_id.to_string();
+
+                            let mut vars: Vec<(&str, &str)> = custom_parameters
+                                .btree_map()
+                                .iter()
+                                .map(|(k, v)| (k.as_str(), v.as_str()))
+                                .collect();
+                            vars.push(("COMMIT_ID", &commit_id));
+
+                            let exports = vars
+                                .iter()
+                                .map(|(k, v)| bash_export_variable_string(k, v, "  ", "\n"))
+                                .join("");
+
+                            let shell = std::env::var_os("SHELL").unwrap_or("bash".into());
+                            if shell != "bash" && shell != "/bin/bash" {
+                                println!(
+                                    "Note: SHELL is set to {shell:?}, but the following syntax is for bash.\n"
+                                );
+                            }
+
+                            println!(
+                                "The following environment variables have been set:\n\n{exports}"
+                            );
+                            println!(
+                                "Please set `BENCH_OUTPUT_LOG` and optionally `EVOBENCH_LOG`, \
+                                 then run the following to execute the benchmarking:\n\n  {}\n",
+                                bash_string_from_program_path_and_args(command, arguments)?
+                            );
+
+                            // Enter dir without any locking (other
+                            // than dir being in Status::Examination
+                            // now), OK?
+
+                            let mut cmd = Command::new(&shell);
+                            cmd.envs(vars);
+                            cmd.current_dir(
+                                working_directory
+                                    .git_working_dir
+                                    .working_dir_path_ref()
+                                    .append(subdir),
+                            );
+                            let err = cmd.exec();
+                            bail!("can't exec shell {shell:?}: {err}")
+                        }
                     }
-                },
+                }
             }
         }
     }
