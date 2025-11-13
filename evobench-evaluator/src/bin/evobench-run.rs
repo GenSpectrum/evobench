@@ -255,8 +255,8 @@ enum WdSubCommand {
         #[clap(subcommand)]
         mode: WdSubCommandCleanupMode,
     },
-    /// Mark the given working directories for examination, and
-    /// possibly additional actions
+    /// Examine a working directory by entering it, or mark the
+    /// intention to do so in the future.
     Examine {
         #[clap(subcommand)]
         mode: ExaminationAction,
@@ -265,13 +265,17 @@ enum WdSubCommand {
 
 #[derive(Debug, clap::Subcommand)]
 enum ExaminationAction {
+    /// Mark the given working directories for examination, so that
+    /// they are not deleted by `evobench-run wd cleanup`
     Mark {
-        /// The IDs of the working direcories to mark for examination
+        /// The IDs of the working direcories to mark
         ids: Vec<WorkingDirectoryId>,
     },
+    /// Mark the given working directories for examination, then open
+    /// a shell inside it. The shell in the `SHELL` environment
+    /// variable is used, falling back to "bash".
     Enter {
-        /// The ID of the working directory to mark for examination
-        /// and enter.
+        /// The ID of the working directory to mark and enter
         id: WorkingDirectoryId,
     },
 }
