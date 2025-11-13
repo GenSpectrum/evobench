@@ -39,7 +39,7 @@ pub fn bash_string_from_program_and_args(
     cmd: impl AsRef<str>,
     args: impl IntoIterator<Item = impl AsRef<str>>,
 ) -> String {
-    let mut cmd = cmd.as_ref().to_owned();
+    let mut cmd = bash_string_literal(cmd.as_ref()).into_owned();
     for arg in args {
         cmd.push_str(" ");
         cmd.push_str(&*bash_string_literal(arg.as_ref()));
