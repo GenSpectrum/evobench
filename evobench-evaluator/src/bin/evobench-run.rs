@@ -1082,8 +1082,8 @@ fn run() -> Result<Option<PathBuf>> {
 
                         let show = match (active, error) {
                             (true, true) | (false, false) => true,
-                            (true, false) => !wd.working_directory_status.status.is_error(),
-                            (false, true) => wd.working_directory_status.status.is_error(),
+                            (true, false) => status.can_be_used_for_jobs(),
+                            (false, true) => !status.can_be_used_for_jobs(),
                         };
                         if show {
                             table.write_data_row(
@@ -1111,10 +1111,9 @@ fn run() -> Result<Option<PathBuf>> {
                     let now = SystemTime::now();
 
                     let mut cleanup_ids = Vec::new();
-                    for (id, wd) in working_directory_pool
-                        .all_entries()
-                        .filter(|(_, wd)| wd.working_directory_status.status.is_error())
-                    {
+                    for (id, wd) in working_directory_pool.all_entries().filter(|(_, wd)| {
+                        !wd.working_directory_status.status.can_be_used_for_jobs()
+                    }) {
                         let d = now.duration_since(wd.last_use).map_err(ctx!(
                             "calculating time since last use of working directory {id}"
                         ))?;

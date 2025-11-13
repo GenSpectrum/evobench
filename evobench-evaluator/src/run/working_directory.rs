@@ -78,14 +78,11 @@ impl Status {
         }
     }
 
-    /// True means, can't be allocated for jobs
-    pub fn is_error(self) -> bool {
+    /// Whether the daemon is allowed to use the dir
+    pub fn can_be_used_for_jobs(self) -> bool {
         match self {
-            Status::CheckedOut => false,
-            Status::Processing => false,
-            Status::Error => true,
-            Status::Finished => false,
-            Status::Examination => false,
+            Status::CheckedOut | Status::Processing | Status::Finished => true,
+            Status::Error | Status::Examination => false,
         }
     }
 
@@ -478,7 +475,7 @@ impl<'guard> WorkingDirectoryWithPoolLockMut<'guard> {
             let working_directory_status = &self.wd.working_directory_status;
             let path = self.wd.status_path()?;
             ron_to_file_pretty(working_directory_status, &path, false, None)?;
-            if working_directory_status.status.is_error() {
+            if !working_directory_status.status.can_be_used_for_jobs() {
                 // Mis-use executable bit to easily see error status files
                 // in dir listings on the command line.
                 std::fs::set_permissions(&path, Permissions::from_mode(0o755))

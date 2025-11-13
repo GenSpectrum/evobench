@@ -364,7 +364,7 @@ impl WorkingDirectoryPool {
     /// entries are sorted by `WorkingDirectoryId`
     pub fn active_entries(&self) -> impl Iterator<Item = (&WorkingDirectoryId, &WorkingDirectory)> {
         self.all_entries()
-            .filter(|(_, wd)| !wd.working_directory_status.status.is_error())
+            .filter(|(_, wd)| wd.working_directory_status.status.can_be_used_for_jobs())
     }
 
     /// The number of entries that are not of Status::Error
@@ -409,8 +409,11 @@ impl WorkingDirectoryPool {
             // very well might disappear), thus:
             .ok_or_else(|| anyhow!("working directory id must still exist"))?;
 
-        if wd.wd.working_directory_status.status.is_error() {
-            bail!("working directory {working_directory_id} is set aside (in error state)")
+        if !wd.working_directory_status.status.can_be_used_for_jobs() {
+            bail!(
+                "working directory {working_directory_id} is set aside (in '{}' state)",
+                wd.working_directory_status.status
+            )
         }
 
         wd.set_and_save_status(Status::Processing)?;
