@@ -305,10 +305,13 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                 |mut working_directory| -> Result<Option<(&ProperDirname, PathBuf)>> {
                     // `checkout` also fetches the remote tags, which
                     // is necessary for `dataset_dir_for_commit`
-                    working_directory.checkout(commit_id.clone())?;
+                    working_directory
+                        .get()
+                        .expect("not removed")
+                        .checkout(commit_id.clone())?;
 
                     // Drop the lock on the pool
-                    let working_directory = working_directory.into_inner();
+                    let working_directory = working_directory.into_inner().expect("not removed");
 
                     let dataset_dir = {
                         // Now find the matching

@@ -347,7 +347,7 @@ fn run_queues(
             working_directory_id,
             &DateTimeWithOffset::now(),
             |working_directory| -> Result<()> {
-                let working_directory = working_directory.into_inner();
+                let working_directory = working_directory.into_inner().expect("still there");
 
                 // Avoid the risk of an old working directory having
                 // an older HEAD than all dataset versions.
@@ -1137,12 +1137,14 @@ fn run() -> Result<Option<PathBuf>> {
                             }
                         }
                         ExaminationAction::Enter { id } => {
-                            let mut guard = working_directory_pool.lock_mut()?;
-                            let mut wd = guard.get_working_directory_mut(id).ok_or_else(|| {
+                            let mut wd = working_directory_pool
+                                .lock_mut()?
+                                .into_get_working_directory_mut(id);
+                            let mut working_directory = wd.get().ok_or_else(|| {
                                 anyhow!("there is no working directory for id {id}")
                             })?;
-                            wd.set_and_save_status(Status::Examination)?;
-                            let working_directory = wd.into_inner();
+                            working_directory.set_and_save_status(Status::Examination)?;
+                            let working_directory = wd.into_inner().expect("still there");
 
                             let (path, _id) =
                                 working_directory.last_standard_log_path()?.ok_or_else(|| {

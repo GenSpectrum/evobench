@@ -27,7 +27,7 @@ use crate::{
     path_util::AppendToPath,
     run::working_directory::{
         WorkingDirectoryAutoCleanOpts, WorkingDirectoryWithPoolLock,
-        WorkingDirectoryWithPoolLockMut,
+        WorkingDirectoryWithPoolLockMut, WorkingDirectoryWithPoolMut,
     },
     serde::{date_and_time::DateTimeWithOffset, git_url::GitUrl},
 };
@@ -188,8 +188,8 @@ impl<'pool> WorkingDirectoryPoolGuard<'pool> {
 }
 
 pub struct WorkingDirectoryPoolGuardMut<'pool> {
-    _lock: StandaloneExclusiveFileLock,
-    pool: &'pool mut WorkingDirectoryPool,
+    pub(crate) _lock: StandaloneExclusiveFileLock,
+    pub(crate) pool: &'pool mut WorkingDirectoryPool,
 }
 
 impl<'pool> WorkingDirectoryPoolGuardMut<'pool> {
@@ -393,7 +393,7 @@ impl WorkingDirectoryPool {
         &'pool mut self,
         working_directory_id: WorkingDirectoryId,
         timestamp: &DateTimeWithOffset,
-        action: impl FnOnce(WorkingDirectoryWithPoolLockMut) -> Result<T>,
+        action: impl FnOnce(WorkingDirectoryWithPoolMut) -> Result<T>,
         benchmarking_job_parameters: Option<&BenchmarkingJobParameters>,
         context: &str,
         have_other_jobs_for_same_commit: Option<&dyn Fn() -> bool>,
@@ -421,7 +421,7 @@ impl WorkingDirectoryPool {
             benchmarking_job_parameters.map(BenchmarkingJobParameters::slow_hash)
         );
 
-        match action(wd) {
+        match action(guard.into_get_working_directory_mut(working_directory_id)) {
             Ok(v) => {
                 self.lock_mut()?
                     .get_working_directory_mut(working_directory_id)
@@ -522,6 +522,18 @@ impl<'pool> WorkingDirectoryPoolGuardMut<'pool> {
         Some(WorkingDirectoryWithPoolLockMut {
             wd: self.pool.all_entries.get_mut(&working_directory_id)?,
         })
+    }
+
+    /// Similar to `get_working_directory_mut` but transfer ownership
+    /// of the guard into the result.
+    pub fn into_get_working_directory_mut(
+        self,
+        working_directory_id: WorkingDirectoryId,
+    ) -> WorkingDirectoryWithPoolMut<'pool> {
+        WorkingDirectoryWithPoolMut {
+            guard: self,
+            working_directory_id,
+        }
     }
 
     /// Always gets a working directory, but doesn't check for any

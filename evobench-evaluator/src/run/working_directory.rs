@@ -4,6 +4,7 @@
 use std::{
     fmt::Display,
     fs::Permissions,
+    ops::Deref,
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
     time::{Duration, SystemTime},
@@ -21,7 +22,9 @@ use crate::{
     ctx, debug,
     git::GitHash,
     info,
-    run::working_directory_pool::WorkingDirectoryPoolGuard,
+    run::working_directory_pool::{
+        WorkingDirectoryId, WorkingDirectoryPoolGuard, WorkingDirectoryPoolGuardMut,
+    },
     serde::{date_and_time::DateTimeWithOffset, git_url::GitUrl},
 };
 
@@ -157,15 +160,51 @@ impl<'guard> WorkingDirectoryWithPoolLock<'guard> {
     }
 }
 
+/// Does not own the lock! See `WorkingDirectoryWithPoolMut` for that.
 pub struct WorkingDirectoryWithPoolLockMut<'guard> {
-    // Don't make it plain `pub` as then could be constructed without
-    // requiring going through the guard.
+    // Don't make the field plain `pub` as then this could be
+    // constructed without requiring going through the guard.
     pub(crate) wd: &'guard mut WorkingDirectory,
 }
 
-impl<'guard> WorkingDirectoryWithPoolLockMut<'guard> {
-    pub fn into_inner(self) -> &'guard mut WorkingDirectory {
+impl<'guard> Deref for WorkingDirectoryWithPoolLockMut<'guard> {
+    type Target = WorkingDirectory;
+
+    fn deref(&self) -> &Self::Target {
         self.wd
+    }
+}
+
+/// Owns the lock
+pub struct WorkingDirectoryWithPoolMut<'pool> {
+    pub(crate) guard: WorkingDirectoryPoolGuardMut<'pool>,
+    pub working_directory_id: WorkingDirectoryId,
+}
+
+impl<'pool> WorkingDirectoryWithPoolMut<'pool> {
+    /// Get the working directory; does the lookup at this time, hence
+    /// Option
+    pub fn get<'s>(&'s mut self) -> Option<WorkingDirectoryWithPoolLockMut<'s>> {
+        let Self {
+            guard,
+            working_directory_id,
+        } = self;
+        Some(WorkingDirectoryWithPoolLockMut {
+            wd: guard
+                .pool
+                .get_working_directory_mut(*working_directory_id)?,
+        })
+    }
+
+    /// Releases the lock. Retrieves the working directory at this
+    /// time, hence Option.
+    pub fn into_inner(self) -> Option<&'pool mut WorkingDirectory> {
+        let Self {
+            guard,
+            working_directory_id,
+        } = self;
+        let WorkingDirectoryPoolGuardMut { _lock, pool } = guard;
+        pool.get_working_directory_mut(working_directory_id)
     }
 }
 
