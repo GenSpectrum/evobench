@@ -13,7 +13,7 @@ use crate::{
     key::{BenchmarkingJobParameters, RunParameters},
     run::{
         command_log_file::{CommandLog, CommandLogFile, ParseCommandLogError},
-        run_job::AllowableCustomEnvVar,
+        env_vars::AllowableCustomEnvVar,
     },
     serde::{
         allowed_env_var::AllowedEnvVar, proper_dirname::ProperDirname,

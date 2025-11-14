@@ -16,6 +16,7 @@ use crate::{
     info,
     io_utils::{bash::bash_string_from_cmd, div::create_dir_if_not_exists},
     key::CustomParameters,
+    run::env_vars::AllowableCustomEnvVar,
     serde::{
         allowed_env_var::AllowedEnvVar,
         date_and_time::LocalNaiveTime,
@@ -33,8 +34,7 @@ use crate::{
 
 use super::{
     benchmarking_job::BenchmarkingJobSettingsOpts, custom_parameter::AllowedCustomParameter,
-    global_app_state_dir::GlobalAppStateDir, run_job::AllowableCustomEnvVar,
-    working_directory_pool::WorkingDirectoryPoolOpts,
+    global_app_state_dir::GlobalAppStateDir, working_directory_pool::WorkingDirectoryPoolOpts,
 };
 
 #[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]

@@ -2,6 +2,7 @@ pub mod benchmarking_job;
 pub mod command_log_file;
 pub mod config;
 pub mod custom_parameter;
+pub mod env_vars;
 pub mod global_app_state_dir;
 pub mod insert_jobs;
 pub mod migrate;

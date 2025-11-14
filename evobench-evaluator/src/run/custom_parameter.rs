@@ -3,11 +3,13 @@ use std::{ffi::OsStr, num::NonZeroU32, str::FromStr};
 use anyhow::{anyhow, bail, Result};
 use kstring::KString;
 
-use crate::serde::{
-    allowed_env_var::AllowEnvVar, proper_dirname::ProperDirname, proper_filename::ProperFilename,
+use crate::{
+    run::env_vars::AllowableCustomEnvVar,
+    serde::{
+        allowed_env_var::AllowEnvVar, proper_dirname::ProperDirname,
+        proper_filename::ProperFilename,
+    },
 };
-
-use super::run_job::AllowableCustomEnvVar;
 
 /// The value type of a custom parameter--those values are passed as
 /// environment variables and hence as strings, but they are parsed

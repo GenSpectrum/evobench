@@ -40,7 +40,7 @@ use crate::{
     run::{
         config::BenchmarkingCommand,
         custom_parameter::{AllowedCustomParameter, CustomParameterValue},
-        run_job::AllowableCustomEnvVar,
+        env_vars::AllowableCustomEnvVar,
     },
     serde::allowed_env_var::AllowedEnvVar,
 };
