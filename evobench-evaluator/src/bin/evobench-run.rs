@@ -67,7 +67,7 @@ use evobench_evaluator::{
 #[derive(clap::Parser, Debug)]
 #[clap(next_line_help = true)]
 #[clap(set_term_width = get_terminal_width(4))]
-/// Schedule (and query?) benchmarking jobs.
+/// Schedule and query benchmarking jobs.
 struct Opts {
     #[clap(flatten)]
     log_level: LogLevelOpt,
@@ -154,7 +154,8 @@ enum SubCommand {
         quiet_opt: QuietOpt,
     },
 
-    /// Insert jobs for new commits on configured branch names
+    /// Insert jobs for new commits on branch names configured in the
+    /// config option `remote_branch_names_for_poll`
     Poll {
         // No QuietOpt since that must be the default. Also, another
         // force option since the help text is different here.
