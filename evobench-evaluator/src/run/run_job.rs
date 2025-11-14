@@ -25,9 +25,10 @@ use crate::{
     key::{BenchmarkingJobParameters, RunParameters},
     path_util::rename_tmp_path,
     run::{
-        benchmarking_job::BenchmarkingJob, config::RunConfig, env_vars::assert_evobench_env_var,
-        output_directory_structure::KeyDir, post_process::compress_file_as,
-        run_queues::RunQueuesData, versioned_dataset_dir::VersionedDatasetDir,
+        benchmarking_job::BenchmarkingJob, config::RunConfig, dataset_dir_env_var::dataset_dir_for,
+        env_vars::assert_evobench_env_var, output_directory_structure::KeyDir,
+        post_process::compress_file_as, run_queues::RunQueuesData,
+        versioned_dataset_dir::VersionedDatasetDir,
     },
     serde::{date_and_time::DateTimeWithOffset, proper_dirname::ProperDirname},
     utillib::{
@@ -192,38 +193,16 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                     // Drop the lock on the pool
                     let working_directory = working_directory.into_inner().expect("not removed");
 
-                    let dataset_dir = {
-                        // Now find the matching
-                        // dataset if both the dataset name and base path
-                        // config values are provided
-                        let dataset_key = "DATASET".parse()?;
-                        if let Some(dataset_name) = custom_parameters.btree_map().get(&dataset_key)
-                        {
-                            // ^ XX hmm, check that the type of the custom env var
-                            // is a directory name?
-                            if let Some(versioned_datasets_base_dir) = self
-                                .job_runner
-                                .run_config
-                                .versioned_datasets_base_dir
-                                .as_ref()
-                            {
-                                let vdirlock =
-                                    self.job_runner.versioned_dataset_dir.updated_git_graph(
-                                        &working_directory.git_working_dir,
-                                        commit_id,
-                                    )?;
-
-                                Some(vdirlock.dataset_dir_for_commit(
-                                    versioned_datasets_base_dir,
-                                    dataset_name.as_str(),
-                                )?)
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
-                        }
-                    };
+                    let dataset_dir = dataset_dir_for(
+                        self.job_runner
+                            .run_config
+                            .versioned_datasets_base_dir
+                            .as_deref(),
+                        &custom_parameters,
+                        self.job_runner.versioned_dataset_dir,
+                        &working_directory.git_working_dir,
+                        commit_id,
+                    )?;
 
                     let BenchmarkingCommand {
                         target_name,
