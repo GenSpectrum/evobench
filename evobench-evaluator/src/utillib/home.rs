@@ -6,7 +6,7 @@ use lazy_static::lazy_static;
 pub enum HomeError {
     #[error(
         "path given in HOME environment variable does not point to \
-             an existing directory: {0:?}"
+         an existing directory: {0:?}"
     )]
     NotExist(PathBuf),
     #[error("HOME environment variable is not set")]
