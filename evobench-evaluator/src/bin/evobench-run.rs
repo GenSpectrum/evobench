@@ -1278,7 +1278,7 @@ fn run() -> Result<Option<PathBuf>> {
                                     let do_revert = unmark
                                         || ask_yn(&format!(
                                             "Should the working directory status be reverted to \
-                                         '{original_status}' (i.e. are you done)?"
+                                             '{original_status}' (i.e. are you done)?"
                                         ))?;
 
                                     if do_revert {
@@ -1293,6 +1293,8 @@ fn run() -> Result<Option<PathBuf>> {
                                     } else {
                                         println!("Leaving status as 'examination'");
                                     }
+                                } else {
+                                    // keep marked
                                 }
                             }
 
