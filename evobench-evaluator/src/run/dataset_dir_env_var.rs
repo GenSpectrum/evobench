@@ -1,9 +1,13 @@
 use std::path::{Path, PathBuf};
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use run_git::git::GitWorkingDir;
 
-use crate::{git::GitHash, key::CustomParameters, run::versioned_dataset_dir::VersionedDatasetDir};
+use crate::{
+    git::GitHash,
+    key::CustomParameters,
+    run::{custom_parameter::CustomParameterType, versioned_dataset_dir::VersionedDatasetDir},
+};
 
 macro_rules! try_ok {
     { $e:expr } =>  {
@@ -28,11 +32,15 @@ pub fn dataset_dir_for(
 ) -> Result<Option<PathBuf>> {
     let versioned_datasets_base_dir = try_ok!(versioned_datasets_base_dir);
 
+    let key = "DATASET";
     let dataset_name = try_ok!(custom_parameters
         .btree_map()
-        .get(&"DATASET".parse().expect("fits requirements")));
-    // ^ XX hmm, check that the type of the custom env var
-    // is a directory name?
+        .get(&key.parse().expect("fits requirements")));
+
+    let ty = dataset_name.r#type();
+    if ty != CustomParameterType::Dirname {
+        bail!("custom parameter {key:?} is expected to be a Dirname, but is defined as {ty:?}")
+    }
 
     let vdirlock = versioned_dataset_dir.updated_git_graph(git_working_dir, commit_id)?;
 

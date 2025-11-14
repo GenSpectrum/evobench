@@ -47,6 +47,10 @@ impl CustomParameterValue {
         &self.value
     }
 
+    pub fn r#type(&self) -> CustomParameterType {
+        self.r#type
+    }
+
     pub fn checked_from(r#type: CustomParameterType, value: &KString) -> Result<Self> {
         // Check:
         match r#type {
