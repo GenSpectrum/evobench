@@ -10,7 +10,6 @@ use std::{
     ffi::OsStr,
     fmt::Display,
     io::{stdout, IsTerminal, Write},
-    os::unix::process::ExitStatusExt,
     path::PathBuf,
     process::{exit, Command},
     str::FromStr,
@@ -60,6 +59,7 @@ use evobench_evaluator::{
         arc::CloneArc,
         logging::{set_log_level, LogLevelOpt},
         re_exec::re_exec_with_existing_args_and_env,
+        unix::ToExitCode,
     },
     warn,
 };
@@ -1296,16 +1296,7 @@ fn run() -> Result<Option<PathBuf>> {
                                 }
                             }
 
-                            // XX I do have this somewhere, right?
-                            let exitcode = if status.success() {
-                                0
-                            } else {
-                                status
-                                    .code()
-                                    .or_else(|| status.signal().map(|x| x + 128))
-                                    .unwrap_or(255)
-                            };
-                            std::process::exit(exitcode);
+                            std::process::exit(status.to_exit_code());
                         }
                     }
                 }
