@@ -7,6 +7,7 @@ use yansi::{Color, Style};
 
 use std::{
     borrow::Cow,
+    ffi::OsStr,
     fmt::Display,
     io::{stdout, IsTerminal, Write},
     os::unix::process::ExitStatusExt,
@@ -36,6 +37,7 @@ use evobench_evaluator::{
         },
         command_log_file::CommandLogFile,
         config::{BenchmarkingCommand, RunConfigWithReload},
+        dataset_dir_env_var::dataset_dir_for,
         global_app_state_dir::GlobalAppStateDir,
         insert_jobs::{insert_jobs, open_already_inserted, ForceOpt, QuietOpt},
         polling_pool::PollingPool,
@@ -1210,18 +1212,33 @@ fn run() -> Result<Option<PathBuf>> {
                                 arguments,
                             } = &*command;
 
-                            let commit_id = commit_id.to_string();
-
-                            let mut vars: Vec<(&str, &str)> = custom_parameters
+                            let mut vars: Vec<(&str, &OsStr)> = custom_parameters
                                 .btree_map()
                                 .iter()
-                                .map(|(k, v)| (k.as_str(), v.as_str()))
+                                .map(|(k, v)| (k.as_str(), v.as_ref()))
                                 .collect();
-                            vars.push(("COMMIT_ID", &commit_id));
+
+                            let commit_id_str = commit_id.to_string();
+                            vars.push(("COMMIT_ID", &commit_id_str.as_ref()));
+
+                            let versioned_dataset_dir = VersionedDatasetDir::new();
+                            let dataset_dir_;
+                            if let Some(dataset_dir) = dataset_dir_for(
+                                conf.versioned_datasets_base_dir.as_deref(),
+                                &custom_parameters,
+                                &versioned_dataset_dir,
+                                &working_directory.git_working_dir,
+                                &commit_id,
+                            )? {
+                                dataset_dir_ = dataset_dir;
+                                vars.push(("DATASET_DIR", &dataset_dir_.as_ref()));
+                            }
 
                             let exports = vars
                                 .iter()
-                                .map(|(k, v)| bash_export_variable_string(k, v, "  ", "\n"))
+                                .map(|(k, v)| {
+                                    bash_export_variable_string(k, &v.to_string_lossy(), "  ", "\n")
+                                })
                                 .join("");
 
                             let shell = std::env::var_os("SHELL").unwrap_or("bash".into());
