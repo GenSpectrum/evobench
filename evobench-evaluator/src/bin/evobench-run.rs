@@ -40,7 +40,7 @@ use evobench_evaluator::{
         insert_jobs::{insert_jobs, open_already_inserted, ForceOpt, QuietOpt},
         polling_pool::PollingPool,
         run_context::RunContext,
-        run_job::{DryRun, JobRunner},
+        run_job::JobRunner,
         run_queue::RunQueue,
         run_queues::RunQueues,
         versioned_dataset_dir::VersionedDatasetDir,
@@ -177,11 +177,6 @@ enum SubCommand {
     /// Run the existing jobs; this takes a lock or stops with an
     /// error if the lock is already taken
     Run {
-        /// Do not run the jobs, but still consume the queue
-        /// entries--XX partially removed, not working anymore?
-        #[clap(short, long, default_value = "DoAll")]
-        dry_run: DryRun,
-
         #[clap(subcommand)]
         mode: RunMode,
     },
@@ -325,7 +320,6 @@ fn run_queues(
     mut queues: RunQueues,
     working_directory_base_dir: WorkingDirectoryPoolBaseDir,
     mut working_directory_pool: WorkingDirectoryPool,
-    dry_run: DryRun,
     global_app_state_dir: &GlobalAppStateDir,
     once: bool,
     restart_on_upgrades: bool,
@@ -424,7 +418,6 @@ fn run_queues(
             JobRunner {
                 working_directory_pool: &mut working_directory_pool,
                 output_base_dir: &output_base_dir,
-                dry_run,
                 timestamp: DateTimeWithOffset::now(),
                 run_config,
                 versioned_dataset_dir: &versioned_dataset_dir,
@@ -986,7 +979,7 @@ fn run() -> Result<Option<PathBuf>> {
             }
         }
 
-        SubCommand::Run { dry_run, mode } => {
+        SubCommand::Run { mode } => {
             let run_lock_path = conf.run_jobs_lock_path(&global_app_state_dir);
             // Should StandaloneExclusiveFileLock have an option to
             // create itself?
@@ -1010,7 +1003,6 @@ fn run() -> Result<Option<PathBuf>> {
                         queues,
                         working_directory_base_dir,
                         working_directory_pool,
-                        dry_run,
                         &global_app_state_dir,
                         true,
                         false,
@@ -1036,7 +1028,6 @@ fn run() -> Result<Option<PathBuf>> {
                             queues,
                             working_directory_base_dir,
                             working_directory_pool,
-                            dry_run,
                             &global_app_state_dir,
                             false,
                             restart_on_upgrades,

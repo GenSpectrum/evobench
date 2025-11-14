@@ -13,7 +13,6 @@ use anyhow::{bail, Result};
 use chrono::{DateTime, Local};
 use nix::{unistd::getpid, unistd::getuid};
 use run_git::path_util::AppendToPath;
-use strum_macros::EnumString;
 
 use crate::{
     config_file::ron_to_string_pretty,
@@ -38,20 +37,6 @@ use super::{
     config::{BenchmarkingCommand, ScheduleCondition},
     working_directory_pool::{WorkingDirectoryId, WorkingDirectoryPool},
 };
-
-#[derive(Debug, EnumString, PartialEq, Clone, Copy)]
-#[repr(u8)]
-pub enum DryRun {
-    DoNothing,
-    DoWorkingDir,
-    DoAll,
-}
-
-impl DryRun {
-    fn means(self, done: Self) -> bool {
-        self as u8 <= done as u8
-    }
-}
 
 // I am tired
 fn get_username() -> Result<String> {
@@ -109,7 +94,6 @@ fn bench_tmp_dir() -> Result<PathBuf> {
 pub struct JobRunner<'pool> {
     pub working_directory_pool: &'pool mut WorkingDirectoryPool,
     pub output_base_dir: &'pool Path,
-    pub dry_run: DryRun,
     /// The timestamp for this run.
     pub timestamp: DateTimeWithOffset,
     // Separate lifetime?
@@ -166,10 +150,6 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
         // something else for logging?
         let benchmarking_job_parameters = self.job_data.job.benchmarking_job_parameters();
 
-        if self.job_runner.dry_run.means(DryRun::DoNothing) {
-            println!("dry-run: would run {benchmarking_job_parameters:?}");
-            return Ok(());
-        }
         let BenchmarkingJobParameters {
             run_parameters,
             command,
@@ -246,11 +226,6 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                             None
                         }
                     };
-
-                    if self.job_runner.dry_run.means(DryRun::DoWorkingDir) {
-                        println!("checked out working directory: {working_directory_id}");
-                        return Ok(None);
-                    }
 
                     let BenchmarkingCommand {
                         target_name,
