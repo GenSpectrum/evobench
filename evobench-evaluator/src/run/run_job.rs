@@ -30,18 +30,16 @@ use crate::{
         run_queues::RunQueuesData, versioned_dataset_dir::VersionedDatasetDir,
     },
     serde::{date_and_time::DateTimeWithOffset, proper_dirname::ProperDirname},
-    utillib::logging::{log_level, LogLevel},
+    utillib::{
+        logging::{log_level, LogLevel},
+        user::get_username,
+    },
 };
 
 use super::{
     config::{BenchmarkingCommand, ScheduleCondition},
     working_directory_pool::{WorkingDirectoryId, WorkingDirectoryPool},
 };
-
-// I am tired
-fn get_username() -> Result<String> {
-    std::env::var("USER").map_err(ctx!("can't get USER environment variable"))
-}
 
 /// Returns the path to a temporary directory, creating it if
 /// necessary and checking ownership if it already exists. The
