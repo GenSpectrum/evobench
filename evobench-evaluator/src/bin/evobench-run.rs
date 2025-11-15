@@ -1259,8 +1259,9 @@ fn run() -> Result<Option<PathBuf>> {
                                 "The following environment variables have been set:\n\n{exports}"
                             );
                             println!(
-                                "Please set `BENCH_OUTPUT_LOG` and optionally `EVOBENCH_LOG`, \
-                                 then run the following to execute the benchmarking:\n\n  {}\n",
+                                "To rerun the benchmarking, please set `BENCH_OUTPUT_LOG` \
+                                 and optionally `EVOBENCH_LOG` to some suitable paths, \
+                                 then run:\n\n  {}\n",
                                 bash_string_from_program_path_and_args(command, arguments)?
                             );
 
