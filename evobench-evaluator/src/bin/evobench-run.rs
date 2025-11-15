@@ -267,14 +267,14 @@ enum ExaminationAction {
     /// Mark the given working directories for examination, so that
     /// they are not deleted by `evobench-run wd cleanup`
     Mark {
-        /// Mark as 'error' status instead of 'examination'; use if
-        /// done with examination and want cronjob based auto-deletion
-        /// (via `evobench-run wd cleanup stale-for-days`) to take
-        /// care of it.
-        #[clap(long)]
-        error: bool,
-
         /// The IDs of the working direcories to mark
+        ids: Vec<WorkingDirectoryId>,
+    },
+    /// Change the status of the given working directories back to
+    /// "error", so that they are again deleted by `evobench-run wd
+    /// cleanup`
+    Unmark {
+        /// The IDs of the working direcories to unmark
         ids: Vec<WorkingDirectoryId>,
     },
     /// Mark the given working directory for examination, then open a
@@ -1166,14 +1166,16 @@ fn run() -> Result<Option<PathBuf>> {
                     };
 
                     match mode {
-                        ExaminationAction::Mark { error, ids } => {
-                            let wanted_status = if error {
-                                Status::Error
-                            } else {
-                                Status::Examination
-                            };
+                        ExaminationAction::Mark { ids } => {
                             for id in ids {
-                                if do_mark(wanted_status, id)?.is_none() {
+                                if do_mark(Status::Examination, id)?.is_none() {
+                                    warn!("there is no working directory for id {id}");
+                                }
+                            }
+                        }
+                        ExaminationAction::Unmark { ids } => {
+                            for id in ids {
+                                if do_mark(Status::Error, id)?.is_none() {
                                     warn!("there is no working directory for id {id}");
                                 }
                             }
