@@ -1279,7 +1279,9 @@ fn run() -> Result<Option<PathBuf>> {
                             let status = cmd.status()?;
 
                             if unmark || original_status != Status::Examination {
-                                if !mark {
+                                if mark {
+                                    // keep marked
+                                } else {
                                     let do_revert = unmark
                                         || ask_yn(&format!(
                                             "Should the working directory status be reverted to \
@@ -1303,8 +1305,6 @@ fn run() -> Result<Option<PathBuf>> {
                                     } else {
                                         println!("Leaving status as 'examination'");
                                     }
-                                } else {
-                                    // keep marked
                                 }
                             } else {
                                 if !mark {
