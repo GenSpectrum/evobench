@@ -254,16 +254,6 @@ enum WdSubCommand {
         #[clap(subcommand)]
         mode: WdSubCommandCleanupMode,
     },
-    /// Examine a working directory by entering it, or mark the
-    /// intention to do so in the future.
-    Examine {
-        #[clap(subcommand)]
-        mode: ExaminationAction,
-    },
-}
-
-#[derive(Debug, clap::Subcommand)]
-enum ExaminationAction {
     /// Open the log file for the last run in a working directory in
     /// the `PAGER` (or `less`)
     Log {
@@ -1060,6 +1050,36 @@ fn run() -> Result<Option<PathBuf>> {
                 conf.remote_repository.url.clone(),
                 true,
             )?;
+            // /COPYPASTE
+
+            let check_original_status = |original_status: Status| -> Result<()> {
+                if original_status.can_be_used_for_jobs() {
+                    bail!(
+                        "marking is meant for working directories in error status, \
+                         but this dir has status '{original_status}'"
+                    )
+                    // Also can't currently signal working dir status
+                    // changes to the running daemon, only Error and
+                    // Examination are safe as those are ignored by
+                    // the daemon
+                } else {
+                    Ok(())
+                }
+            };
+
+            let mut do_mark = |wanted_status: Status, id| -> Result<Option<Status>> {
+                let mut guard = working_directory_pool.lock_mut()?;
+                if let Some(mut wd) = guard.get_working_directory_mut(id) {
+                    let original_status = wd.working_directory_status.status;
+
+                    check_original_status(wd.working_directory_status.status)
+                        .map_err(ctx!("refusing working directory {id}"))?;
+                    wd.set_and_save_status(wanted_status)?;
+                    Ok(Some(original_status))
+                } else {
+                    Ok(None)
+                }
+            };
 
             match subcommand {
                 WdSubCommand::List {
@@ -1142,228 +1162,191 @@ fn run() -> Result<Option<PathBuf>> {
                         }
                     }
                 }
-                WdSubCommand::Examine { mode } => {
-                    let check_original_status = |original_status: Status| -> Result<()> {
-                        if original_status.can_be_used_for_jobs() {
-                            bail!(
-                                "marking is meant for working directories in error status, \
-                                 but this dir has status '{original_status}'"
-                            )
-                            // Also can't currently signal working dir
-                            // status changes to the running daemon,
-                            // only Error and Examination are safe as
-                            // those are ignored by the daemon
-                        } else {
-                            Ok(())
-                        }
+                WdSubCommand::Log { id } => {
+                    let no_exist = || anyhow!("there is no working directory for id {id}");
+                    let working_directory = working_directory_pool
+                        .get_working_directory(id)
+                        .ok_or_else(&no_exist)?;
+
+                    let (standard_log_path, _id) =
+                        working_directory.last_standard_log_path()?.ok_or_else(|| {
+                            anyhow!("could not find a log file for working directory {id}")
+                        })?;
+
+                    let pager = match std::env::var("PAGER") {
+                        Ok(s) => s,
+                        Err(e) => match e {
+                            std::env::VarError::NotPresent => "less".into(),
+                            _ => bail!("can't decode PAGER env var: {e}"),
+                        },
                     };
 
-                    let mut do_mark = |wanted_status: Status, id| -> Result<Option<Status>> {
-                        let mut guard = working_directory_pool.lock_mut()?;
-                        if let Some(mut wd) = guard.get_working_directory_mut(id) {
-                            let original_status = wd.working_directory_status.status;
-
-                            check_original_status(wd.working_directory_status.status)
-                                .map_err(ctx!("refusing working directory {id}"))?;
-                            wd.set_and_save_status(wanted_status)?;
-                            Ok(Some(original_status))
-                        } else {
-                            Ok(None)
-                        }
-                    };
-
-                    match mode {
-                        ExaminationAction::Log { id } => {
-                            let no_exist = || anyhow!("there is no working directory for id {id}");
-                            let working_directory = working_directory_pool
-                                .get_working_directory(id)
-                                .ok_or_else(&no_exist)?;
-
-                            let (standard_log_path, _id) =
-                                working_directory.last_standard_log_path()?.ok_or_else(|| {
-                                    anyhow!("could not find a log file for working directory {id}")
-                                })?;
-
-                            let pager = match std::env::var("PAGER") {
-                                Ok(s) => s,
-                                Err(e) => match e {
-                                    std::env::VarError::NotPresent => "less".into(),
-                                    _ => bail!("can't decode PAGER env var: {e}"),
-                                },
-                            };
-
-                            let mut cmd = Command::new(pager);
-                            cmd.arg(standard_log_path);
-                            exit(cmd.status()?.to_exit_code());
-                        }
-                        ExaminationAction::Mark { ids } => {
-                            for id in ids {
-                                if do_mark(Status::Examination, id)?.is_none() {
-                                    warn!("there is no working directory for id {id}");
-                                }
-                            }
-                        }
-                        ExaminationAction::Unmark { ids } => {
-                            for id in ids {
-                                if do_mark(Status::Error, id)?.is_none() {
-                                    warn!("there is no working directory for id {id}");
-                                }
-                            }
-                        }
-                        ExaminationAction::Enter { mark, unmark, id } => {
-                            if mark && unmark {
-                                bail!("please only give one of the --mark or --unmark options")
-                            }
-
-                            let no_exist = || anyhow!("there is no working directory for id {id}");
-                            let original_status =
-                                do_mark(Status::Examination, id)?.ok_or_else(&no_exist)?;
-
-                            let working_directory = working_directory_pool
-                                .get_working_directory(id)
-                                .ok_or_else(&no_exist)?;
-
-                            let (standard_log_path, _id) =
-                                working_directory.last_standard_log_path()?.ok_or_else(|| {
-                                    anyhow!("could not find a log file for working directory {id}")
-                                })?;
-
-                            let command_log_file = CommandLogFile::from(&standard_log_path);
-                            let command_log = command_log_file.command_log()?;
-
-                            let BenchmarkingJobParameters {
-                                run_parameters,
-                                command,
-                            } = command_log.parse_log_file_params()?;
-
-                            let RunParameters {
-                                commit_id,
-                                custom_parameters,
-                            } = &*run_parameters;
-
-                            let BenchmarkingCommand {
-                                target_name: _,
-                                subdir,
-                                command,
-                                arguments,
-                            } = &*command;
-
-                            let mut vars: Vec<(&str, &OsStr)> = custom_parameters
-                                .btree_map()
-                                .iter()
-                                .map(|(k, v)| (k.as_str(), v.as_ref()))
-                                .collect();
-
-                            let commit_id_str = commit_id.to_string();
-                            vars.push(("COMMIT_ID", &commit_id_str.as_ref()));
-
-                            let versioned_dataset_dir = VersionedDatasetDir::new();
-                            let dataset_dir_;
-                            if let Some(dataset_dir) = dataset_dir_for(
-                                conf.versioned_datasets_base_dir.as_deref(),
-                                &custom_parameters,
-                                &versioned_dataset_dir,
-                                &working_directory.git_working_dir,
-                                &commit_id,
-                            )? {
-                                dataset_dir_ = dataset_dir;
-                                vars.push(("DATASET_DIR", &dataset_dir_.as_ref()));
-                            }
-
-                            let exports = vars
-                                .iter()
-                                .map(|(k, v)| {
-                                    bash_export_variable_string(k, &v.to_string_lossy(), "  ", "\n")
-                                })
-                                .join("");
-
-                            let shell = std::env::var_os("SHELL").unwrap_or("bash".into());
-
-                            // -- Print explanations ----
-
-                            println!(
-                                "The log file from this job execution is:\n\
-                                 {standard_log_path:?}\n"
-                            );
-
-                            if shell != "bash" && shell != "/bin/bash" {
-                                println!(
-                                    "Note: SHELL is set to {shell:?}, but the following syntax \
-                                     is for bash.\n"
-                                );
-                            }
-
-                            println!(
-                                "The following environment variables have been set:\n\n{exports}"
-                            );
-
-                            println!(
-                                "To rerun the benchmarking, please set `BENCH_OUTPUT_LOG` \
-                                 and optionally `EVOBENCH_LOG` to some suitable paths, \
-                                 then run:\n\n  {}\n",
-                                bash_string_from_program_path_and_args(command, arguments)?
-                            );
-
-                            let actual_commit =
-                                working_directory.git_working_dir.get_head_commit_id()?;
-                            if commit_id_str != actual_commit {
-                                println!(
-                                    "*** WARNING: the checked-out commit in this directory \
-                                     does not match the commit id for the job! ***\n"
-                                );
-                            }
-
-                            // Enter dir without any locking (other
-                            // than dir being in Status::Examination
-                            // now), OK?
-
-                            let mut cmd = Command::new(&shell);
-                            cmd.envs(vars);
-                            cmd.current_dir(
-                                working_directory
-                                    .git_working_dir
-                                    .working_dir_path_ref()
-                                    .append(subdir),
-                            );
-                            let status = cmd.status()?;
-
-                            if unmark || original_status != Status::Examination {
-                                if mark {
-                                    // keep marked
-                                } else {
-                                    let do_revert = unmark
-                                        || ask_yn(&format!(
-                                            "Should the working directory status be reverted to \
-                                             '{original_status}' (i.e. are you done)?"
-                                        ))?;
-
-                                    if do_revert {
-                                        let mut wd = working_directory_pool
-                                            .lock_mut()?
-                                            .into_get_working_directory_mut(id);
-                                        let mut working_directory = wd.get().ok_or_else(|| {
-                                            anyhow!("there is no working directory for id {id}")
-                                        })?;
-                                        let wanted_status = Status::Error;
-                                        assert!(
-                                            original_status == wanted_status
-                                                || original_status == Status::Examination
-                                        );
-                                        working_directory.set_and_save_status(wanted_status)?;
-                                        println!("Changed status to '{wanted_status}'");
-                                    } else {
-                                        println!("Leaving status at 'examination'");
-                                    }
-                                }
-                            } else {
-                                if !mark {
-                                    println!("Leaving working directory status at 'examination'");
-                                }
-                            }
-
-                            exit(status.to_exit_code());
+                    let mut cmd = Command::new(pager);
+                    cmd.arg(standard_log_path);
+                    exit(cmd.status()?.to_exit_code());
+                }
+                WdSubCommand::Mark { ids } => {
+                    for id in ids {
+                        if do_mark(Status::Examination, id)?.is_none() {
+                            warn!("there is no working directory for id {id}");
                         }
                     }
+                }
+                WdSubCommand::Unmark { ids } => {
+                    for id in ids {
+                        if do_mark(Status::Error, id)?.is_none() {
+                            warn!("there is no working directory for id {id}");
+                        }
+                    }
+                }
+                WdSubCommand::Enter { mark, unmark, id } => {
+                    if mark && unmark {
+                        bail!("please only give one of the --mark or --unmark options")
+                    }
+
+                    let no_exist = || anyhow!("there is no working directory for id {id}");
+                    let original_status =
+                        do_mark(Status::Examination, id)?.ok_or_else(&no_exist)?;
+
+                    let working_directory = working_directory_pool
+                        .get_working_directory(id)
+                        .ok_or_else(&no_exist)?;
+
+                    let (standard_log_path, _id) =
+                        working_directory.last_standard_log_path()?.ok_or_else(|| {
+                            anyhow!("could not find a log file for working directory {id}")
+                        })?;
+
+                    let command_log_file = CommandLogFile::from(&standard_log_path);
+                    let command_log = command_log_file.command_log()?;
+
+                    let BenchmarkingJobParameters {
+                        run_parameters,
+                        command,
+                    } = command_log.parse_log_file_params()?;
+
+                    let RunParameters {
+                        commit_id,
+                        custom_parameters,
+                    } = &*run_parameters;
+
+                    let BenchmarkingCommand {
+                        target_name: _,
+                        subdir,
+                        command,
+                        arguments,
+                    } = &*command;
+
+                    let mut vars: Vec<(&str, &OsStr)> = custom_parameters
+                        .btree_map()
+                        .iter()
+                        .map(|(k, v)| (k.as_str(), v.as_ref()))
+                        .collect();
+
+                    let commit_id_str = commit_id.to_string();
+                    vars.push(("COMMIT_ID", &commit_id_str.as_ref()));
+
+                    let versioned_dataset_dir = VersionedDatasetDir::new();
+                    let dataset_dir_;
+                    if let Some(dataset_dir) = dataset_dir_for(
+                        conf.versioned_datasets_base_dir.as_deref(),
+                        &custom_parameters,
+                        &versioned_dataset_dir,
+                        &working_directory.git_working_dir,
+                        &commit_id,
+                    )? {
+                        dataset_dir_ = dataset_dir;
+                        vars.push(("DATASET_DIR", &dataset_dir_.as_ref()));
+                    }
+
+                    let exports = vars
+                        .iter()
+                        .map(|(k, v)| {
+                            bash_export_variable_string(k, &v.to_string_lossy(), "  ", "\n")
+                        })
+                        .join("");
+
+                    let shell = std::env::var_os("SHELL").unwrap_or("bash".into());
+
+                    // -- Print explanations ----
+
+                    println!(
+                        "The log file from this job execution is:\n\
+                                 {standard_log_path:?}\n"
+                    );
+
+                    if shell != "bash" && shell != "/bin/bash" {
+                        println!(
+                            "Note: SHELL is set to {shell:?}, but the following syntax \
+                             is for bash.\n"
+                        );
+                    }
+
+                    println!("The following environment variables have been set:\n\n{exports}");
+
+                    println!(
+                        "To rerun the benchmarking, please set `BENCH_OUTPUT_LOG` \
+                         and optionally `EVOBENCH_LOG` to some suitable paths, \
+                         then run:\n\n  {}\n",
+                        bash_string_from_program_path_and_args(command, arguments)?
+                    );
+
+                    let actual_commit = working_directory.git_working_dir.get_head_commit_id()?;
+                    if commit_id_str != actual_commit {
+                        println!(
+                            "*** WARNING: the checked-out commit in this directory \
+                             does not match the commit id for the job! ***\n"
+                        );
+                    }
+
+                    // Enter dir without any locking (other than dir
+                    // being in Status::Examination now), OK?
+
+                    let mut cmd = Command::new(&shell);
+                    cmd.envs(vars);
+                    cmd.current_dir(
+                        working_directory
+                            .git_working_dir
+                            .working_dir_path_ref()
+                            .append(subdir),
+                    );
+                    let status = cmd.status()?;
+
+                    if unmark || original_status != Status::Examination {
+                        if mark {
+                            // keep marked
+                        } else {
+                            let do_revert = unmark
+                                || ask_yn(&format!(
+                                    "Should the working directory status be reverted to \
+                                     '{original_status}' (i.e. are you done)?"
+                                ))?;
+
+                            if do_revert {
+                                let mut wd = working_directory_pool
+                                    .lock_mut()?
+                                    .into_get_working_directory_mut(id);
+                                let mut working_directory = wd.get().ok_or_else(|| {
+                                    anyhow!("there is no working directory for id {id}")
+                                })?;
+                                let wanted_status = Status::Error;
+                                assert!(
+                                    original_status == wanted_status
+                                        || original_status == Status::Examination
+                                );
+                                working_directory.set_and_save_status(wanted_status)?;
+                                println!("Changed status to '{wanted_status}'");
+                            } else {
+                                println!("Leaving status at 'examination'");
+                            }
+                        }
+                    } else {
+                        if !mark {
+                            println!("Leaving working directory status at 'examination'");
+                        }
+                    }
+
+                    exit(status.to_exit_code());
                 }
             }
         }
