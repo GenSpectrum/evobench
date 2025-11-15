@@ -287,7 +287,7 @@ enum ExaminationAction {
         mark: bool,
 
         /// Unmark the working directory after exiting the shell
-        /// without asking
+        /// (without asking, and even if the directory was marked)
         #[clap(long)]
         unmark: bool,
 
@@ -1278,7 +1278,7 @@ fn run() -> Result<Option<PathBuf>> {
                             );
                             let status = cmd.status()?;
 
-                            if original_status != Status::Examination {
+                            if unmark || original_status != Status::Examination {
                                 if !mark {
                                     let do_revert = unmark
                                         || ask_yn(&format!(
@@ -1293,8 +1293,13 @@ fn run() -> Result<Option<PathBuf>> {
                                         let mut working_directory = wd.get().ok_or_else(|| {
                                             anyhow!("there is no working directory for id {id}")
                                         })?;
-                                        working_directory.set_and_save_status(original_status)?;
-                                        println!("Changed status back to '{original_status}'");
+                                        let wanted_status = Status::Error;
+                                        assert!(
+                                            original_status == wanted_status
+                                                || original_status == Status::Examination
+                                        );
+                                        working_directory.set_and_save_status(wanted_status)?;
+                                        println!("Changed status to '{wanted_status}'");
                                     } else {
                                         println!("Leaving status as 'examination'");
                                     }
