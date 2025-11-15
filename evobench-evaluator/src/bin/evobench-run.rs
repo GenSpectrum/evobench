@@ -1151,6 +1151,20 @@ fn run() -> Result<Option<PathBuf>> {
                         }
                     };
 
+                    let mut do_mark = |wanted_status: Status, id| -> Result<Option<Status>> {
+                        let mut guard = working_directory_pool.lock_mut()?;
+                        if let Some(mut wd) = guard.get_working_directory_mut(id) {
+                            let original_status = wd.working_directory_status.status;
+
+                            check_original_status(wd.working_directory_status.status)
+                                .map_err(ctx!("refusing working directory {id}"))?;
+                            wd.set_and_save_status(wanted_status)?;
+                            Ok(Some(original_status))
+                        } else {
+                            Ok(None)
+                        }
+                    };
+
                     match mode {
                         ExaminationAction::Mark { error, ids } => {
                             let wanted_status = if error {
@@ -1159,13 +1173,8 @@ fn run() -> Result<Option<PathBuf>> {
                                 Status::Examination
                             };
                             for id in ids {
-                                let mut guard = working_directory_pool.lock_mut()?;
-                                if let Some(mut wd) = guard.get_working_directory_mut(id) {
-                                    check_original_status(wd.working_directory_status.status)
-                                        .map_err(ctx!("refusing working directory {id}"))?;
-                                    wd.set_and_save_status(wanted_status)?;
-                                } else {
-                                    warn!("there is no working directory for id {id}")
+                                if do_mark(wanted_status, id)?.is_none() {
+                                    warn!("there is no working directory for id {id}");
                                 }
                             }
                         }
@@ -1174,19 +1183,13 @@ fn run() -> Result<Option<PathBuf>> {
                                 bail!("please only give one of the --mark or --unmark options")
                             }
 
-                            let mut wd = working_directory_pool
-                                .lock_mut()?
-                                .into_get_working_directory_mut(id);
-                            let mut working_directory = wd.get().ok_or_else(|| {
-                                anyhow!("there is no working directory for id {id}")
-                            })?;
+                            let no_exist = || anyhow!("there is no working directory for id {id}");
+                            let original_status =
+                                do_mark(Status::Examination, id)?.ok_or_else(&no_exist)?;
 
-                            let original_status = working_directory.working_directory_status.status;
-                            check_original_status(original_status)
-                                .map_err(ctx!("refusing working directory {id}"))?;
-
-                            working_directory.set_and_save_status(Status::Examination)?;
-                            let working_directory = wd.into_inner().expect("still there");
+                            let working_directory = working_directory_pool
+                                .get_working_directory(id)
+                                .ok_or_else(&no_exist)?;
 
                             let (path, _id) =
                                 working_directory.last_standard_log_path()?.ok_or_else(|| {
