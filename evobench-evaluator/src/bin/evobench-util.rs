@@ -66,7 +66,8 @@ enum SubCommand {
         /// variables that are provided. NOTE: does not verify correct
         /// syntax of the variable names and values (currently no
         /// configuration is read, thus the info is not available)
-        /// except for the basic acceptance for custom env var names.
+        /// except for the basic acceptance rules for custom env var
+        /// names.
         #[clap(long, short)]
         params: Option<String>,
 
