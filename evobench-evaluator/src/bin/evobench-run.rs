@@ -264,6 +264,13 @@ enum WdSubCommand {
 
 #[derive(Debug, clap::Subcommand)]
 enum ExaminationAction {
+    /// Open the log file for the last run in a working directory in
+    /// the `PAGER` (or `less`)
+    Log {
+        /// The ID of the working direcory for which to show the last
+        /// log file
+        id: WorkingDirectoryId,
+    },
     /// Mark the given working directories for examination, so that
     /// they are not deleted by `evobench-run wd cleanup`
     Mark {
@@ -1166,6 +1173,29 @@ fn run() -> Result<Option<PathBuf>> {
                     };
 
                     match mode {
+                        ExaminationAction::Log { id } => {
+                            let no_exist = || anyhow!("there is no working directory for id {id}");
+                            let working_directory = working_directory_pool
+                                .get_working_directory(id)
+                                .ok_or_else(&no_exist)?;
+
+                            let (standard_log_path, _id) =
+                                working_directory.last_standard_log_path()?.ok_or_else(|| {
+                                    anyhow!("could not find a log file for working directory {id}")
+                                })?;
+
+                            let pager = match std::env::var("PAGER") {
+                                Ok(s) => s,
+                                Err(e) => match e {
+                                    std::env::VarError::NotPresent => "less".into(),
+                                    _ => bail!("can't decode PAGER env var: {e}"),
+                                },
+                            };
+
+                            let mut cmd = Command::new(pager);
+                            cmd.arg(standard_log_path);
+                            exit(cmd.status()?.to_exit_code());
+                        }
                         ExaminationAction::Mark { ids } => {
                             for id in ids {
                                 if do_mark(Status::Examination, id)?.is_none() {
@@ -1331,7 +1361,7 @@ fn run() -> Result<Option<PathBuf>> {
                                 }
                             }
 
-                            std::process::exit(status.to_exit_code());
+                            exit(status.to_exit_code());
                         }
                     }
                 }
