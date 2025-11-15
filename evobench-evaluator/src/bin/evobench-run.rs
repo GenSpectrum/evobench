@@ -241,6 +241,10 @@ enum WdSubCommand {
         /// Show the working directories that have been set aside due to errors
         #[clap(long)]
         error: bool,
+
+        /// Sort the list by the `last_used` timestamp
+        #[clap(short, long)]
+        sort_used: bool,
     },
     /// Delete working directories that have been set aside due to
     /// errors
@@ -1086,6 +1090,7 @@ fn run() -> Result<Option<PathBuf>> {
                     terminal_table_opts,
                     active,
                     error,
+                    sort_used,
                 } => {
                     let titles = &["id", "status", "num_runs", "creation_timestamp", "last_use"]
                         .map(|s| TerminalTableTitle {
@@ -1101,7 +1106,13 @@ fn run() -> Result<Option<PathBuf>> {
                         stdout().lock(),
                     )?;
 
-                    for (id, wd) in working_directory_pool.all_entries() {
+                    let mut all_entries: Vec<_> = working_directory_pool.all_entries().collect();
+
+                    if sort_used {
+                        all_entries.sort_by(|a, b| a.1.last_use.cmp(&b.1.last_use))
+                    }
+
+                    for (id, wd) in &all_entries {
                         let WorkingDirectoryStatus {
                             creation_timestamp,
                             num_runs,
