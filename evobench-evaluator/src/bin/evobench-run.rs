@@ -1063,8 +1063,8 @@ fn run() -> Result<Option<PathBuf>> {
             let check_original_status = |original_status: Status| -> Result<()> {
                 if original_status.can_be_used_for_jobs() {
                     bail!(
-                        "marking is meant for working directories in error status, \
-                         but this dir has status '{original_status}'"
+                        "this action is only for working directories in error status, \
+                         but this directory has status '{original_status}'"
                     )
                     // Also can't currently signal working dir status
                     // changes to the running daemon, only Error and
