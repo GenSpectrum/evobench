@@ -235,7 +235,7 @@ impl WorkingDirectory {
     /// Originally thought `id` is a pool matter only, but now need it
     /// to filter for standard_log paths. Leaving id as string,
     /// though.)
-    fn parent_path_and_id(&self) -> Result<(&Path, &str)> {
+    pub fn parent_path_and_id(&self) -> Result<(&Path, &str)> {
         let p = self.git_working_dir.working_dir_path_ref();
         let parent = p
             .parent()
