@@ -1192,6 +1192,8 @@ fn run() -> Result<Option<PathBuf>> {
                         .get_working_directory(id)
                         .ok_or_else(&no_exist)?;
 
+                    check_original_status(working_directory.working_directory_status.status)?;
+
                     let (standard_log_path, _id) =
                         working_directory.last_standard_log_path()?.ok_or_else(|| {
                             anyhow!("could not find a log file for working directory {id}")
