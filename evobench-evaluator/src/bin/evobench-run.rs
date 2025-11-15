@@ -1193,12 +1193,12 @@ fn run() -> Result<Option<PathBuf>> {
                                 .get_working_directory(id)
                                 .ok_or_else(&no_exist)?;
 
-                            let (path, _id) =
+                            let (standard_log_path, _id) =
                                 working_directory.last_standard_log_path()?.ok_or_else(|| {
                                     anyhow!("could not find a log file for working directory {id}")
                                 })?;
 
-                            let command_log_file = CommandLogFile::from(&path);
+                            let command_log_file = CommandLogFile::from(&standard_log_path);
                             let command_log = command_log_file.command_log()?;
 
                             let BenchmarkingJobParameters {
@@ -1248,6 +1248,14 @@ fn run() -> Result<Option<PathBuf>> {
                                 .join("");
 
                             let shell = std::env::var_os("SHELL").unwrap_or("bash".into());
+
+                            // -- Print explanations ----
+
+                            println!(
+                                "The log file from this job execution is:\n\
+                                 {standard_log_path:?}\n"
+                            );
+
                             if shell != "bash" && shell != "/bin/bash" {
                                 println!(
                                     "Note: SHELL is set to {shell:?}, but the following syntax \
@@ -1258,6 +1266,7 @@ fn run() -> Result<Option<PathBuf>> {
                             println!(
                                 "The following environment variables have been set:\n\n{exports}"
                             );
+
                             println!(
                                 "To rerun the benchmarking, please set `BENCH_OUTPUT_LOG` \
                                  and optionally `EVOBENCH_LOG` to some suitable paths, \
