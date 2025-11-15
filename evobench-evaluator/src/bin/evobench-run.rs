@@ -1312,12 +1312,12 @@ fn run() -> Result<Option<PathBuf>> {
                                         working_directory.set_and_save_status(wanted_status)?;
                                         println!("Changed status to '{wanted_status}'");
                                     } else {
-                                        println!("Leaving status as 'examination'");
+                                        println!("Leaving status at 'examination'");
                                     }
                                 }
                             } else {
                                 if !mark {
-                                    println!("Leaving working directory status as 'examination'");
+                                    println!("Leaving working directory status at 'examination'");
                                 }
                             }
 
