@@ -1264,6 +1264,15 @@ fn run() -> Result<Option<PathBuf>> {
                                 bash_string_from_program_path_and_args(command, arguments)?
                             );
 
+                            let actual_commit =
+                                working_directory.git_working_dir.get_head_commit_id()?;
+                            if commit_id_str != actual_commit {
+                                println!(
+                                    "*** WARNING: the checked-out commit in this directory \
+                                     does not match the commit id for the job! ***\n"
+                                );
+                            }
+
                             // Enter dir without any locking (other
                             // than dir being in Status::Examination
                             // now), OK?
