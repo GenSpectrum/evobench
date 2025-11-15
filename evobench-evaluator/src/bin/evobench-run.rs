@@ -249,6 +249,10 @@ enum WdSubCommand {
     /// Delete working directories that have been set aside due to
     /// errors
     Cleanup {
+        /// Do not actually delete, just show the directories
+        #[clap(long)]
+        dry_run: bool,
+
         /// Show the list of ids of working directories that were
         /// deleted
         #[clap(short, long)]
@@ -1140,7 +1144,11 @@ fn run() -> Result<Option<PathBuf>> {
 
                     let _ = table.finish()?;
                 }
-                WdSubCommand::Cleanup { verbose, mode } => {
+                WdSubCommand::Cleanup {
+                    dry_run,
+                    verbose,
+                    mode,
+                } => {
                     let stale_days = match mode {
                         WdSubCommandCleanupMode::All => 0,
                         WdSubCommandCleanupMode::StaleForDays { n } => n,
@@ -1165,11 +1173,15 @@ fn run() -> Result<Option<PathBuf>> {
                     {
                         let mut lock = working_directory_pool.lock_mut()?;
                         for id in cleanup_ids {
-                            // XX Note: can this fail if a concurrent
-                            // instance deletes it in the mean time?
-                            lock.delete_working_directory(id)?;
-                            if verbose {
-                                println!("{id}");
+                            if dry_run {
+                                println!("would delete working directory {id}");
+                            } else {
+                                // XX Note: can this fail if a concurrent
+                                // instance deletes it in the mean time?
+                                lock.delete_working_directory(id)?;
+                                if verbose {
+                                    println!("{id}");
+                                }
                             }
                         }
                     }
