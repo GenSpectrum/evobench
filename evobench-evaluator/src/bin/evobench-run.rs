@@ -1175,14 +1175,14 @@ fn run() -> Result<Option<PathBuf>> {
                         let mut lock = working_directory_pool.lock_mut()?;
                         for id in cleanup_ids {
                             if dry_run {
-                                println!("would delete working directory {id}");
+                                eprintln!("would delete working directory {id}");
                             } else {
                                 // XX Note: can this fail if a concurrent
                                 // instance deletes it in the mean time?
                                 lock.delete_working_directory(id)?;
-                                if verbose {
-                                    println!("{id}");
-                                }
+                            }
+                            if verbose {
+                                println!("{id}");
                             }
                         }
                     }
