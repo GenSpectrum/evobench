@@ -1306,6 +1306,10 @@ fn run() -> Result<Option<PathBuf>> {
                                 } else {
                                     // keep marked
                                 }
+                            } else {
+                                if !mark {
+                                    println!("Leaving working directory status as 'examination'");
+                                }
                             }
 
                             std::process::exit(status.to_exit_code());
