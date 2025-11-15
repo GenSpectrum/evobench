@@ -1150,9 +1150,10 @@ fn run() -> Result<Option<PathBuf>> {
                     let now = SystemTime::now();
 
                     let mut cleanup_ids = Vec::new();
-                    for (id, wd) in working_directory_pool.all_entries().filter(|(_, wd)| {
-                        !wd.working_directory_status.status.can_be_used_for_jobs()
-                    }) {
+                    for (id, wd) in working_directory_pool
+                        .all_entries()
+                        .filter(|(_, wd)| wd.working_directory_status.status == Status::Error)
+                    {
                         let d = now.duration_since(wd.last_use).map_err(ctx!(
                             "calculating time since last use of working directory {id}"
                         ))?;
