@@ -70,10 +70,10 @@ enum SubCommand {
         #[clap(long, short)]
         params: Option<String>,
 
-        /// The regex to match a log lie that starts a timed region
+        /// The regex to match a log line that starts a timed region
         regex_start: String,
 
-        /// The regex to match a log lie that ends a timed region
+        /// The regex to match a log line that ends a timed region
         regex_end: String,
 
         /// Override the path to the config file (default: the paths
