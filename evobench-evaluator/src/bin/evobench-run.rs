@@ -313,7 +313,7 @@ enum WdSubCommandCleanupMode {
     /// days ago
     StaleForDays {
         /// Number of days
-        n: u16,
+        x: f32,
     },
 }
 
@@ -1166,10 +1166,17 @@ fn run() -> Result<Option<PathBuf>> {
                     mode,
                 } => {
                     let stale_days = match mode {
-                        WdSubCommandCleanupMode::All => 0,
-                        WdSubCommandCleanupMode::StaleForDays { n } => n,
+                        WdSubCommandCleanupMode::All => 0.,
+                        WdSubCommandCleanupMode::StaleForDays { x } => x,
                     };
-                    let stale_seconds = u64::from(stale_days) * 24 * 3600;
+                    if stale_days < 0. {
+                        bail!("number of days must be non-negative");
+                    }
+                    if stale_days > 1000. || stale_days.is_nan() {
+                        bail!("number of days must be reasonable");
+                    }
+
+                    let stale_seconds = (stale_days * 24. * 3600.) as u64;
 
                     let now = SystemTime::now();
 
