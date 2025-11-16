@@ -1314,7 +1314,7 @@ fn run() -> Result<Option<PathBuf>> {
 
                     println!(
                         "The log file from this job execution is:\n\
-                                 {standard_log_path:?}\n"
+                         {standard_log_path:?}\n"
                     );
 
                     if shell != "bash" && shell != "/bin/bash" {
