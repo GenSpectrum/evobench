@@ -312,7 +312,7 @@ enum WdSubCommandCleanupMode {
     /// Delete those that were set aside at least the given number of
     /// days ago
     StaleForDays {
-        /// Number of days
+        /// Number of days (can be a floating point value)
         x: f32,
     },
 }
