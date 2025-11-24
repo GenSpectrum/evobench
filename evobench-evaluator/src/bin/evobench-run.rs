@@ -1081,12 +1081,15 @@ fn run() -> Result<Option<PathBuf>> {
             )?;
             // /COPYPASTE
 
-            let check_original_status = |wd: &WorkingDirectory| -> Result<Status> {
+            let check_original_status = |wd: &WorkingDirectory,
+                                         allow_access: bool,
+                                         allowed_statuses: &str|
+             -> Result<Status> {
                 let status = wd.working_directory_status.status;
-                if status.can_be_used_for_jobs() {
+                if status.can_be_used_for_jobs() && !allow_access {
                     bail!(
-                        "this action is only for working directories in error status, \
-                         but directory {} has status '{}'",
+                        "this action is only for working directories in {allowed_statuses} \
+                         status, but directory {} has status '{}'",
                         wd.parent_path_and_id()?.1,
                         status
                     )
@@ -1102,7 +1105,7 @@ fn run() -> Result<Option<PathBuf>> {
             let mut do_mark = |wanted_status: Status, id| -> Result<Option<Status>> {
                 let mut guard = working_directory_pool.lock_mut()?;
                 if let Some(mut wd) = guard.get_working_directory_mut(id) {
-                    let original_status = check_original_status(&*wd)
+                    let original_status = check_original_status(&*wd, false, "error/examination")
                         .map_err(ctx!("refusing working directory {id}"))?;
                     wd.set_and_save_status(wanted_status)?;
                     Ok(Some(original_status))
@@ -1270,7 +1273,7 @@ fn run() -> Result<Option<PathBuf>> {
                         .get_working_directory(id)
                         .ok_or_else(&no_exist)?;
 
-                    check_original_status(working_directory)?;
+                    check_original_status(working_directory, true, "non-finished")?;
 
                     let (standard_log_path, _id) =
                         working_directory.last_standard_log_path()?.ok_or_else(|| {
