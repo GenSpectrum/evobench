@@ -161,6 +161,7 @@ impl WorkingDirectoryPoolBaseDir {
     }
 }
 
+#[derive(Debug)]
 pub struct WorkingDirectoryPool {
     opts: Arc<WorkingDirectoryPoolOpts>,
     remote_repository_url: GitUrl,
@@ -311,6 +312,7 @@ impl WorkingDirectoryPool {
                 ))?;
 
         drop(guard);
+
         slf.all_entries = all_entries;
 
         info!(
@@ -319,6 +321,7 @@ impl WorkingDirectoryPool {
             slf.active_len(),
             slf.capacity()
         );
+        debug!("{slf:#?}");
 
         Ok(slf)
     }
@@ -552,6 +555,7 @@ impl<'pool> WorkingDirectoryPoolGuardMut<'pool> {
     /// capacity left for a new one!
     fn get_new(&mut self) -> Result<WorkingDirectoryId> {
         let id = self.next_id();
+        debug!("get_new: using {id:?}");
         let dir = WorkingDirectory::clone_repo(
             self.pool.base_dir().path(),
             &id.to_directory_file_name(),

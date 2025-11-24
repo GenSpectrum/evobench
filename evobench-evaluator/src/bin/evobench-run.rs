@@ -367,6 +367,7 @@ fn run_queues(
             working_directory_id = pool.get_first()?;
             pool.clear_current_working_directory()?;
         }
+        debug!("Got working directory {working_directory_id:?}");
         let ((), token) = working_directory_pool.process_in_working_directory(
             working_directory_id,
             &DateTimeWithOffset::now(),
