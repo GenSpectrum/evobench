@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use chrono::{DateTime, Local};
 use clap::Parser;
 use itertools::Itertools;
@@ -10,6 +10,7 @@ use std::{
     ffi::OsStr,
     fmt::Display,
     io::{stdout, IsTerminal, Write},
+    os::unix::process::CommandExt,
     path::PathBuf,
     process::{exit, Command},
     str::FromStr,
@@ -1288,9 +1289,9 @@ fn run() -> Result<Option<PathBuf>> {
                         },
                     };
 
-                    let mut cmd = Command::new(pager);
+                    let mut cmd = Command::new(&pager);
                     cmd.arg(standard_log_path);
-                    exit(cmd.status()?.to_exit_code());
+                    return Err(cmd.exec()).with_context(|| anyhow!("executing pager {pager:?}"));
                 }
                 WdSubCommand::Mark { ids } => {
                     for id in ids {
