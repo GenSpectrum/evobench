@@ -266,6 +266,22 @@ enum WdSubCommand {
         #[clap(subcommand)]
         mode: WdSubCommandCleanupMode,
     },
+    /// *Immediately* delete working directories
+    Delete {
+        /// Do not actually delete, just show the directory paths
+        #[clap(long)]
+        dry_run: bool,
+
+        /// Show the list of ids of working directories that were
+        /// deleted
+        #[clap(short, long)]
+        verbose: bool,
+
+        /// Which of the working directories in error status to
+        /// immediately delete. Refuses directories with different
+        /// status than `error`.
+        ids: Vec<WorkingDirectoryId>,
+    },
     /// Open the log file for the last run in a working directory in
     /// the `PAGER` (or `less`)
     Log {
@@ -1206,6 +1222,44 @@ fn run() -> Result<Option<PathBuf>> {
                             }
                             if verbose {
                                 println!("{id}");
+                            }
+                        }
+                    }
+                }
+                WdSubCommand::Delete {
+                    dry_run,
+                    verbose,
+                    ids,
+                } => {
+                    {
+                        let mut lock = working_directory_pool.lock_mut()?;
+                        for id in ids {
+                            let wd = lock
+                                .get_working_directory_mut(id)
+                                .ok_or_else(|| anyhow!("working directory {id} does not exist"))?;
+                            let status = wd.working_directory_status.status;
+                            if status != Status::Error {
+                                let tip = if status == Status::Examination {
+                                    "; please first use the `unmark` action to move it \
+                                     out of examination"
+                                } else {
+                                    ""
+                                };
+                                bail!(
+                                    "working directory {id} is not in `error`, but `{status}` \
+                                     status{tip}"
+                                );
+                            }
+                            if dry_run {
+                                let path = wd.git_working_dir.working_dir_path_ref();
+                                eprintln!("would delete working directory at {path:?}");
+                            } else {
+                                // XX Note: can this fail if a concurrent
+                                // instance deletes it in the mean time?
+                                lock.delete_working_directory(id)?;
+                                if verbose {
+                                    println!("{id}");
+                                }
                             }
                         }
                     }
