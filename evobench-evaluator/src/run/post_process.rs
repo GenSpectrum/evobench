@@ -152,7 +152,9 @@ impl RunDir {
             evobench_evaluator(&vec![
                 "single".into(),
                 evobench_log_path.into(),
-                "--show-thread-number".into(),
+                // "--show-thread-number".into(), -- Disabled due now
+                // having to many short-lived threads in SILO. TODO:
+                // make configurable?
                 "--excel".into(),
                 self.append_str("single.xlsx")?.into(),
             ])?;
