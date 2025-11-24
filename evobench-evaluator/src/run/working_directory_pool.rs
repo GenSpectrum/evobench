@@ -304,7 +304,7 @@ impl WorkingDirectoryPool {
                         Ok(Some((id, wd)))
                     },
                 )
-                .filter_map(|r| r.transpose())
+                .filter_map(Result::transpose)
                 .collect::<Result<_>>()
                 .map_err(ctx!(
                     "reading contents of working pool directory {base_dir:?}"
