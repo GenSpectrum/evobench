@@ -255,7 +255,8 @@ impl WorkingDirectoryPool {
 
         // To tell WorkingDirectory::open that we do have the lock we
         // need to make a guard, and for that we need a slf already,
-        // thus make it early with a fale `all_entries` entry.
+        // thus make it early with false `all_entries` and `next_id`
+        // entries.
         let mut slf = Self {
             opts,
             remote_repository_url,
@@ -314,6 +315,7 @@ impl WorkingDirectoryPool {
         drop(guard);
 
         slf.all_entries = all_entries;
+        slf.next_id = next_id;
 
         info!(
             "opened directory pool {:?} with next_id {next_id}, len {}/{}",
