@@ -2,15 +2,17 @@ use anyhow::{anyhow, bail, Context, Result};
 use chrono::{DateTime, Local};
 use clap::Parser;
 use itertools::Itertools;
+use lazy_static::lazy_static;
 use run_git::{git::GitWorkingDir, path_util::AppendToPath};
 use yansi::{Color, Style};
 
 use std::{
     borrow::Cow,
+    env,
     ffi::OsStr,
     fmt::Display,
     io::{stdout, IsTerminal, Write},
-    os::unix::process::CommandExt,
+    os::unix::{ffi::OsStrExt, process::CommandExt},
     path::PathBuf,
     process::{exit, Command},
     str::FromStr,
@@ -64,6 +66,20 @@ use evobench_evaluator::{
     },
     warn,
 };
+
+fn unicode_is_fine() -> bool {
+    (|| -> Option<bool> {
+        let term = env::var_os("TERM")?;
+        let lang = env::var_os("LANG")?;
+        let lang = lang.to_str()?;
+        Some(term.as_bytes() == b"xterm" && lang.contains("UTF-8"))
+    })()
+    .unwrap_or(false)
+}
+
+lazy_static! {
+    static ref UNICODE_IS_FINE: bool = unicode_is_fine();
+}
 
 #[derive(clap::Parser, Debug)]
 #[clap(next_line_help = true)]
@@ -864,8 +880,11 @@ fn run() -> Result<Option<PathBuf>> {
 
             let width = get_terminal_width(1);
             let bar_of = |c: &str| c.repeat(width);
-            let thin_bar = bar_of("-");
-            let thick_bar = bar_of("=");
+            let (thin_bar, thick_bar) = if *UNICODE_IS_FINE {
+                (bar_of("─"), bar_of("═"))
+            } else {
+                (bar_of("-"), bar_of("="))
+            };
 
             for (i, run_queue) in queues.pipeline().iter().enumerate() {
                 println!("{thin_bar}");
