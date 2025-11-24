@@ -528,7 +528,7 @@ impl<'pool> WorkingDirectoryPoolGuardMut<'pool> {
     }
 
     /// Similar to `get_working_directory_mut` but transfer ownership
-    /// of the guard into the result.
+    /// of the guard into the result (does *not* unlock!).
     pub fn into_get_working_directory_mut(
         self,
         working_directory_id: WorkingDirectoryId,
