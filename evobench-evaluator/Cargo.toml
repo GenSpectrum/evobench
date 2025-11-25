@@ -57,3 +57,4 @@ walkdir = "2"
 os_info = "=3.7"
 
 regex = "1.7"
+memmap2 = "0.9.4"
