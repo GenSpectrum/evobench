@@ -667,7 +667,7 @@ fn run() -> Result<Option<PathBuf>> {
                 let insertion_time_width = if verbose { 82 } else { 37 };
                 TerminalTable::start(
                     // t                    R pr WD reason commit target
-                    &[insertion_time_width, 3, 6, 3, 25, 42, TARGET_NAME_WIDTH],
+                    &[insertion_time_width, 3, 6, 4, 25, 42, TARGET_NAME_WIDTH],
                     titles,
                     style,
                     terminal_table_opts.clone(),
@@ -829,12 +829,12 @@ fn run() -> Result<Option<PathBuf>> {
                         let priority = &*job.priority()?.to_string();
                         let wd = if is_locked {
                             opt_current_working_directory
-                                .map(|v| v.to_number_string())
+                                .map(|v| v.to_string())
                                 .unwrap_or_else(|| "".into())
                         } else {
                             job.benchmarking_job_state
                                 .last_working_directory
-                                .map(|v| v.to_number_string())
+                                .map(|v| v.to_string())
                                 .unwrap_or_else(|| "".into())
                         };
                         let target_name = job.benchmarking_job_public.command.target_name.as_str();
@@ -1182,7 +1182,7 @@ fn run() -> Result<Option<PathBuf>> {
                             if let Some(table) = &mut table {
                                 table.write_data_row(
                                     &[
-                                        id.to_number_string(),
+                                        id.to_string(),
                                         status.to_string(),
                                         num_runs.to_string(),
                                         creation_timestamp.to_string(),

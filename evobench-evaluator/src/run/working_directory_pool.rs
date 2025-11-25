@@ -81,17 +81,21 @@ pub struct WorkingDirectoryCleanupToken {
 // `prohibiting_cleanup` methods, see git history.
 
 impl WorkingDirectoryId {
-    pub fn to_number_string(self) -> String {
+    fn to_number_string(self) -> String {
         format!("{}", self.0)
     }
     pub fn to_directory_file_name(self) -> String {
         self.to_number_string()
     }
+    pub fn from_prefixless_str(s: &str) -> Result<Self> {
+        let id = s.parse()?;
+        Ok(Self(id))
+    }
 }
 
 impl Display for WorkingDirectoryId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
+        write!(f, "D{}", self.0)
     }
 }
 
@@ -99,7 +103,11 @@ impl FromStr for WorkingDirectoryId {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        let id = s.parse()?;
+        let number = s
+            .strip_prefix("D")
+            .or_else(|| s.strip_prefix("d"))
+            .ok_or_else(|| anyhow!("missing 'D' at beginning of working directory ID"))?;
+        let id = number.parse()?;
         Ok(Self(id))
     }
 }
@@ -140,7 +148,7 @@ impl WorkingDirectoryPoolBaseDir {
                 let s = val
                     .to_str()
                     .ok_or_else(|| anyhow!("missing symlink target in {path:?}"))?;
-                let id = WorkingDirectoryId::from_str(s)?;
+                let id = WorkingDirectoryId::from_prefixless_str(s)?;
                 Ok(Some(id))
             }
             Err(e) => match e.kind() {
