@@ -9,6 +9,7 @@ use std::{
 use anyhow::{anyhow, bail, Context, Result};
 use chrono::{DateTime, Local};
 use kstring::KString;
+use run_git::path_util::AppendToPath;
 
 use crate::{
     config_file::{ron_to_string_pretty, ConfigFile, DefaultConfigPath},
@@ -554,7 +555,6 @@ pub struct RunConfig {
 }
 
 impl RunConfig {
-    // (XX is this really the only such method that does the default dance?)
     pub fn run_jobs_instance_path(
         &self,
         global_app_state_dir: &GlobalAppStateDir,
@@ -564,6 +564,14 @@ impl RunConfig {
         } else {
             global_app_state_dir.default_run_jobs_instance_path()
         }
+    }
+
+    pub fn working_directory_change_signals_path(
+        &self,
+        global_app_state_dir: &GlobalAppStateDir,
+    ) -> Result<PathBuf> {
+        self.run_jobs_instance_path(global_app_state_dir)
+            .map(|p| p.append("working_directory_change.signals"))
     }
 }
 

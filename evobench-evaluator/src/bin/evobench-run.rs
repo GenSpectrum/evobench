@@ -33,12 +33,13 @@ use evobench_evaluator::{
     key::{BenchmarkingJobParameters, RunParameters, RunParametersOpts},
     key_val_fs::key_val::Entry,
     lockable_file::{LockStatus, StandaloneExclusiveFileLock},
+    polling_signals::PollingSignals,
     run::{
         benchmarking_job::{
             BenchmarkingJobOpts, BenchmarkingJobReasonOpt, BenchmarkingJobSettingsOpts,
         },
         command_log_file::CommandLogFile,
-        config::{BenchmarkingCommand, RunConfigWithReload},
+        config::{BenchmarkingCommand, RunConfig, RunConfigWithReload},
         dataset_dir_env_var::dataset_dir_for,
         global_app_state_dir::GlobalAppStateDir,
         insert_jobs::{insert_jobs, open_already_inserted, ForceOpt, QuietOpt},
@@ -350,6 +351,18 @@ enum WdSubCommandCleanupMode {
     },
 }
 
+fn open_working_directory_pool(
+    conf: &RunConfig,
+    working_directory_base_dir: WorkingDirectoryPoolBaseDir,
+) -> Result<WorkingDirectoryPool> {
+    WorkingDirectoryPool::open(
+        conf.working_directory_pool.clone_arc(),
+        working_directory_base_dir,
+        conf.remote_repository.url.clone(),
+        true,
+    )
+}
+
 enum RunResult {
     OnceResult(bool),
     NeedReExec(PathBuf),
@@ -384,6 +397,7 @@ fn run_queues(
     } else {
         None
     };
+
     let mut run_context = RunContext::default();
     let mut last_config_reload_error = None;
     let versioned_dataset_dir = VersionedDatasetDir::new();
@@ -452,6 +466,12 @@ fn run_queues(
         working_directory_pool.working_directory_cleanup(token)?;
     }
 
+    let signals_path = config_with_reload
+        .run_config
+        .working_directory_change_signals_path(global_app_state_dir)?;
+    let mut working_directory_change_signals = PollingSignals::open(&signals_path)
+        .map_err(ctx!("opening signals path {signals_path:?}"))?;
+
     loop {
         // XX handle errors without exiting? Or do that above
 
@@ -496,6 +516,14 @@ fn run_queues(
             }
         }
 
+        // Do we need to re-initialize the working directory pool?
+        if working_directory_change_signals.get_number_of_signals() > 0 {
+            info!("the working directory pool was updated outside the app, reload it");
+            let conf = &config_with_reload.run_config;
+            working_directory_pool =
+                open_working_directory_pool(conf, working_directory_base_dir.clone())?;
+        }
+
         match config_with_reload.perhaps_reload_config(config_path.as_ref()) {
             Ok(Some(new_config_with_reload)) => {
                 last_config_reload_error = None;
@@ -507,12 +535,8 @@ fn run_queues(
                 let conf = &config_with_reload.run_config;
                 // XX handle errors without exiting? Or do that above
                 queues = RunQueues::open(conf.queues.clone_arc(), true, &global_app_state_dir)?;
-                working_directory_pool = WorkingDirectoryPool::open(
-                    conf.working_directory_pool.clone_arc(),
-                    working_directory_base_dir.clone(),
-                    conf.remote_repository.url.clone(),
-                    true,
-                )?;
+                working_directory_pool =
+                    open_working_directory_pool(conf, working_directory_base_dir.clone())?;
             }
             Ok(None) => {
                 last_config_reload_error = None;
@@ -1037,12 +1061,8 @@ fn run() -> Result<Option<PathBuf>> {
                 "getting the global lock for running jobs".into()
             })?;
 
-            let working_directory_pool = WorkingDirectoryPool::open(
-                conf.working_directory_pool.clone_arc(),
-                working_directory_base_dir.clone(),
-                conf.remote_repository.url.clone(),
-                true,
-            )?;
+            let working_directory_pool =
+                open_working_directory_pool(conf, working_directory_base_dir.clone())?;
 
             match mode {
                 RunMode::One { false_if_none } => {
@@ -1092,14 +1112,8 @@ fn run() -> Result<Option<PathBuf>> {
         }
 
         SubCommand::Wd { subcommand } => {
-            // XX COPYPASTE
-            let mut working_directory_pool = WorkingDirectoryPool::open(
-                conf.working_directory_pool.clone_arc(),
-                working_directory_base_dir.clone(),
-                conf.remote_repository.url.clone(),
-                true,
-            )?;
-            // /COPYPASTE
+            let mut working_directory_pool =
+                open_working_directory_pool(conf, working_directory_base_dir.clone())?;
 
             let check_original_status = |wd: &WorkingDirectory,
                                          allow_access: bool,
