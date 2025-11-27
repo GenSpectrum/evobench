@@ -290,6 +290,10 @@ enum WdSubCommand {
         #[clap(long)]
         dry_run: bool,
 
+        /// Delete directories even if they are not in "error" status
+        #[clap(short, long)]
+        force: bool,
+
         /// Show the list of ids of working directories that were
         /// deleted
         #[clap(short, long)]
@@ -297,7 +301,7 @@ enum WdSubCommand {
 
         /// Which of the working directories in error status to
         /// immediately delete. Refuses directories with different
-        /// status than `error`.
+        /// status than `error` unless `--force` was given.
         ids: Vec<WorkingDirectoryId>,
     },
     /// Open the log file for the last run in a working directory in
@@ -361,6 +365,14 @@ fn open_working_directory_pool(
         conf.remote_repository.url.clone(),
         true,
     )
+}
+
+fn open_polling_signals(
+    conf: &RunConfig,
+    global_app_state_dir: &GlobalAppStateDir,
+) -> Result<PollingSignals> {
+    let signals_path = conf.working_directory_change_signals_path(global_app_state_dir)?;
+    PollingSignals::open(&signals_path).map_err(ctx!("opening signals path {signals_path:?}"))
 }
 
 enum RunResult {
@@ -466,11 +478,8 @@ fn run_queues(
         working_directory_pool.working_directory_cleanup(token)?;
     }
 
-    let signals_path = config_with_reload
-        .run_config
-        .working_directory_change_signals_path(global_app_state_dir)?;
-    let mut working_directory_change_signals = PollingSignals::open(&signals_path)
-        .map_err(ctx!("opening signals path {signals_path:?}"))?;
+    let mut working_directory_change_signals =
+        open_polling_signals(&config_with_reload.run_config, global_app_state_dir)?;
 
     loop {
         // XX handle errors without exiting? Or do that above
@@ -1265,38 +1274,49 @@ fn run() -> Result<Option<PathBuf>> {
                 }
                 WdSubCommand::Delete {
                     dry_run,
+                    force,
                     verbose,
                     ids,
                 } => {
-                    {
-                        let mut lock = working_directory_pool.lock_mut()?;
-                        for id in ids {
-                            let wd = lock
-                                .get_working_directory_mut(id)
-                                .ok_or_else(|| anyhow!("working directory {id} does not exist"))?;
-                            let status = wd.working_directory_status.status;
+                    let global_app_state_dir = GlobalAppStateDir::new()?;
+                    let mut working_directory_change_signals = open_polling_signals(
+                        &config_with_reload.run_config,
+                        &global_app_state_dir,
+                    )?;
+
+                    let mut lock = working_directory_pool.lock_mut()?;
+                    for id in ids {
+                        let wd = lock
+                            .get_working_directory_mut(id)
+                            .ok_or_else(|| anyhow!("working directory {id} does not exist"))?;
+                        let status = wd.working_directory_status.status;
+                        if !force {
                             if status != Status::Error {
                                 let tip = if status == Status::Examination {
                                     "; please first use the `unmark` action to move it \
                                      out of examination"
                                 } else {
-                                    ""
+                                    "; use the `--force` option if you're sure"
                                 };
                                 bail!(
                                     "working directory {id} is not in `error`, but `{status}` \
                                      status{tip}"
                                 );
                             }
-                            if dry_run {
-                                let path = wd.git_working_dir.working_dir_path_ref();
-                                eprintln!("would delete working directory at {path:?}");
-                            } else {
-                                // XX Note: can this fail if a concurrent
-                                // instance deletes it in the mean time?
-                                lock.delete_working_directory(id)?;
-                                if verbose {
-                                    println!("{id}");
-                                }
+                        }
+                        if dry_run {
+                            let path = wd.git_working_dir.working_dir_path_ref();
+                            eprintln!("would delete working directory at {path:?}");
+                        } else {
+                            if status.can_be_used_for_jobs() {
+                                working_directory_change_signals.send_signal();
+                            }
+
+                            // XX Note: can this fail if a concurrent
+                            // instance deletes it in the mean time?
+                            lock.delete_working_directory(id)?;
+                            if verbose {
+                                println!("{id}");
                             }
                         }
                     }
