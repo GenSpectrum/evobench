@@ -1029,7 +1029,7 @@ fn run() -> Result<Option<PathBuf>> {
         }
 
         SubCommand::Run { mode } => {
-            let run_lock_path = conf.run_jobs_lock_path(&global_app_state_dir);
+            let run_lock_path = conf.run_jobs_instance_path(&global_app_state_dir)?;
             // Should StandaloneExclusiveFileLock have an option to
             // create itself?
             let _ = std::fs::write(&run_lock_path, "");

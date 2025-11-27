@@ -33,8 +33,14 @@ impl GlobalAppStateDir {
         Ok(dir)
     }
 
-    pub fn default_run_jobs_lock_path(&self) -> PathBuf {
-        (&self.base_dir).append("run_jobs.lock")
+    /// Directory used for:
+    ///
+    ///  * ensuring via flock on the directory that only one runner
+    ///    instance is running,
+    ///  * holding additional files specific for
+    ///    that instance, e.g. `PollingSignals` files
+    pub fn default_run_jobs_instance_path(&self) -> Result<PathBuf> {
+        self.subdir("run_jobs_instance")
     }
 
     pub fn run_queues_basedir(&self) -> Result<PathBuf> {

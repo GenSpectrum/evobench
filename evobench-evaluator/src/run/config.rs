@@ -468,10 +468,11 @@ impl JobTemplateOpts {
 pub struct RunConfigOpts {
     pub queues: Arc<QueuesConfig>,
 
-    /// The path to a file which commands running jobs (`evobench-run
-    /// run ...`) lock (with error when taken). By default,
-    /// `~/.evobench-run/run_jobs.lock`.
-    pub run_jobs_lock_path: Option<Arc<TildePath<PathBuf>>>,
+    /// The path to the directory that job runners (`evobench-run run
+    /// ...`) lock (with error when taken), and for additional files
+    /// specific for that instance. By default,
+    /// `~/.evobench-run/run_jobs_instance`.
+    pub run_jobs_instance_path: Option<Arc<TildePath<PathBuf>>>,
 
     pub working_directory_pool: Arc<WorkingDirectoryPoolOpts>,
 
@@ -540,7 +541,7 @@ impl DefaultConfigPath for RunConfigOpts {
 /// Checked, produced from `RunConfigOpts`, for docs see there.
 pub struct RunConfig {
     pub queues: Arc<QueuesConfig>,
-    run_jobs_lock_path: Option<PathBuf>,
+    run_jobs_instance_path: Option<PathBuf>,
     pub working_directory_pool: Arc<WorkingDirectoryPoolOpts>,
     // targets: BTreeMap<ProperDirname, Arc<BenchmarkingTarget>>,
     pub job_template_lists: BTreeMap<KString, Arc<[JobTemplate]>>,
@@ -554,11 +555,14 @@ pub struct RunConfig {
 
 impl RunConfig {
     // (XX is this really the only such method that does the default dance?)
-    pub fn run_jobs_lock_path(&self, global_app_state_dir: &GlobalAppStateDir) -> PathBuf {
-        if let Some(path) = &self.run_jobs_lock_path {
-            path.into()
+    pub fn run_jobs_instance_path(
+        &self,
+        global_app_state_dir: &GlobalAppStateDir,
+    ) -> Result<PathBuf> {
+        if let Some(path) = &self.run_jobs_instance_path {
+            Ok(path.into())
         } else {
-            global_app_state_dir.default_run_jobs_lock_path()
+            global_app_state_dir.default_run_jobs_instance_path()
         }
     }
 }
@@ -568,7 +572,7 @@ impl RunConfigOpts {
     pub fn check(&self) -> Result<RunConfig> {
         let RunConfigOpts {
             queues,
-            run_jobs_lock_path,
+            run_jobs_instance_path,
             working_directory_pool,
             targets,
             job_template_lists,
@@ -627,7 +631,7 @@ impl RunConfigOpts {
 
         Ok(RunConfig {
             queues: queues.clone_arc(),
-            run_jobs_lock_path: run_jobs_lock_path
+            run_jobs_instance_path: run_jobs_instance_path
                 .as_ref()
                 .map(|p| p.resolve())
                 .transpose()?
