@@ -157,6 +157,14 @@ impl<'guard> WorkingDirectoryWithPoolLock<'guard> {
     }
 }
 
+impl<'guard> Deref for WorkingDirectoryWithPoolLock<'guard> {
+    type Target = WorkingDirectory;
+
+    fn deref(&self) -> &Self::Target {
+        self.wd
+    }
+}
+
 /// Does not own the lock! See `WorkingDirectoryWithPoolMut` for that.
 pub struct WorkingDirectoryWithPoolLockMut<'guard> {
     // Don't make the field plain `pub` as then this could be

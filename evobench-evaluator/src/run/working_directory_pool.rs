@@ -139,34 +139,6 @@ impl WorkingDirectoryPoolBaseDir {
     fn current_working_directory_symlink_path(&self) -> PathBuf {
         (&self.base_dir).append("current")
     }
-
-    /// Read the working directory from symlink, if present
-    pub fn get_current_working_directory(&self) -> Result<Option<WorkingDirectoryId>> {
-        let path = self.current_working_directory_symlink_path();
-        match std::fs::read_link(&path) {
-            Ok(val) => {
-                let s = val
-                    .to_str()
-                    .ok_or_else(|| anyhow!("missing symlink target in {path:?}"))?;
-                let id = WorkingDirectoryId::from_prefixless_str(s)?;
-                Ok(Some(id))
-            }
-            Err(e) => match e.kind() {
-                std::io::ErrorKind::NotFound => Ok(None),
-                _ => Err(e).map_err(ctx!("reading symlink {path:?}")),
-            },
-        }
-    }
-
-    pub fn get_working_directory_status(
-        &self,
-        id: WorkingDirectoryId,
-    ) -> Result<WorkingDirectoryStatus> {
-        let path = self.path().append(id.to_directory_file_name());
-        // XX partial copy paste from WorkingDirectory::open (ok not too much though)
-        let status_path = WorkingDirectory::status_path_from_working_dir_path(&path)?;
-        load_ron_file(&status_path)
-    }
 }
 
 #[derive(Debug)]
@@ -202,7 +174,9 @@ pub struct WorkingDirectoryPoolGuardMut<'pool> {
 }
 
 impl<'pool> WorkingDirectoryPoolGuardMut<'pool> {
-    fn to_non_mut<'s: 'pool>(&'s self) -> WorkingDirectoryPoolGuard<'pool> {
+    /// The mut guard can also do shared operations; XX todo: just
+    /// Deref, ah, would be double use of deref?
+    pub fn shared<'s: 'pool>(&'s self) -> WorkingDirectoryPoolGuard<'pool> {
         WorkingDirectoryPoolGuard {
             _lock: None,
             pool: self.pool,
@@ -527,6 +501,38 @@ impl<'pool> WorkingDirectoryPoolGuard<'pool> {
             wd: self.pool.all_entries.get(&working_directory_id)?,
         })
     }
+
+    /// Read the working directory from symlink, if present
+    pub fn get_current_working_directory(&self) -> Result<Option<WorkingDirectoryId>> {
+        let path = self.pool.base_dir.current_working_directory_symlink_path();
+        match std::fs::read_link(&path) {
+            Ok(val) => {
+                let s = val
+                    .to_str()
+                    .ok_or_else(|| anyhow!("missing symlink target in {path:?}"))?;
+                let id = WorkingDirectoryId::from_prefixless_str(s)?;
+                Ok(Some(id))
+            }
+            Err(e) => match e.kind() {
+                std::io::ErrorKind::NotFound => Ok(None),
+                _ => Err(e).map_err(ctx!("reading symlink {path:?}")),
+            },
+        }
+    }
+
+    pub fn get_working_directory_status(
+        &self,
+        id: WorkingDirectoryId,
+    ) -> Result<WorkingDirectoryStatus> {
+        let path = self
+            .pool
+            .base_dir
+            .path()
+            .append(id.to_directory_file_name());
+        // XX partial copy paste from WorkingDirectory::open (ok not too much though)
+        let status_path = WorkingDirectory::status_path_from_working_dir_path(&path)?;
+        load_ron_file(&status_path)
+    }
 }
 
 impl<'pool> WorkingDirectoryPoolGuardMut<'pool> {
@@ -570,7 +576,7 @@ impl<'pool> WorkingDirectoryPoolGuardMut<'pool> {
             self.pool.base_dir().path(),
             &id.to_directory_file_name(),
             self.pool.git_url(),
-            &self.to_non_mut(),
+            &self.shared(),
         )?;
         self.pool.all_entries.insert(id, dir);
         Ok(id)

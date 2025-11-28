@@ -807,6 +807,14 @@ fn run() -> Result<Option<PathBuf>> {
                     } else {
                         shown_sorted_keys = &all_sorted_keys;
                     }
+
+                    let pool = WorkingDirectoryPool::open(
+                        conf.working_directory_pool.clone_arc(),
+                        working_directory_base_dir.clone(),
+                        conf.remote_repository.url.clone(),
+                        false,
+                    )?;
+
                     for entry in queue.resolve_entries(shown_sorted_keys.into()) {
                         let mut entry = entry?;
                         let file_name = get_filename(&entry)?;
@@ -822,8 +830,10 @@ fn run() -> Result<Option<PathBuf>> {
                         } else {
                             ""
                         };
-                        let opt_current_working_directory =
-                            working_directory_base_dir.get_current_working_directory()?;
+                        let opt_current_working_directory = {
+                            let lock = pool.lock()?;
+                            lock.get_current_working_directory()?
+                        };
                         let custom_parameters = &*job
                             .benchmarking_job_public
                             .run_parameters
@@ -838,8 +848,10 @@ fn run() -> Result<Option<PathBuf>> {
                                 .lock_status()?;
                             if lock_status == LockStatus::ExclusiveLock {
                                 let s = if let Some(dir) = opt_current_working_directory {
-                                    let status = working_directory_base_dir
-                                        .get_working_directory_status(dir)?;
+                                    let status = {
+                                        let lock = pool.lock()?;
+                                        lock.get_working_directory_status(dir)?
+                                    };
                                     match status.status {
                                         // CheckedOut wasn't planned
                                         // to happen, but now happens
@@ -1284,10 +1296,11 @@ fn run() -> Result<Option<PathBuf>> {
                         &global_app_state_dir,
                     )?;
 
-                    let mut lock = working_directory_pool.lock_mut()?;
+                    let mut lock_mut = working_directory_pool.lock_mut()?;
                     for id in ids {
+                        let lock = lock_mut.shared();
                         let wd = lock
-                            .get_working_directory_mut(id)
+                            .get_working_directory(id)
                             .ok_or_else(|| anyhow!("working directory {id} does not exist"))?;
                         let status = wd.working_directory_status.status;
                         if !force {
@@ -1314,7 +1327,7 @@ fn run() -> Result<Option<PathBuf>> {
 
                             // XX Note: can this fail if a concurrent
                             // instance deletes it in the mean time?
-                            lock.delete_working_directory(id)?;
+                            lock_mut.delete_working_directory(id)?;
                             if verbose {
                                 println!("{id}");
                             }
