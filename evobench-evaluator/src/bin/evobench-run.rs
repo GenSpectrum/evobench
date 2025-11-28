@@ -1297,13 +1297,34 @@ fn run() -> Result<Option<PathBuf>> {
                     )?;
 
                     let mut lock_mut = working_directory_pool.lock_mut()?;
+                    let opt_current_wd_id = lock_mut.shared().get_current_working_directory()?;
                     for id in ids {
                         let lock = lock_mut.shared();
                         let wd = lock
                             .get_working_directory(id)
                             .ok_or_else(|| anyhow!("working directory {id} does not exist"))?;
                         let status = wd.working_directory_status.status;
-                        if !force {
+                        if force {
+                            if Some(id) == opt_current_wd_id {
+                                // XX add abstraction for this
+                                let status_is_in_use = match status {
+                                    Status::CheckedOut => true, // XX might change
+                                    Status::Processing => true,
+                                    Status::Error => false,
+                                    Status::Finished => false,
+                                    Status::Examination => false,
+                                };
+                                if status_is_in_use {
+                                    // XX todo: check if daemon is
+                                    // running via flock, add
+                                    // abstraction for it.
+                                    bail!(
+                                        "working directory {id} is in use (iff the daemon is \
+                                         running, todo check)"
+                                    );
+                                }
+                            }
+                        } else {
                             if status != Status::Error {
                                 let tip = if status == Status::Examination {
                                     "; please first use the `unmark` action to move it \
