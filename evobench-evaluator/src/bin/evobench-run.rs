@@ -747,6 +747,23 @@ fn run() -> Result<Option<PathBuf>> {
             }
 
             let now = SystemTime::now();
+
+            let pool = WorkingDirectoryPool::open(
+                conf.working_directory_pool.clone_arc(),
+                working_directory_base_dir.clone(),
+                conf.remote_repository.url.clone(),
+                false,
+            )?;
+
+            // Not kept in sync with what happens during for loop; but
+            // then it is really about the status stored inside
+            // `pool`, thus that doesn't even matter!
+            let opt_current_working_directory = {
+                let lock =
+                    pool.lock("evobench-run SubCommand::List for get_current_working_directory")?;
+                lock.read_current_working_directory()?
+            };
+
             let show_queue =
                 |i: &str, run_queue: &RunQueue, is_extra_queue: bool, out| -> Result<_> {
                     let RunQueue {
@@ -807,24 +824,6 @@ fn run() -> Result<Option<PathBuf>> {
                     } else {
                         shown_sorted_keys = &all_sorted_keys;
                     }
-
-                    let pool = WorkingDirectoryPool::open(
-                        conf.working_directory_pool.clone_arc(),
-                        working_directory_base_dir.clone(),
-                        conf.remote_repository.url.clone(),
-                        false,
-                    )?;
-
-                    // Not kept in sync with what happens during for
-                    // loop; but then it is really about the status
-                    // stored inside `pool`, thus that doesn't even
-                    // matter!
-                    let opt_current_working_directory = {
-                        let lock = pool.lock(
-                            "evobench-run SubCommand::List for get_current_working_directory",
-                        )?;
-                        lock.read_current_working_directory()?
-                    };
 
                     for entry in queue.resolve_entries(shown_sorted_keys.into()) {
                         let mut entry = entry?;
