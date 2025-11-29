@@ -851,7 +851,7 @@ fn run() -> Result<Option<PathBuf>> {
                                 .lock_status()?;
                             if lock_status == LockStatus::ExclusiveLock {
                                 let s = if let Some(dir) = opt_current_working_directory {
-                                    let status = lock.get_working_directory_status(dir)?;
+                                    let status = lock.read_working_directory_status(dir)?;
                                     match status.status {
                                         // CheckedOut wasn't planned
                                         // to happen, but now happens

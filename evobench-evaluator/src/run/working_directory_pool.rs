@@ -541,7 +541,7 @@ impl<'pool> WorkingDirectoryPoolGuard<'pool> {
         }
     }
 
-    pub fn get_working_directory_status(
+    pub fn read_working_directory_status(
         &self,
         id: WorkingDirectoryId,
     ) -> Result<WorkingDirectoryStatus> {
