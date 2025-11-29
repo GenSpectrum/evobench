@@ -16,6 +16,7 @@ use std::{
     path::PathBuf,
     process::{exit, Command},
     str::FromStr,
+    sync::Arc,
     thread,
     time::{Duration, SystemTime},
 };
@@ -358,7 +359,7 @@ enum WdSubCommandCleanupMode {
 
 fn open_working_directory_pool(
     conf: &RunConfig,
-    working_directory_base_dir: WorkingDirectoryPoolBaseDir,
+    working_directory_base_dir: Arc<WorkingDirectoryPoolBaseDir>,
     create_dir_if_not_exists: bool,
 ) -> Result<WorkingDirectoryPoolAndLock> {
     WorkingDirectoryPool::open(
@@ -390,7 +391,7 @@ fn run_queues(
     config_path: Option<PathBuf>,
     mut config_with_reload: RunConfigWithReload,
     mut queues: RunQueues,
-    working_directory_base_dir: WorkingDirectoryPoolBaseDir,
+    working_directory_base_dir: Arc<WorkingDirectoryPoolBaseDir>,
     mut working_directory_pool: WorkingDirectoryPool,
     global_app_state_dir: &GlobalAppStateDir,
     once: bool,
@@ -532,7 +533,7 @@ fn run_queues(
             info!("the working directory pool was updated outside the app, reload it");
             let conf = &config_with_reload.run_config;
             working_directory_pool =
-                open_working_directory_pool(conf, working_directory_base_dir.clone(), true)?
+                open_working_directory_pool(conf, working_directory_base_dir.clone_arc(), true)?
                     .into_inner();
         }
 
@@ -547,9 +548,12 @@ fn run_queues(
                 let conf = &config_with_reload.run_config;
                 // XX handle errors without exiting? Or do that above
                 queues = RunQueues::open(conf.queues.clone_arc(), true, &global_app_state_dir)?;
-                working_directory_pool =
-                    open_working_directory_pool(conf, working_directory_base_dir.clone(), true)?
-                        .into_inner();
+                working_directory_pool = open_working_directory_pool(
+                    conf,
+                    working_directory_base_dir.clone_arc(),
+                    true,
+                )?
+                .into_inner();
             }
             Ok(None) => {
                 last_config_reload_error = None;
@@ -607,10 +611,10 @@ fn run() -> Result<Option<PathBuf>> {
 
     let global_app_state_dir = GlobalAppStateDir::new()?;
 
-    let working_directory_base_dir =
-        WorkingDirectoryPoolBaseDir::new(&conf.working_directory_pool, &|| {
-            global_app_state_dir.working_directory_pool_base()
-        })?;
+    let working_directory_base_dir = Arc::new(WorkingDirectoryPoolBaseDir::new(
+        &conf.working_directory_pool,
+        &|| global_app_state_dir.working_directory_pool_base(),
+    )?);
 
     let queues = RunQueues::open(conf.queues.clone_arc(), true, &global_app_state_dir)?;
 
@@ -752,9 +756,7 @@ fn run() -> Result<Option<PathBuf>> {
 
             let now = SystemTime::now();
 
-            let mut pool =
-                open_working_directory_pool(conf, working_directory_base_dir.clone(), false)?;
-            let lock = pool.take_guard().expect("this is the first call");
+            let lock = working_directory_base_dir.lock("for SubCommand::List show_queue")?;
 
             // Not kept in sync with what happens during for loop; but
             // then it is really about the status stored inside
@@ -1303,7 +1305,9 @@ fn run() -> Result<Option<PathBuf>> {
 
                     let mut lock_mut =
                         working_directory_pool.lock_mut("evobench-run WdSubCommand::Delete")?;
-                    let opt_current_wd_id = lock_mut.shared().read_current_working_directory()?;
+                    let opt_current_wd_id = lock_mut
+                        .locked_base_dir()
+                        .read_current_working_directory()?;
                     for id in ids {
                         let lock = lock_mut.shared();
                         let wd = lock

@@ -50,8 +50,9 @@ impl PollingPool {
                 })
             },
         };
-        let base_dir =
-            WorkingDirectoryPoolBaseDir::new(&opts, &|| unreachable!("already given in opts"))?;
+        let base_dir = Arc::new(WorkingDirectoryPoolBaseDir::new(&opts, &|| {
+            unreachable!("already given in opts")
+        })?);
         let pool = WorkingDirectoryPool::open(
             Arc::new(opts),
             base_dir,

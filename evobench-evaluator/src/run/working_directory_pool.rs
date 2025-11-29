@@ -7,6 +7,7 @@
 use std::{
     collections::BTreeMap,
     fmt::Display,
+    fs::File,
     num::NonZeroU8,
     path::{Path, PathBuf},
     str::FromStr,
@@ -23,13 +24,14 @@ use crate::{
     git::GitHash,
     info, io_utils,
     key::{BenchmarkingJobParameters, RunParameters},
-    lockable_file::StandaloneExclusiveFileLock,
+    owning_lockable_file::{OwningExclusiveFileLock, OwningLockableFile},
     path_util::AppendToPath,
     run::working_directory::{
         WorkingDirectoryAutoCleanOpts, WorkingDirectoryWithPoolLock,
         WorkingDirectoryWithPoolLockMut, WorkingDirectoryWithPoolMut,
     },
     serde::{date_and_time::DateTimeWithOffset, git_url::GitUrl},
+    utillib::arc::CloneArc,
 };
 
 use super::{
@@ -112,9 +114,10 @@ impl FromStr for WorkingDirectoryId {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct WorkingDirectoryPoolBaseDir {
-    pub base_dir: PathBuf,
+    path: Arc<Path>,
+    dir_file: OwningLockableFile<File>,
 }
 
 impl WorkingDirectoryPoolBaseDir {
@@ -122,22 +125,89 @@ impl WorkingDirectoryPoolBaseDir {
         opts: &WorkingDirectoryPoolOpts,
         get_working_directory_pool_base: &dyn Fn() -> Result<PathBuf>,
     ) -> Result<Self> {
-        let base_dir = if let Some(path) = opts.base_dir.as_ref() {
+        let path: Arc<Path> = if let Some(path) = opts.base_dir.as_ref() {
             path.to_owned()
         } else {
             get_working_directory_pool_base()?
-        };
-        Ok(Self { base_dir })
+        }
+        .into();
+        let dir_file = OwningLockableFile::open(path.clone_arc())
+            .map_err(ctx!("opening working directory base dir {path:?}"))?;
+        Ok(Self { path, dir_file })
     }
 
-    pub fn path(&self) -> &PathBuf {
-        &self.base_dir
+    pub fn path(&self) -> &Path {
+        &self.path
     }
 
     /// The path to the symlink to the currently used working
     /// directory
     fn current_working_directory_symlink_path(&self) -> PathBuf {
         self.path().append("current")
+    }
+
+    /// Lock the base dir of the pool, blocking (this is *not* the
+    /// global job-running lock any more!)
+    // XX *not* &mut, bc dont need, keep it private, ok?, yet won't
+    // help the problem anyway. Anyway, keep private, since
+    // OwningExclusiveFileLock does not have a lifetime!
+    fn get_lock<'s>(&'s self, locker: &str) -> Result<OwningExclusiveFileLock<File>> {
+        let path = self.path();
+        debug!(
+            "getting working directory pool lock on {:?} for {locker}",
+            self.path(),
+        );
+        self.dir_file
+            .lock_exclusive()
+            .map_err(ctx!("locking working directory pool base dir {path:?}"))
+    }
+
+    /// Lock the base dir of the pool, blocking (this is *not* the
+    /// global job-running lock any more!)
+    pub fn lock<'s>(&'s self, locker: &str) -> Result<WorkingDirectoryPoolBaseDirLock<'s>> {
+        let lock = self.get_lock(locker)?;
+        Ok(WorkingDirectoryPoolBaseDirLock {
+            base_dir: self,
+            _lock: Some(lock),
+        })
+    }
+}
+
+/// A public lock on a WorkingDirectoryPoolBaseDir. Takes exclusive
+/// access to the WorkingDirectoryPoolBaseDir.
+// do *not* allow to clone, or even move or share between threads, OK?
+pub struct WorkingDirectoryPoolBaseDirLock<'t> {
+    base_dir: &'t WorkingDirectoryPoolBaseDir,
+    _lock: Option<OwningExclusiveFileLock<File>>,
+}
+
+impl<'t> WorkingDirectoryPoolBaseDirLock<'t> {
+    /// Read the working directory from symlink, if present
+    pub fn read_current_working_directory(&self) -> Result<Option<WorkingDirectoryId>> {
+        let path = self.base_dir.current_working_directory_symlink_path();
+        match std::fs::read_link(&path) {
+            Ok(val) => {
+                let s = val
+                    .to_str()
+                    .ok_or_else(|| anyhow!("missing symlink target in {path:?}"))?;
+                let id = WorkingDirectoryId::from_prefixless_str(s)?;
+                Ok(Some(id))
+            }
+            Err(e) => match e.kind() {
+                std::io::ErrorKind::NotFound => Ok(None),
+                _ => Err(e).map_err(ctx!("reading symlink {path:?}")),
+            },
+        }
+    }
+
+    pub fn read_working_directory_status(
+        &self,
+        id: WorkingDirectoryId,
+    ) -> Result<WorkingDirectoryStatus> {
+        let path = self.base_dir.path().append(id.to_directory_file_name());
+        // XX partial copy paste from WorkingDirectory::open (ok not too much though)
+        let status_path = WorkingDirectory::status_path_from_working_dir_path(&path)?;
+        load_ron_file(&status_path)
     }
 }
 
@@ -146,7 +216,7 @@ pub struct WorkingDirectoryPool {
     opts: Arc<WorkingDirectoryPoolOpts>,
     remote_repository_url: GitUrl,
     // Actual basedir used (opts only has an Option!)
-    base_dir: WorkingDirectoryPoolBaseDir,
+    base_dir: Arc<WorkingDirectoryPoolBaseDir>,
     next_id: u64,
     /// Contains working dirs with Status::Error, too, must be ignored
     /// when picking a dir!
@@ -155,7 +225,7 @@ pub struct WorkingDirectoryPool {
 
 pub struct WorkingDirectoryPoolGuard<'pool> {
     // Option since it is also used via `to_non_mut`
-    _lock: Option<StandaloneExclusiveFileLock>,
+    _lock: Option<OwningExclusiveFileLock<File>>,
     pool: &'pool WorkingDirectoryPool,
 }
 
@@ -169,22 +239,34 @@ impl<'pool> WorkingDirectoryPoolGuard<'pool> {
 }
 
 pub struct WorkingDirectoryPoolGuardMut<'pool> {
-    pub(crate) _lock: StandaloneExclusiveFileLock,
+    pub(crate) _lock: OwningExclusiveFileLock<File>,
     pub(crate) pool: &'pool mut WorkingDirectoryPool,
 }
 
 impl<'pool> WorkingDirectoryPoolGuardMut<'pool> {
     /// The mut guard can also do shared operations; XX todo: just
     /// Deref, ah, would be double use of deref?
-    pub fn shared<'s: 'pool>(&'s self) -> WorkingDirectoryPoolGuard<'pool> {
+    // NOTE: do *not* give 'pool life time to
+    // WorkingDirectoryPoolGuard! Only as long as the lock is
+    // guaranteed to be held!
+    pub fn shared<'s: 'pool>(&'s self) -> WorkingDirectoryPoolGuard<'s> {
         WorkingDirectoryPoolGuard {
-            _lock: None,
             pool: self.pool,
+            // OK since self is guaranteed to outlive us
+            _lock: None,
+        }
+    }
+
+    pub fn locked_base_dir<'s>(&'s self) -> WorkingDirectoryPoolBaseDirLock<'s> {
+        WorkingDirectoryPoolBaseDirLock {
+            base_dir: &self.pool.base_dir,
+            // OK since self is guaranteed to outlive us
+            _lock: None,
         }
     }
 }
 
-pub struct WorkingDirectoryPoolAndLock(WorkingDirectoryPool, Option<StandaloneExclusiveFileLock>);
+pub struct WorkingDirectoryPoolAndLock(WorkingDirectoryPool, Option<OwningExclusiveFileLock<File>>);
 
 impl WorkingDirectoryPoolAndLock {
     /// Take out the lock/guard; can only be done once
@@ -212,23 +294,15 @@ pub struct ProcessingError {
 }
 
 impl WorkingDirectoryPool {
-    /// Lock the base dir of the pool, blocking (this is *not* the
-    /// global job-running lock any more!)
-    fn get_lock(base_dir: &Path, locker: &str) -> Result<StandaloneExclusiveFileLock> {
-        debug!("getting working directory pool lock on {base_dir:?} for {locker}");
-        StandaloneExclusiveFileLock::lock_path(base_dir)
-            .map_err(ctx!("locking working directory pool base dir {base_dir:?}"))
-    }
-
     /// Get exclusive lock, but sharing self
     pub fn lock<'t>(&'t self, locker: &str) -> Result<WorkingDirectoryPoolGuard<'t>> {
-        let _lock = Some(Self::get_lock(&self.base_dir.base_dir, locker)?);
+        let _lock = Some(self.base_dir.get_lock(locker)?);
         Ok(WorkingDirectoryPoolGuard { _lock, pool: self })
     }
 
     /// Get exclusive lock, for exclusive access to self
     pub fn lock_mut<'t>(&'t mut self, locker: &str) -> Result<WorkingDirectoryPoolGuardMut<'t>> {
-        let _lock = Self::get_lock(&self.base_dir.base_dir, locker)?;
+        let _lock = self.base_dir.get_lock(locker)?;
         Ok(WorkingDirectoryPoolGuardMut { _lock, pool: self })
     }
 
@@ -237,7 +311,7 @@ impl WorkingDirectoryPool {
         // via opts and base_dir? Just because of some weird
         // defaulting logic? I.e. the one in `opts` has to be ignored?
         opts: Arc<WorkingDirectoryPoolOpts>,
-        base_dir: WorkingDirectoryPoolBaseDir,
+        base_dir: Arc<WorkingDirectoryPoolBaseDir>,
         remote_repository_url: GitUrl,
         create_dir_if_not_exists: bool,
     ) -> Result<WorkingDirectoryPoolAndLock> {
@@ -247,7 +321,7 @@ impl WorkingDirectoryPool {
 
         // Need to have exclusive access while, at least, reading ron
         // files
-        let lock = Self::get_lock(base_dir.path(), "WorkingDirectoryPool::open")?;
+        let lock = base_dir.get_lock("WorkingDirectoryPool::open")?;
 
         let mut next_id: u64 = 0;
 
@@ -258,7 +332,7 @@ impl WorkingDirectoryPool {
         let mut slf = Self {
             opts,
             remote_repository_url,
-            base_dir: base_dir.clone(),
+            base_dir,
             next_id,
             all_entries: Default::default(),
         };
@@ -269,8 +343,11 @@ impl WorkingDirectoryPool {
         };
 
         let all_entries: BTreeMap<WorkingDirectoryId, WorkingDirectory> =
-            std::fs::read_dir(base_dir.path())
-                .map_err(ctx!("opening working pool directory {:?}", base_dir.path()))?
+            std::fs::read_dir(guard.pool.base_dir.path())
+                .map_err(ctx!(
+                    "opening working pool directory {:?}",
+                    guard.pool.base_dir.path()
+                ))?
                 .map(
                     |entry| -> Result<Option<(WorkingDirectoryId, WorkingDirectory)>> {
                         let entry = entry?;
@@ -307,7 +384,8 @@ impl WorkingDirectoryPool {
                 .filter_map(Result::transpose)
                 .collect::<Result<_>>()
                 .map_err(ctx!(
-                    "reading contents of working pool directory {base_dir:?}"
+                    "reading contents of working pool directory {:?}",
+                    guard.pool.base_dir.path()
                 ))?;
 
         // Let go of the guard (so that we can mutate slf and later
@@ -521,38 +599,6 @@ impl<'pool> WorkingDirectoryPoolGuard<'pool> {
         Some(WorkingDirectoryWithPoolLock {
             wd: self.pool.all_entries.get(&working_directory_id)?,
         })
-    }
-
-    /// Read the working directory from symlink, if present
-    pub fn read_current_working_directory(&self) -> Result<Option<WorkingDirectoryId>> {
-        let path = self.pool.base_dir.current_working_directory_symlink_path();
-        match std::fs::read_link(&path) {
-            Ok(val) => {
-                let s = val
-                    .to_str()
-                    .ok_or_else(|| anyhow!("missing symlink target in {path:?}"))?;
-                let id = WorkingDirectoryId::from_prefixless_str(s)?;
-                Ok(Some(id))
-            }
-            Err(e) => match e.kind() {
-                std::io::ErrorKind::NotFound => Ok(None),
-                _ => Err(e).map_err(ctx!("reading symlink {path:?}")),
-            },
-        }
-    }
-
-    pub fn read_working_directory_status(
-        &self,
-        id: WorkingDirectoryId,
-    ) -> Result<WorkingDirectoryStatus> {
-        let path = self
-            .pool
-            .base_dir
-            .path()
-            .append(id.to_directory_file_name());
-        // XX partial copy paste from WorkingDirectory::open (ok not too much though)
-        let status_path = WorkingDirectory::status_path_from_working_dir_path(&path)?;
-        load_ron_file(&status_path)
     }
 }
 
