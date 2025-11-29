@@ -57,7 +57,8 @@ impl PollingPool {
             base_dir,
             remote_repository_url.clone(),
             true,
-        )?;
+        )?
+        .into_inner();
         Ok(Self { pool })
     }
 

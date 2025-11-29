@@ -184,6 +184,23 @@ impl<'pool> WorkingDirectoryPoolGuardMut<'pool> {
     }
 }
 
+pub struct WorkingDirectoryPoolAndLock(WorkingDirectoryPool, Option<StandaloneExclusiveFileLock>);
+
+impl WorkingDirectoryPoolAndLock {
+    /// Take out the lock/guard; can only be done once
+    pub fn take_guard<'t>(&'t mut self) -> Option<WorkingDirectoryPoolGuard<'t>> {
+        Some(WorkingDirectoryPoolGuard {
+            _lock: Some(self.1.take()?),
+            pool: &mut self.0,
+        })
+    }
+
+    /// Drop the lock and get the bare pool
+    pub fn into_inner(self) -> WorkingDirectoryPool {
+        self.0
+    }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProcessingError {
@@ -223,7 +240,7 @@ impl WorkingDirectoryPool {
         base_dir: WorkingDirectoryPoolBaseDir,
         remote_repository_url: GitUrl,
         create_dir_if_not_exists: bool,
-    ) -> Result<Self> {
+    ) -> Result<WorkingDirectoryPoolAndLock> {
         if create_dir_if_not_exists {
             io_utils::div::create_dir_if_not_exists(base_dir.path(), "working pool directory")?;
         }
@@ -293,7 +310,9 @@ impl WorkingDirectoryPool {
                     "reading contents of working pool directory {base_dir:?}"
                 ))?;
 
-        drop(guard);
+        // Let go of the guard (so that we can mutate slf and later
+        // return it), but keep the lock
+        let lock = guard._lock.take().expect("we put it there above");
 
         slf.all_entries = all_entries;
         slf.next_id = next_id;
@@ -306,7 +325,7 @@ impl WorkingDirectoryPool {
         );
         debug!("{slf:#?}");
 
-        Ok(slf)
+        Ok(WorkingDirectoryPoolAndLock(slf, Some(lock)))
     }
 
     /// Also see the method on `WorkingDirectoryPoolGuard`!

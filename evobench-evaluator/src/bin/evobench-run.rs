@@ -51,7 +51,8 @@ use evobench_evaluator::{
         versioned_dataset_dir::VersionedDatasetDir,
         working_directory::{Status, WorkingDirectory, WorkingDirectoryStatus},
         working_directory_pool::{
-            WorkingDirectoryId, WorkingDirectoryPool, WorkingDirectoryPoolBaseDir,
+            WorkingDirectoryId, WorkingDirectoryPool, WorkingDirectoryPoolAndLock,
+            WorkingDirectoryPoolBaseDir,
         },
     },
     serde::{
@@ -358,12 +359,13 @@ enum WdSubCommandCleanupMode {
 fn open_working_directory_pool(
     conf: &RunConfig,
     working_directory_base_dir: WorkingDirectoryPoolBaseDir,
-) -> Result<WorkingDirectoryPool> {
+    create_dir_if_not_exists: bool,
+) -> Result<WorkingDirectoryPoolAndLock> {
     WorkingDirectoryPool::open(
         conf.working_directory_pool.clone_arc(),
         working_directory_base_dir,
         conf.remote_repository.url.clone(),
-        true,
+        create_dir_if_not_exists,
     )
 }
 
@@ -530,7 +532,8 @@ fn run_queues(
             info!("the working directory pool was updated outside the app, reload it");
             let conf = &config_with_reload.run_config;
             working_directory_pool =
-                open_working_directory_pool(conf, working_directory_base_dir.clone())?;
+                open_working_directory_pool(conf, working_directory_base_dir.clone(), true)?
+                    .into_inner();
         }
 
         match config_with_reload.perhaps_reload_config(config_path.as_ref()) {
@@ -545,7 +548,8 @@ fn run_queues(
                 // XX handle errors without exiting? Or do that above
                 queues = RunQueues::open(conf.queues.clone_arc(), true, &global_app_state_dir)?;
                 working_directory_pool =
-                    open_working_directory_pool(conf, working_directory_base_dir.clone())?;
+                    open_working_directory_pool(conf, working_directory_base_dir.clone(), true)?
+                        .into_inner();
             }
             Ok(None) => {
                 last_config_reload_error = None;
@@ -748,21 +752,14 @@ fn run() -> Result<Option<PathBuf>> {
 
             let now = SystemTime::now();
 
-            let pool = WorkingDirectoryPool::open(
-                conf.working_directory_pool.clone_arc(),
-                working_directory_base_dir.clone(),
-                conf.remote_repository.url.clone(),
-                false,
-            )?;
+            let mut pool =
+                open_working_directory_pool(conf, working_directory_base_dir.clone(), false)?;
+            let lock = pool.take_guard().expect("this is the first call");
 
             // Not kept in sync with what happens during for loop; but
             // then it is really about the status stored inside
             // `pool`, thus that doesn't even matter!
-            let opt_current_working_directory = {
-                let lock =
-                    pool.lock("evobench-run SubCommand::List for get_current_working_directory")?;
-                lock.read_current_working_directory()?
-            };
+            let opt_current_working_directory = lock.read_current_working_directory()?;
 
             let show_queue =
                 |i: &str, run_queue: &RunQueue, is_extra_queue: bool, out| -> Result<_> {
@@ -854,13 +851,7 @@ fn run() -> Result<Option<PathBuf>> {
                                 .lock_status()?;
                             if lock_status == LockStatus::ExclusiveLock {
                                 let s = if let Some(dir) = opt_current_working_directory {
-                                    let status = {
-                                        let lock = pool.lock(
-                                            "evobench-run SubCommand::List for \
-                                             get_working_directory_status",
-                                        )?;
-                                        lock.get_working_directory_status(dir)?
-                                    };
+                                    let status = lock.get_working_directory_status(dir)?;
                                     match status.status {
                                         // CheckedOut wasn't planned
                                         // to happen, but now happens
@@ -1092,7 +1083,8 @@ fn run() -> Result<Option<PathBuf>> {
             })?;
 
             let working_directory_pool =
-                open_working_directory_pool(conf, working_directory_base_dir.clone())?;
+                open_working_directory_pool(conf, working_directory_base_dir.clone(), true)?
+                    .into_inner();
 
             match mode {
                 RunMode::One { false_if_none } => {
@@ -1143,7 +1135,9 @@ fn run() -> Result<Option<PathBuf>> {
 
         SubCommand::Wd { subcommand } => {
             let mut working_directory_pool =
-                open_working_directory_pool(conf, working_directory_base_dir.clone())?;
+                open_working_directory_pool(conf, working_directory_base_dir.clone(), true)?
+                    // XX might we want to hold onto the lock?
+                    .into_inner();
 
             let check_original_status = |wd: &WorkingDirectory,
                                          allow_access: bool,
