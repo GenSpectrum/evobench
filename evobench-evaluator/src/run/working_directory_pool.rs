@@ -137,7 +137,7 @@ impl WorkingDirectoryPoolBaseDir {
     /// The path to the symlink to the currently used working
     /// directory
     fn current_working_directory_symlink_path(&self) -> PathBuf {
-        (&self.base_dir).append("current")
+        self.path().append("current")
     }
 }
 
