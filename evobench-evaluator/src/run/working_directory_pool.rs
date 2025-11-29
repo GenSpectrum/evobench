@@ -505,7 +505,7 @@ impl<'pool> WorkingDirectoryPoolGuard<'pool> {
     }
 
     /// Read the working directory from symlink, if present
-    pub fn get_current_working_directory(&self) -> Result<Option<WorkingDirectoryId>> {
+    pub fn read_current_working_directory(&self) -> Result<Option<WorkingDirectoryId>> {
         let path = self.pool.base_dir.current_working_directory_symlink_path();
         match std::fs::read_link(&path) {
             Ok(val) => {

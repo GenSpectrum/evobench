@@ -815,6 +815,17 @@ fn run() -> Result<Option<PathBuf>> {
                         false,
                     )?;
 
+                    // Not kept in sync with what happens during for
+                    // loop; but then it is really about the status
+                    // stored inside `pool`, thus that doesn't even
+                    // matter!
+                    let opt_current_working_directory = {
+                        let lock = pool.lock(
+                            "evobench-run SubCommand::List for get_current_working_directory",
+                        )?;
+                        lock.read_current_working_directory()?
+                    };
+
                     for entry in queue.resolve_entries(shown_sorted_keys.into()) {
                         let mut entry = entry?;
                         let file_name = get_filename(&entry)?;
@@ -829,12 +840,6 @@ fn run() -> Result<Option<PathBuf>> {
                             reason.as_ref()
                         } else {
                             ""
-                        };
-                        let opt_current_working_directory = {
-                            let lock = pool.lock(
-                                "evobench-run SubCommand::List for get_current_working_directory",
-                            )?;
-                            lock.get_current_working_directory()?
                         };
                         let custom_parameters = &*job
                             .benchmarking_job_public
@@ -1305,7 +1310,7 @@ fn run() -> Result<Option<PathBuf>> {
 
                     let mut lock_mut =
                         working_directory_pool.lock_mut("evobench-run WdSubCommand::Delete")?;
-                    let opt_current_wd_id = lock_mut.shared().get_current_working_directory()?;
+                    let opt_current_wd_id = lock_mut.shared().read_current_working_directory()?;
                     for id in ids {
                         let lock = lock_mut.shared();
                         let wd = lock
