@@ -129,7 +129,7 @@ impl Display for LockStatus {
 }
 
 thread_local! {
-    static HELD_LOCKS: RefCell< HashSet<PathBuf>> = Default::default();
+    pub(crate) static HELD_LOCKS: RefCell< HashSet<PathBuf>> = Default::default();
 }
 
 impl<F: FileExt> LockableFile<F> {

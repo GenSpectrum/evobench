@@ -15,6 +15,7 @@ pub mod key;
 pub mod key_val_fs;
 pub mod linear;
 pub mod lockable_file;
+pub mod owning_lockable_file;
 pub mod path_util;
 pub mod polling_signals;
 pub mod rayon_util;
