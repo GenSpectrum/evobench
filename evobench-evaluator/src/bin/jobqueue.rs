@@ -180,7 +180,7 @@ fn main() -> Result<()> {
                 let locking = entry
                     .take_lockable_file()
                     .expect("not taken before")
-                    .lock_status()?;
+                    .get_lock_status()?;
                 println!("{file_name} ({key})\t{locking}\t{val:?}");
             }
         }

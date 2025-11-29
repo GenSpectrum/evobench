@@ -848,7 +848,7 @@ fn run() -> Result<Option<PathBuf>> {
                             let lock_status = entry
                                 .take_lockable_file()
                                 .expect("not taken before")
-                                .lock_status()?;
+                                .get_lock_status()?;
                             if lock_status == LockStatus::ExclusiveLock {
                                 let s = if let Some(dir) = opt_current_working_directory {
                                     let status = lock.read_working_directory_status(dir)?;

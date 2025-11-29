@@ -137,7 +137,7 @@ impl<F: FileExt> LockableFile<F> {
     /// nonblocking manner, thus not very performant! Also, may
     /// erroneously return `LockStatus::SharedLock` if during testing
     /// an exclusive lock is released.
-    pub fn lock_status(&mut self) -> std::io::Result<LockStatus> {
+    pub fn get_lock_status(&mut self) -> std::io::Result<LockStatus> {
         use LockStatus::*;
         Ok(if self.try_lock_exclusive()?.is_some() {
             Unlocked
