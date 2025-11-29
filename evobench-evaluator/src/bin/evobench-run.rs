@@ -422,7 +422,7 @@ fn run_queues(
 
         let working_directory_id;
         {
-            let mut pool = working_directory_pool.lock_mut()?;
+            let mut pool = working_directory_pool.lock_mut("evobench-run::run_queues")?;
             working_directory_id = pool.get_first()?;
             pool.clear_current_working_directory()?;
         }
@@ -831,7 +831,9 @@ fn run() -> Result<Option<PathBuf>> {
                             ""
                         };
                         let opt_current_working_directory = {
-                            let lock = pool.lock()?;
+                            let lock = pool.lock(
+                                "evobench-run SubCommand::List for get_current_working_directory",
+                            )?;
                             lock.get_current_working_directory()?
                         };
                         let custom_parameters = &*job
@@ -849,7 +851,10 @@ fn run() -> Result<Option<PathBuf>> {
                             if lock_status == LockStatus::ExclusiveLock {
                                 let s = if let Some(dir) = opt_current_working_directory {
                                     let status = {
-                                        let lock = pool.lock()?;
+                                        let lock = pool.lock(
+                                            "evobench-run SubCommand::List for \
+                                             get_working_directory_status",
+                                        )?;
                                         lock.get_working_directory_status(dir)?
                                     };
                                     match status.status {
@@ -1158,7 +1163,8 @@ fn run() -> Result<Option<PathBuf>> {
             };
 
             let mut do_mark = |wanted_status: Status, id| -> Result<Option<Status>> {
-                let mut guard = working_directory_pool.lock_mut()?;
+                let mut guard =
+                    working_directory_pool.lock_mut("evobench-run SubCommand::Wd do_mark")?;
                 if let Some(mut wd) = guard.get_working_directory_mut(id) {
                     let original_status = check_original_status(&*wd, false, "error/examination")
                         .map_err(ctx!("refusing working directory {id}"))?;
@@ -1269,7 +1275,8 @@ fn run() -> Result<Option<PathBuf>> {
                     }
 
                     {
-                        let mut lock = working_directory_pool.lock_mut()?;
+                        let mut lock = working_directory_pool
+                            .lock_mut("evobench-run WdSubCommand::Cleanup")?;
                         for id in cleanup_ids {
                             if dry_run {
                                 eprintln!("would delete working directory {id}");
@@ -1296,7 +1303,8 @@ fn run() -> Result<Option<PathBuf>> {
                         &global_app_state_dir,
                     )?;
 
-                    let mut lock_mut = working_directory_pool.lock_mut()?;
+                    let mut lock_mut =
+                        working_directory_pool.lock_mut("evobench-run WdSubCommand::Delete")?;
                     let opt_current_wd_id = lock_mut.shared().get_current_working_directory()?;
                     for id in ids {
                         let lock = lock_mut.shared();
@@ -1519,7 +1527,7 @@ fn run() -> Result<Option<PathBuf>> {
 
                             if do_revert {
                                 let mut wd = working_directory_pool
-                                    .lock_mut()?
+                                    .lock_mut("evobench-run WdSubCommand::Enter do_revert")?
                                     .into_get_working_directory_mut(id);
                                 let mut working_directory = wd.get().ok_or_else(|| {
                                     anyhow!("there is no working directory for id {id}")

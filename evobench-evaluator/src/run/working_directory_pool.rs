@@ -197,21 +197,21 @@ pub struct ProcessingError {
 impl WorkingDirectoryPool {
     /// Lock the base dir of the pool, blocking (this is *not* the
     /// global job-running lock any more!)
-    fn get_lock(base_dir: &Path) -> Result<StandaloneExclusiveFileLock> {
-        debug!("getting working directory pool lock on {base_dir:?}");
+    fn get_lock(base_dir: &Path, locker: &str) -> Result<StandaloneExclusiveFileLock> {
+        debug!("getting working directory pool lock on {base_dir:?} for {locker}");
         StandaloneExclusiveFileLock::lock_path(base_dir)
             .map_err(ctx!("locking working directory pool base dir {base_dir:?}"))
     }
 
     /// Get exclusive lock, but sharing self
-    pub fn lock<'t>(&'t self) -> Result<WorkingDirectoryPoolGuard<'t>> {
-        let _lock = Some(Self::get_lock(&self.base_dir.base_dir)?);
+    pub fn lock<'t>(&'t self, locker: &str) -> Result<WorkingDirectoryPoolGuard<'t>> {
+        let _lock = Some(Self::get_lock(&self.base_dir.base_dir, locker)?);
         Ok(WorkingDirectoryPoolGuard { _lock, pool: self })
     }
 
     /// Get exclusive lock, for exclusive access to self
-    pub fn lock_mut<'t>(&'t mut self) -> Result<WorkingDirectoryPoolGuardMut<'t>> {
-        let _lock = Self::get_lock(&self.base_dir.base_dir)?;
+    pub fn lock_mut<'t>(&'t mut self, locker: &str) -> Result<WorkingDirectoryPoolGuardMut<'t>> {
+        let _lock = Self::get_lock(&self.base_dir.base_dir, locker)?;
         Ok(WorkingDirectoryPoolGuardMut { _lock, pool: self })
     }
 
@@ -230,8 +230,7 @@ impl WorkingDirectoryPool {
 
         // Need to have exclusive access while, at least, reading ron
         // files
-        debug!("get lock for WorkingDirectoryPool::open");
-        let lock = Self::get_lock(base_dir.path())?;
+        let lock = Self::get_lock(base_dir.path(), "WorkingDirectoryPool::open")?;
 
         let mut next_id: u64 = 0;
 
@@ -385,7 +384,8 @@ impl WorkingDirectoryPool {
         context: &str,
         have_other_jobs_for_same_commit: Option<&dyn Fn() -> bool>,
     ) -> Result<(T, WorkingDirectoryCleanupToken)> {
-        let mut guard = self.lock_mut()?;
+        let mut guard =
+            self.lock_mut("WorkingDirectoryPool.process_in_working_directory for action")?;
 
         guard.set_current_working_directory(working_directory_id)?;
 
@@ -413,7 +413,7 @@ impl WorkingDirectoryPool {
 
         match action(guard.into_get_working_directory_mut(working_directory_id)) {
             Ok(v) => {
-                self.lock_mut()?
+                self.lock_mut("WorkingDirectoryPool.process_in_working_directory after action Ok")?
                     .get_working_directory_mut(working_directory_id)
                     .expect("we're not removing it in the mean time")
                     .set_and_save_status(Status::Finished)?;
@@ -440,21 +440,14 @@ impl WorkingDirectoryPool {
                 Ok((v, token))
             }
             Err(error) => {
-                self.lock_mut()?
-                    .get_working_directory_mut(working_directory_id)
+                let mut lock = self.lock_mut(
+                    "WorkingDirectoryPool.process_in_working_directory after action Err",
+                )?;
+                lock.get_working_directory_mut(working_directory_id)
                     .expect("we're not removing it in the mean time")
                     .set_and_save_status(Status::Error)?;
 
-                info!(
-                    // Do not show error as it might be large; XX
-                    // which is a mis-feature!
-                    "process_working_directory {working_directory_id} \
-                     ({:?} for {context} at_{timestamp}) failed.",
-                    benchmarking_job_parameters.map(BenchmarkingJobParameters::slow_hash)
-                );
-
                 let err = format!("{error:#?}");
-                let mut lock = self.lock_mut()?;
                 lock.save_processing_error(
                     working_directory_id,
                     ProcessingError {
@@ -465,6 +458,15 @@ impl WorkingDirectoryPool {
                     timestamp,
                 )
                 .map_err(ctx!("error storing the error {err}"))?;
+
+                info!(
+                    // Do not show error as it might be large; XX
+                    // which is a mis-feature!
+                    "process_working_directory {working_directory_id} \
+                     ({:?} for {context} at_{timestamp}) failed.",
+                    benchmarking_job_parameters.map(BenchmarkingJobParameters::slow_hash)
+                );
+
                 Err(error)
             }
         }
@@ -484,7 +486,7 @@ impl WorkingDirectoryPool {
         } = cleanup;
         linear_token.bury();
         if needs_cleanup {
-            let mut lock = self.lock_mut()?;
+            let mut lock = self.lock_mut("WorkingDirectoryPool.working_directory_cleanup")?;
             lock.delete_working_directory(working_directory_id)?;
         }
         Ok(())

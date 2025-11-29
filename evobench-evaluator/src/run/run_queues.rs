@@ -636,7 +636,9 @@ impl<'run_queues> RunQueuesData<'run_queues> {
 
             let working_directory_id;
             {
-                let mut lock = job_runner.working_directory_pool.lock_mut()?;
+                let mut lock = job_runner
+                    .working_directory_pool
+                    .lock_mut("RunQueuesData.run_next_job")?;
                 working_directory_id = lock.get_a_working_directory_for(
                     &job.benchmarking_job_public.run_parameters,
                     self,

@@ -65,7 +65,7 @@ impl PollingPool {
     /// the local clone.
     pub fn commit_is_valid(&mut self, commit: &GitHash) -> Result<bool> {
         let working_directory_id = {
-            let mut pool = self.pool.lock_mut()?;
+            let mut pool = self.pool.lock_mut("PollingPool.commit_is_valid")?;
             pool.clear_current_working_directory()?;
             pool.get_first()?
         };
@@ -95,7 +95,7 @@ impl PollingPool {
     /// subsequent work on it
     pub fn updated_working_dir(&mut self) -> Result<WorkingDirectoryId> {
         let working_directory_id = {
-            let mut pool = self.pool.lock_mut()?;
+            let mut pool = self.pool.lock_mut("PollingPool.updated_working_dir")?;
             pool.clear_current_working_directory()?;
             pool.get_first()?
         };
@@ -131,7 +131,9 @@ impl PollingPool {
         context: &str,
     ) -> Result<R> {
         {
-            let pool = self.pool.lock_mut()?;
+            let pool = self
+                .pool
+                .lock_mut("PollingPool.process_in_working_directory")?;
             // XX why again can and do we just clear it everywhere? What
             // was the status implication in the cleared or not
             // clearedness?
