@@ -23,7 +23,7 @@ use std::{
 
 use evobench_evaluator::{
     ask::ask_yn,
-    config_file::{self, ron_to_string_pretty, save_config_file},
+    config_file::{self, backend_from_path, ron_to_string_pretty, save_config_file},
     ctx,
     date_and_time::system_time_with_display::SystemTimeWithDisplay,
     debug,
@@ -37,7 +37,8 @@ use evobench_evaluator::{
     polling_signals::PollingSignals,
     run::{
         benchmarking_job::{
-            BenchmarkingJobOpts, BenchmarkingJobReasonOpt, BenchmarkingJobSettingsOpts,
+            BenchmarkingJob, BenchmarkingJobOpts, BenchmarkingJobReasonOpt,
+            BenchmarkingJobSettingsOpts,
         },
         command_log_file::CommandLogFile,
         config::{BenchmarkingCommand, RunConfig, RunConfigWithReload},
@@ -59,6 +60,7 @@ use evobench_evaluator::{
     serde::{
         date_and_time::{system_time_to_rfc3339, DateTimeWithOffset},
         git_branch_name::GitBranchName,
+        priority::Priority,
     },
     terminal_table::{TerminalTable, TerminalTableOpts, TerminalTableTitle},
     utillib::{
@@ -172,6 +174,28 @@ enum SubCommand {
         force_opt: ForceOpt,
         #[clap(flatten)]
         quiet_opt: QuietOpt,
+    },
+
+    /// (Re-)insert a job from a job file
+    InsertFile {
+        #[clap(flatten)]
+        benchmarking_job_settings_opts: BenchmarkingJobSettingsOpts,
+        #[clap(flatten)]
+        force_opt: ForceOpt,
+        #[clap(flatten)]
+        quiet_opt: QuietOpt,
+
+        /// The initial priority boost, overrides the boost given in
+        /// the file.
+        #[clap(long)]
+        initial_boost: Option<Priority>,
+
+        /// Path(s) to the JSON file(s) to insert. The format is the
+        /// one used in the `~/.evobench-run/queues/` directories,
+        /// except you can alternatively choose JSON5, RON, or one of
+        /// the other formats shown in `config-formats` if the file
+        /// has a corresponding file extension.
+        paths: Vec<PathBuf>,
     },
 
     /// Insert jobs for new commits on branch names configured in the
@@ -1011,6 +1035,46 @@ fn run() -> Result<Option<PathBuf>> {
                 quiet_opt,
                 &queues,
             )?;
+        }
+
+        SubCommand::InsertFile {
+            benchmarking_job_settings_opts,
+            initial_boost,
+            force_opt,
+            quiet_opt,
+            paths,
+        } => {
+            let mut benchmarking_jobs = Vec::new();
+            for path in &paths {
+                let mut job: BenchmarkingJob = if let Ok(backend) = backend_from_path(&path) {
+                    backend.load_config_file(&path)?
+                } else {
+                    (|| -> Result<_> {
+                        let s = std::fs::read_to_string(&path)?;
+                        Ok(serde_json::from_str(&s)?)
+                    })()
+                    .map_err(ctx!("reading file {path:?}"))?
+                };
+
+                job.check_and_init(
+                    conf,
+                    true,
+                    Some(&benchmarking_job_settings_opts),
+                    initial_boost,
+                )?;
+
+                benchmarking_jobs.push(job);
+            }
+
+            let n = insert_jobs(
+                benchmarking_jobs,
+                &global_app_state_dir,
+                &conf.remote_repository.url,
+                force_opt,
+                quiet_opt,
+                &queues,
+            )?;
+            println!("Inserted {n} jobs.");
         }
 
         SubCommand::Poll {

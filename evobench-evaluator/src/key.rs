@@ -102,6 +102,13 @@ impl CustomParameters {
         &self.0
     }
 
+    pub fn keyvals(&self) -> BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, KString> {
+        self.btree_map()
+            .iter()
+            .map(|(k, v)| (k.clone(), KString::from_ref(v.as_str())))
+            .collect()
+    }
+
     pub fn checked_from(
         keyvals: &BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, KString>,
         custom_parameters_required: &BTreeMap<

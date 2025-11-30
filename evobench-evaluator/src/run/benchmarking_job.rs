@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{anyhow, bail, Result};
 
 use crate::{
     ctx,
-    key::{BenchmarkingJobParameters, RunParameters, RunParametersOpts},
+    key::{BenchmarkingJobParameters, CustomParameters, RunParameters, RunParametersOpts},
+    run::config::RunConfig,
     serde::priority::{NonComparableNumber, Priority},
     utillib::arc::CloneArc,
 };
@@ -28,7 +29,7 @@ pub struct BenchmarkingJobSettingsOpts {
     #[clap(short, long)]
     error_budget: Option<u8>,
 
-    /// The priority of this job (a floating point number, or the
+    /// The default priority for jobs (a floating point number, or the
     /// names `normal` (alias for 0.), `high` (alias for 1.), and
     /// `low` (alias for -1.)). Jobs with a higher priority value (in
     /// the positive direction) are scheduled before other
@@ -144,6 +145,75 @@ impl BenchmarkingJob {
             priority,
             current_boost,
         }
+    }
+
+    /// Check a manually created BenchmarkingJob for allowable values
+    /// and optionally overwrite parts with settings from the config.
+    // (A little wasteful as it initializes a new CustomParameters
+    // that is being dropped again.)
+    pub fn check_and_init(
+        &mut self,
+        config: &RunConfig,
+        init: bool,
+        benchmarking_job_settings_opts: Option<&BenchmarkingJobSettingsOpts>,
+        initial_boost: Option<Priority>,
+    ) -> Result<()> {
+        let Self {
+            benchmarking_job_public,
+            benchmarking_job_state,
+            priority,
+            current_boost,
+        } = self;
+
+        let BenchmarkingJobPublic {
+            reason: _,
+            run_parameters,
+            command,
+        } = benchmarking_job_public;
+
+        let target_name = &command.target_name;
+        let target = config
+            .targets
+            .get(target_name)
+            .ok_or_else(|| anyhow!("target {:?} not found in the config", target_name.as_str()))?;
+        let _ = CustomParameters::checked_from(
+            &run_parameters.custom_parameters.keyvals(),
+            &target.allowed_custom_parameters,
+        )?;
+
+        if *command != target.benchmarking_command {
+            // (XX could do multi error collection and report them all
+            // in one go)
+            bail!(
+                "command for target {:?} is expected to be {:?}, but is: {:?}",
+                target_name.as_str(),
+                target.benchmarking_command,
+                command
+            );
+        }
+
+        if init {
+            let benchmarking_job_settings = config
+                .benchmarking_job_settings
+                .complete(benchmarking_job_settings_opts);
+
+            let BenchmarkingJobState {
+                remaining_count,
+                remaining_error_budget,
+                last_working_directory,
+            } = benchmarking_job_state;
+
+            *remaining_count = benchmarking_job_settings.count;
+            *remaining_error_budget = benchmarking_job_settings.error_budget;
+            *priority = benchmarking_job_settings.priority;
+            if let Some(initial_boost) = initial_boost {
+                *current_boost = initial_boost;
+            }
+
+            *last_working_directory = None;
+        }
+
+        Ok(())
     }
 
     pub fn priority(&self) -> Result<Priority, NonComparableNumber> {
