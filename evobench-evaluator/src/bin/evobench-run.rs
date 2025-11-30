@@ -1270,7 +1270,7 @@ fn run() -> Result<Option<PathBuf>> {
                             "calculating time since last use of working directory {id}"
                         ))?;
                         if d.as_secs() > stale_seconds {
-                            cleanup_ids.push(*id);
+                            cleanup_ids.push(id);
                         }
                     }
 

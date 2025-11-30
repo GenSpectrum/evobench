@@ -439,14 +439,27 @@ impl WorkingDirectoryPool {
     /// This includes working dirs with errors, that (normally) must
     /// be left aside and not used for processing!  The returned
     /// entries are sorted by `WorkingDirectoryId`
-    pub fn all_entries(&self) -> impl Iterator<Item = (&WorkingDirectoryId, &WorkingDirectory)> {
-        self.all_entries.iter()
+    pub fn all_entries(&self) -> impl Iterator<Item = (WorkingDirectoryId, &WorkingDirectory)> {
+        self.all_entries.iter().map(|(id, wd)| (*id, wd))
+    }
+
+    pub fn all_entries_mut(
+        &mut self,
+    ) -> impl Iterator<Item = (WorkingDirectoryId, &mut WorkingDirectory)> {
+        self.all_entries.iter_mut().map(|(id, wd)| (*id, wd))
     }
 
     /// The entries that can be used for processing. The returned
     /// entries are sorted by `WorkingDirectoryId`
-    pub fn active_entries(&self) -> impl Iterator<Item = (&WorkingDirectoryId, &WorkingDirectory)> {
+    pub fn active_entries(&self) -> impl Iterator<Item = (WorkingDirectoryId, &WorkingDirectory)> {
         self.all_entries()
+            .filter(|(_, wd)| wd.working_directory_status.status.can_be_used_for_jobs())
+    }
+
+    pub fn active_entries_mut(
+        &mut self,
+    ) -> impl Iterator<Item = (WorkingDirectoryId, &mut WorkingDirectory)> {
+        self.all_entries_mut()
             .filter(|(_, wd)| wd.working_directory_status.status.can_be_used_for_jobs())
     }
 
@@ -629,7 +642,7 @@ impl<'pool> WorkingDirectoryPoolGuardMut<'pool> {
     /// best fit. If none was cloned yet, that is done now.
     pub fn get_first(&mut self) -> Result<WorkingDirectoryId> {
         if let Some((key, _)) = self.pool.active_entries().next() {
-            return Ok(*key);
+            return Ok(key);
         }
         self.get_new()
     }
@@ -701,7 +714,7 @@ impl<'pool> WorkingDirectoryPoolGuardMut<'pool> {
     /// it. Returns its id so that the right kind of fresh borrow can
     /// be done.
     fn try_get_fitting_working_directory_for(
-        &self,
+        &mut self,
         run_parameters: &RunParameters,
         run_queues_data: &RunQueuesData,
     ) -> Option<WorkingDirectoryId> {
@@ -713,14 +726,14 @@ impl<'pool> WorkingDirectoryPoolGuardMut<'pool> {
         // Find one with the same commit
         if let Some((id, _dir)) = self
             .pool
-            .active_entries()
+            .active_entries_mut()
             .filter(|(_, dir)| dir.commit == *commit)
             // Prefer one that proceeded further and is matching
             // closely: todo: store parameters for dir.
             .max_by_key(|(_, dir)| dir.working_directory_status.status)
         {
             info!("try_get_best_working_directory_for: found by commit {commit}");
-            return Some(*id);
+            return Some(id);
         }
 
         // Find one that is *not* used by other jobs in the pipeline (i.e. obsolete),
@@ -732,7 +745,7 @@ impl<'pool> WorkingDirectoryPoolGuardMut<'pool> {
             .max_by_key(|(_, dir)| dir.working_directory_status.status)
         {
             info!("try_get_best_working_directory_for: found as obsolete");
-            return Some(*id);
+            return Some(id);
         }
 
         None
