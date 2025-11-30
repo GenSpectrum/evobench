@@ -75,7 +75,7 @@ fn unicode_is_fine() -> bool {
         let term = env::var_os("TERM")?;
         let lang = env::var_os("LANG")?;
         let lang = lang.to_str()?;
-        Some(term.as_bytes() == b"xterm" && lang.contains("UTF-8"))
+        Some(term.as_bytes().starts_with(b"xterm") && lang.contains("UTF-8"))
     })()
     .unwrap_or(false)
 }
