@@ -709,6 +709,20 @@ impl<'pool> WorkingDirectoryPoolGuardMut<'pool> {
         WorkingDirectoryId(id)
     }
 
+    /// Ensure all *active* working directories have their commit field
+    /// initialized
+    fn init_active_commit_ids(&mut self) -> Result<()> {
+        for (_, wd) in self.pool.active_entries_mut() {
+            // SAFETY: It's OK to claim that the working dir has the
+            // lock as we are a method of
+            // `WorkingDirectoryPoolGuardMut` and locking currently
+            // works on the whole pool.
+            let mut wd = WorkingDirectoryWithPoolLockMut { wd };
+            wd.commit()?;
+        }
+        Ok(())
+    }
+
     /// Pick a working directory already checked out for the given
     /// commit, and if possible already built or even tested for
     /// it. Returns its id so that the right kind of fresh borrow can
@@ -717,23 +731,25 @@ impl<'pool> WorkingDirectoryPoolGuardMut<'pool> {
         &mut self,
         run_parameters: &RunParameters,
         run_queues_data: &RunQueuesData,
-    ) -> Option<WorkingDirectoryId> {
+    ) -> Result<Option<WorkingDirectoryId>> {
         // (todo?: is the working dir used last time for the same job
         // available? Maybe doesn't really matter any more though?)
 
         let commit: &GitHash = &run_parameters.commit_id;
 
-        // Find one with the same commit
+        // Find one with the same commit. First ensure all commit
+        // fields are set to avoid dealing with IO errors.
+        self.init_active_commit_ids()?;
         if let Some((id, _dir)) = self
             .pool
             .active_entries_mut()
-            .filter(|(_, dir)| dir.commit == *commit)
+            .filter(|(_, wd)| wd.commit.as_ref().expect("initialized above") == commit)
             // Prefer one that proceeded further and is matching
             // closely: todo: store parameters for dir.
             .max_by_key(|(_, dir)| dir.working_directory_status.status)
         {
             info!("try_get_best_working_directory_for: found by commit {commit}");
-            return Some(id);
+            return Ok(Some(id));
         }
 
         // Find one that is *not* used by other jobs in the pipeline (i.e. obsolete),
@@ -741,14 +757,17 @@ impl<'pool> WorkingDirectoryPoolGuardMut<'pool> {
         if let Some((id, _dir)) = self
             .pool
             .active_entries()
-            .filter(|(_, dir)| !run_queues_data.have_job_with_commit_id(&dir.commit))
+            .filter(|(_, dir)| {
+                !run_queues_data
+                    .have_job_with_commit_id(dir.commit.as_ref().expect("initialized above"))
+            })
             .max_by_key(|(_, dir)| dir.working_directory_status.status)
         {
             info!("try_get_best_working_directory_for: found as obsolete");
-            return Some(id);
+            return Ok(Some(id));
         }
 
-        None
+        Ok(None)
     }
 
     /// Return the ~best working directory for the given
@@ -764,7 +783,7 @@ impl<'pool> WorkingDirectoryPoolGuardMut<'pool> {
         run_queues_data: &RunQueuesData,
     ) -> Result<WorkingDirectoryId> {
         if let Some(id) =
-            self.try_get_fitting_working_directory_for(run_parameters, run_queues_data)
+            self.try_get_fitting_working_directory_for(run_parameters, run_queues_data)?
         {
             info!("get_a_working_directory_for -> good old {id:?}");
             Ok(id)

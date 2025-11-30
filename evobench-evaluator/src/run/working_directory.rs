@@ -4,7 +4,7 @@
 use std::{
     fmt::Display,
     fs::Permissions,
-    ops::Deref,
+    ops::{Deref, DerefMut},
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
     time::{Duration, SystemTime},
@@ -138,7 +138,8 @@ impl WorkingDirectoryStatus {
 #[derive(Debug)]
 pub struct WorkingDirectory {
     pub git_working_dir: GitWorkingDir,
-    pub commit: GitHash,
+    /// Possibly initialized lazily via `commit()` accessor
+    pub commit: Option<GitHash>,
     pub working_directory_status: WorkingDirectoryStatus,
     working_directory_status_needs_saving: bool,
     /// last use time: mtime of the .status file
@@ -176,6 +177,12 @@ impl<'guard> Deref for WorkingDirectoryWithPoolLockMut<'guard> {
     type Target = WorkingDirectory;
 
     fn deref(&self) -> &Self::Target {
+        self.wd
+    }
+}
+
+impl<'guard> DerefMut for WorkingDirectoryWithPoolLockMut<'guard> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
         self.wd
     }
 }
@@ -326,11 +333,10 @@ impl WorkingDirectory {
                 .map_err(ctx!("WorkingDirectory::open({path:?})"))?
                 .modified()?
         };
-        let commit: GitHash = git_working_dir.get_head_commit_id()?.parse()?;
         let status = working_directory_status.status;
         let mut slf = Self {
             git_working_dir,
-            commit,
+            commit: None,
             working_directory_status,
             working_directory_status_needs_saving,
             last_use: mtime,
@@ -356,7 +362,7 @@ impl WorkingDirectory {
         info!("clone_repo({base_dir:?}, {dir_file_name:?}, {url}) succeeded");
         let mut slf = Self {
             git_working_dir,
-            commit,
+            commit: Some(commit),
             working_directory_status: status,
             working_directory_status_needs_saving: true,
             last_use: mtime,
@@ -415,13 +421,28 @@ impl WorkingDirectory {
 }
 
 impl<'guard> WorkingDirectoryWithPoolLockMut<'guard> {
+    /// Retrieve commit via git if not already cached
+    pub fn commit(&mut self) -> Result<&GitHash> {
+        if self.commit.is_some() {
+            Ok(self.commit.as_ref().expect("just checked"))
+        } else {
+            let commit: GitHash = self.git_working_dir.get_head_commit_id()?.parse()?;
+            debug!(
+                "set commit field of entry for WorkingDirectory {:?} to {commit}",
+                self.wd.git_working_dir.working_dir_path_ref()
+            );
+            self.commit = Some(commit);
+            Ok(self.commit.as_ref().expect("just set"))
+        }
+    }
+
     /// Checks and is a no-op if already on the commit.
     pub fn checkout(&mut self, commit: GitHash) -> Result<()> {
         let commit_str = commit.to_string();
         let quiet = false;
         let current_commit = self.wd.git_working_dir.get_head_commit_id()?;
         if current_commit == commit_str {
-            if self.wd.commit != commit {
+            if self.commit()? != &commit {
                 bail!("consistency failure: dir on disk has different commit id from obj")
             }
             Ok(())
@@ -450,7 +471,7 @@ impl<'guard> WorkingDirectoryWithPoolLockMut<'guard> {
                 "checkout({:?}, {commit}): ran git reset --hard",
                 self.wd.git_working_dir.working_dir_path_ref()
             );
-            self.wd.commit = commit;
+            self.wd.commit = Some(commit);
             self.set_and_save_status(Status::CheckedOut)?;
             Ok(())
         }
