@@ -45,7 +45,7 @@ pub struct BenchmarkingJobSettings {
 }
 
 impl BenchmarkingJobSettingsOpts {
-    pub fn complete(
+    pub fn complete_with_options_from(
         &self,
         fallback: Option<&BenchmarkingJobSettingsOpts>,
     ) -> BenchmarkingJobSettings {
@@ -193,9 +193,13 @@ impl BenchmarkingJob {
         }
 
         if init {
-            let benchmarking_job_settings = config
-                .benchmarking_job_settings
-                .complete(benchmarking_job_settings_opts);
+            let benchmarking_job_settings = if let Some(opts) = benchmarking_job_settings_opts {
+                opts.complete_with_options_from(Some(&config.benchmarking_job_settings))
+            } else {
+                config
+                    .benchmarking_job_settings
+                    .complete_with_options_from(None)
+            };
 
             let BenchmarkingJobState {
                 remaining_count,
@@ -279,7 +283,8 @@ impl BenchmarkingJobOpts {
             count,
             error_budget,
             priority: priority_from_config_or_defaults,
-        } = benchmarking_job_settings.complete(benchmarking_job_settings_fallback);
+        } = benchmarking_job_settings
+            .complete_with_options_from(benchmarking_job_settings_fallback);
 
         job_template_list
             .iter()
