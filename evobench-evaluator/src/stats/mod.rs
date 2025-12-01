@@ -9,7 +9,10 @@ use std::marker::PhantomData;
 use std::{borrow::Cow, str::FromStr};
 
 use anyhow::bail;
-use num_traits::{Pow, Zero};
+use fixed::traits::LossyFrom;
+use fixed::types::extra::U32;
+use fixed::FixedU128;
+use num_traits::Zero;
 
 use crate::stats::average::Average;
 use crate::stats::weighted::{IndexedNumbers, WeightedValue};
@@ -17,6 +20,28 @@ use crate::{
     tables::table_view::{ColumnFormatting, Highlight, TableViewRow, Unit},
     times::{MicroTime, NanoTime, ToStringMilliseconds},
 };
+
+fn f64_from_fixed(f: FixedU128<U32>) -> f64 {
+    f.to_num()
+}
+
+fn u64_from_fixed(f: FixedU128<U32>) -> Option<u64> {
+    let x: FixedU128<U32> = f.round();
+    let n = u128::lossy_from(x);
+    n.try_into().ok()
+}
+
+fn absdiff(a: FixedU128<U32>, b: FixedU128<U32>) -> FixedU128<U32> {
+    if a > b {
+        a - b
+    } else {
+        b - a
+    }
+}
+
+fn square(x: FixedU128<U32>) -> FixedU128<U32> {
+    x * x
+}
 
 /// Selects a field of `Stats`, e.g. to calculate the stats for one of
 /// the Stats fields.
@@ -104,12 +129,11 @@ pub struct Stats<ViewType, const TILE_COUNT: usize> {
     view_type: PhantomData<fn() -> ViewType>,
     pub num_values: usize,
     pub sum: u128,
-    /// x.5 is rounded up
-    pub average: u64,
+    pub average: FixedU128<U32>,
     /// Interpolated and rounded up for even numbers of input values.
     pub median: u64,
     /// mean squared difference from the mean
-    pub variance: f64,
+    pub variance: FixedU128<U32>,
     /// Percentiles or in `TILE_COUNT` number of sections. Sample
     /// count is the index, the sample value there is the value in the
     /// vector. `tiles[0]` is the mininum, `tiles[TILE_COUNT]` the
@@ -127,15 +151,26 @@ pub enum StatsError {
     SaturatedU128,
     #[error("the virtual count (a u64) does not fit the usize range on this machine")]
     VirtualCountDoesNotFitUSize,
+    #[error("the virtual sum does not fit the U96 range")]
+    VirtualSumDoesNotFitU96,
 }
 
 impl<ViewType, const TILE_COUNT: usize> Stats<ViewType, TILE_COUNT> {
+    /// Rounded
+    pub fn average_u64(&self) -> u64 {
+        u64_from_fixed(self.average).expect("average always fits its original number range")
+    }
+
+    pub fn variance_f64(&self) -> f64 {
+        f64_from_fixed(self.variance)
+    }
+
     /// sqrt(variance) as u64, since our conversions to ms etc. are on
     /// that type; bummer to lose f64 precision, though. Rounded.
     pub fn standard_deviation_u64(&self) -> u64 {
         // What about number overflows from f64 ? Can't happen,
         // though, right?
-        (self.variance.sqrt() + 0.5) as u64
+        (self.variance_f64().sqrt() + 0.5) as u64
     }
 
     /// Get the value for the given field (and ending up untyped! But
@@ -151,7 +186,7 @@ impl<ViewType, const TILE_COUNT: usize> Stats<ViewType, TILE_COUNT> {
                 .sum
                 .try_into()
                 .expect("hopefully in range -- realistically it should be"),
-            StatsField::Average => self.average,
+            StatsField::Average => self.average_u64(),
             StatsField::Median => self.median,
             StatsField::SD => self.standard_deviation_u64(),
             StatsField::Tile(i) => {
@@ -219,31 +254,35 @@ impl<ViewType, const TILE_COUNT: usize> Stats<ViewType, TILE_COUNT> {
                     )
                 });
 
-        let average = {
-            let virtual_count = u128::from(virtual_count);
-            virtual_sum
-                .checked_add(virtual_count / 2)
-                .ok_or(StatsError::SaturatedU128)?
-                / virtual_count
+        let virtual_count_fixed = FixedU128::<U32>::from_num(virtual_count);
+
+        // Using fixed since the average can lie between steps; U32
+        // seems to be a good position (only guaranteed to work up to
+        // u32::MAX numbers, but practically some more, and allows to
+        // reflect averages in steps nearly up to the same numbers of
+        // numbers)
+        let average: FixedU128<U32> = {
+            // Disappointing that `fixed` does not appear to support a
+            // change in fractional bits during divisions? Maybe the
+            // still-not released version would do it?
+            let virtual_sum = FixedU128::<U32>::checked_from_num(virtual_sum)
+                .ok_or_else(|| StatsError::VirtualSumDoesNotFitU96)?;
+
+            virtual_sum / virtual_count_fixed
         };
 
         let variance = {
-            // XX is there any *good* reason to use f64 here (other
-            // than "average might lie inbetween integer steps"; but
-            // could downscale for the average, i.e. average is u128
-            // but with the lower half being parts--use
-            // https://crates.io/crates/fixed ?)?
-            let virtual_count = virtual_count as f64;
-            let average: f64 = virtual_sum as f64 / virtual_count;
-            let sum_squared_error: f64 = vals
+            let sum_squared_error: FixedU128<U32> = vals
                 .iter()
                 .map(|WeightedValue { value, weight }| {
                     // Do the same as if `value` would be copied `weight` times
-                    let weight = u64::from(u32::from(*weight));
-                    (*value as f64 - average).pow(2) * (weight as f64)
+                    let value = FixedU128::<U32>::from_num(*value);
+                    let weight = FixedU128::<U32>::from_num(u32::from(*weight));
+
+                    square(absdiff(value, average)) * weight
                 })
                 .sum();
-            sum_squared_error / virtual_count
+            sum_squared_error / virtual_count_fixed
         };
 
         let indexed_vals = IndexedNumbers::from_unsorted_weighted_value_vec(&mut vals)
@@ -291,7 +330,7 @@ impl<ViewType, const TILE_COUNT: usize> Stats<ViewType, TILE_COUNT> {
             num_values: usize::try_from(virtual_count)
                 .map_err(|_| StatsError::VirtualCountDoesNotFitUSize)?,
             sum: virtual_sum,
-            average: average.try_into().expect("always fits"),
+            average,
             median,
             variance,
             tiles,
@@ -380,7 +419,8 @@ impl<ViewType: From<u64> + ToStatsString, const TILE_COUNT: usize> TableViewRow<
             view_type: _,
             num_values,
             sum,
-            average,
+            // using average_u64() instead
+            average: _,
             // using standard_deviation_u64() instead
             variance: _,
             median,
@@ -395,7 +435,7 @@ impl<ViewType: From<u64> + ToStatsString, const TILE_COUNT: usize> TableViewRow<
             Highlight::Neutral,
         ));
         out.push((
-            ViewType::from(*average).to_stats_string().into(),
+            ViewType::from(self.average_u64()).to_stats_string().into(),
             Highlight::Neutral,
         ));
         out.push((
@@ -444,32 +484,36 @@ mod tests {
     fn t_average_and_tiles_and_median() -> Result<()> {
         let data = weighted(&[23, 4, 8, 30, 7]);
         let stats = Stats::<u64, 4>::from_values(data)?;
-        assert_eq!(stats.average, 14); // 14.4
+        assert_eq!(stats.average_u64(), 14); // 14.4
+        assert_eq!((stats.average * 10).round(), 144); // 14.4
         assert_eq!(stats.tiles, [4, 7, 23, 30]); // 8 skipped
         assert_eq!(stats.median, 8);
-        assert_eq!(stats.variance, 104.24000000000001);
+        assert_eq!((stats.variance * 100).round(), 10424); // 104.24
         assert_eq!(stats.standard_deviation_u64(), 10); // 10.2097992144802
 
         let data = weighted(&[23, 4, 8, 31, 7]);
         let stats = Stats::<u64, 4>::from_values(data)?;
-        assert_eq!(stats.average, 15); // 14.6
+        assert_eq!(stats.average_u64(), 15); // 14.6
+        assert_eq!((stats.average * 10).round(), 146); // 14.6
         assert_eq!(stats.tiles[0], 4);
         assert_eq!(stats.tiles.len(), 4);
         assert_eq!(stats.tiles[3], 31);
         assert_eq!(stats.tiles, [4, 7, 23, 31]); // 8 skipped
         assert_eq!(stats.median, 8);
-        assert_eq!(stats.variance, 110.64000000000001);
+        assert_eq!((stats.variance * 100).round(), 11064); // 110.64
         assert_eq!(stats.standard_deviation_u64(), 11); // 10.5185550338438
 
         let data = weighted(&[23, 4, 8, 7]);
         let stats = Stats::<u64, 4>::from_values(data)?;
-        assert_eq!(stats.average, 11); // 10.5
+        assert_eq!(stats.average_u64(), 11); // 10.5
+        assert_eq!(stats.average, 10.5);
         assert_eq!(stats.tiles, [4, 7, 8, 23]);
         assert_eq!(stats.median, 8); // 7.5 rounded up ? XX
 
         let data = weighted(&[23, 8, 7]);
         let stats = Stats::<u64, 4>::from_values(data)?;
-        assert_eq!(stats.average, 13); // 12.6666666666667
+        assert_eq!(stats.average_u64(), 13); // 12.6666666666667
+        assert_eq!(stats.average.to_num::<f64>(), 12.666666666511446); // 12.6666666666667
         assert_eq!(stats.median, 8);
         assert_eq!(stats.tiles, [7, 8, 8, 23]);
 
@@ -519,8 +563,9 @@ mod tests {
     fn t_weights() -> Result<()> {
         let data = weighted(&[23, 4, 9, 4, 4, 7]); // 4 4 4 7 9 23
         let stats = Stats::<u64, 4>::from_values(data)?;
+        assert_eq!(stats.average, 8.5);
         assert_eq!(stats.median, 6); // 5.5
-        assert_eq!(stats.variance, 45.583333333333336);
+        assert_eq!(stats.variance.to_num::<f64>(), 45.58333333325572); // 45.5833333333
 
         let mut data = weighted(&[23, 4, 9, 7]);
         data.push(WeightedValue {
@@ -529,7 +574,7 @@ mod tests {
         });
         let stats = Stats::<u64, 4>::from_values(data)?;
         assert_eq!(stats.median, 6); // 5.5
-        assert_eq!(stats.variance, 45.583333333333336);
+        assert_eq!(stats.variance.to_num::<f64>(), 45.58333333325572); // 45.5833333333333
 
         Ok(())
     }
