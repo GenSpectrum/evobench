@@ -46,6 +46,10 @@ base64 = "0.21.7"
 kstring = "1.0"
 smallvec = "1.13.2"
 num-traits = "0.2.15"
+
+fixed = "=1.29.0"
+#force lower version for known versions of *its* dependencies: half = "=2.4.1"
+
 rand = "0.8.5"
 ruzstd = { version = "0.7.3", default-features = false, features = ["std"] }
 rust_xlsxwriter = "=0.75.0"
