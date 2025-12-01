@@ -433,7 +433,7 @@ fn open_working_directory_change_signals(
     global_app_state_dir: &GlobalAppStateDir,
 ) -> Result<PollingSignals> {
     let signals_path = conf.working_directory_change_signals_path(global_app_state_dir)?;
-    PollingSignals::open(&signals_path).map_err(ctx!("opening signals path {signals_path:?}"))
+    PollingSignals::open(&signals_path, 0).map_err(ctx!("opening signals path {signals_path:?}"))
 }
 
 enum RunResult {
