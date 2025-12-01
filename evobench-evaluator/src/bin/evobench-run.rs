@@ -190,6 +190,10 @@ enum SubCommand {
         #[clap(long)]
         initial_boost: Option<Priority>,
 
+        /// Override the reason given in the file.
+        #[clap(flatten)]
+        reason: BenchmarkingJobReasonOpt,
+
         /// Path(s) to the JSON file(s) to insert. The format is the
         /// one used in the `~/.evobench-run/queues/` directories,
         /// except you can alternatively choose JSON5, RON, or one of
@@ -1040,6 +1044,7 @@ fn run() -> Result<Option<PathBuf>> {
         SubCommand::InsertFile {
             benchmarking_job_settings_opts,
             initial_boost,
+            reason,
             force_opt,
             quiet_opt,
             paths,
@@ -1059,8 +1064,9 @@ fn run() -> Result<Option<PathBuf>> {
                 job.check_and_init(
                     conf,
                     true,
-                    Some(&benchmarking_job_settings_opts),
+                    &benchmarking_job_settings_opts,
                     initial_boost,
+                    &reason,
                 )?;
 
                 benchmarking_jobs.push(job);

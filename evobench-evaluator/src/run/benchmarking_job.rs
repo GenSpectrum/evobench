@@ -155,8 +155,9 @@ impl BenchmarkingJob {
         &mut self,
         config: &RunConfig,
         init: bool,
-        benchmarking_job_settings_opts: Option<&BenchmarkingJobSettingsOpts>,
+        benchmarking_job_settings_opts: &BenchmarkingJobSettingsOpts,
         initial_boost: Option<Priority>,
+        reason_opt: &BenchmarkingJobReasonOpt,
     ) -> Result<()> {
         let Self {
             benchmarking_job_public,
@@ -166,7 +167,7 @@ impl BenchmarkingJob {
         } = self;
 
         let BenchmarkingJobPublic {
-            reason: _,
+            reason,
             run_parameters,
             command,
         } = benchmarking_job_public;
@@ -193,13 +194,8 @@ impl BenchmarkingJob {
         }
 
         if init {
-            let benchmarking_job_settings = if let Some(opts) = benchmarking_job_settings_opts {
-                opts.complete_with_options_from(Some(&config.benchmarking_job_settings))
-            } else {
-                config
-                    .benchmarking_job_settings
-                    .complete_with_options_from(None)
-            };
+            let benchmarking_job_settings = benchmarking_job_settings_opts
+                .complete_with_options_from(Some(&config.benchmarking_job_settings));
 
             let BenchmarkingJobState {
                 remaining_count,
@@ -212,6 +208,10 @@ impl BenchmarkingJob {
             *priority = benchmarking_job_settings.priority;
             if let Some(initial_boost) = initial_boost {
                 *current_boost = initial_boost;
+            }
+
+            if let Some(rsn) = &reason_opt.reason {
+                *reason = Some(rsn.into());
             }
 
             *last_working_directory = None;
