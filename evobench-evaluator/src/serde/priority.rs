@@ -106,6 +106,7 @@ impl FromStr for Priority {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.trim();
         match s {
             "high" => Ok(Priority::HIGH),
             "normal" => Ok(Priority::NORMAL),

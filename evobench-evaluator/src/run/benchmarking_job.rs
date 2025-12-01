@@ -32,8 +32,10 @@ pub struct BenchmarkingJobSettingsOpts {
     /// The default priority for jobs (a floating point number, or the
     /// names `normal` (alias for 0.), `high` (alias for 1.), and
     /// `low` (alias for -1.)). Jobs with a higher priority value (in
-    /// the positive direction) are scheduled before other
-    /// jobs. Default taken from config file or: 0
+    /// the positive direction) are scheduled before other jobs. To
+    /// give negative numbers as priorities via the command line,
+    /// prefix them with a space to get them past the Clap command
+    /// line parser: " -2".  Default taken from config file or: 0
     #[clap(short, long)]
     priority: Option<Priority>,
 }
