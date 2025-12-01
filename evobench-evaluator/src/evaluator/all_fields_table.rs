@@ -467,22 +467,16 @@ where
                 vals,
             ) {
                 Ok(val) => Some(val.into()),
-                Err(e) => match e {
-                    StatsError::NoInputs => {
-                        // This does happen, even after 'at least 1 table':
-                        // sure, if only a Count happened I guess?  So,
-                        // eliminate the row completely?
-                        None
-                    }
-                    StatsError::SaturatedU128 => {
-                        unreachable!("expecting to never see values > u64")
-                    }
-                    StatsError::VirtualCountDoesNotFitUSize => unreachable!("on 64bit archs"),
-                    StatsError::RationalU128Failure(msg) => {
-                        // Do we have to return Result now?
-                        panic!("XX don't know if this can happen: {msg}")
-                    }
-                },
+                Err(StatsError::NoInputs) => {
+                    // This does happen, even after 'at least 1 table':
+                    // sure, if only a Count happened I guess?  So,
+                    // eliminate the row completely?
+                    None
+                }
+                Err(StatsError::SaturatedU128) => {
+                    unreachable!("expecting to never see values > u64")
+                }
+                Err(StatsError::VirtualCountDoesNotFitUSize) => unreachable!("on 64bit archs"),
             };
             let val = maybe_val?;
             Some(KeyVal { key, val })
