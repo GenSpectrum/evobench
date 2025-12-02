@@ -297,6 +297,10 @@ enum WdSubCommand {
         /// Only show the ID of the working directories
         #[clap(short, long)]
         id_only: bool,
+
+        /// Show a column with the checked-out commid id
+        #[clap(long)]
+        show_commit: bool,
     },
     /// Delete working directories that have been set aside due to
     /// errors
@@ -1252,32 +1256,56 @@ fn run() -> Result<Option<PathBuf>> {
                     error,
                     sort_used,
                     id_only,
+                    show_commit,
                 } => {
-                    let mut all_entries: Vec<_> = working_directory_pool.all_entries().collect();
-
-                    if sort_used {
-                        all_entries.sort_by(|a, b| a.1.last_use.cmp(&b.1.last_use))
+                    let widths = &[3 + 2, Status::MAX_STR_LEN + 2, 8 + 2, 35 + 2, 35 + 2];
+                    let titles = &[
+                        "id",
+                        "status",
+                        "num_runs",
+                        "creation_timestamp",
+                        "last_use",
+                        "commit_id",
+                    ]
+                    .map(|s| TerminalTableTitle {
+                        text: Cow::Borrowed(s),
+                        span: 1,
+                    });
+                    fn used<T>(vals: &[T], show_commit: bool) -> &[T] {
+                        if show_commit {
+                            vals
+                        } else {
+                            &vals[..vals.len() - 1]
+                        }
                     }
-
-                    let titles = &["id", "status", "num_runs", "creation_timestamp", "last_use"]
-                        .map(|s| TerminalTableTitle {
-                            text: Cow::Borrowed(s),
-                            span: 1,
-                        });
 
                     let mut table = if id_only {
                         None
                     } else {
                         Some(TerminalTable::start(
-                            &[3 + 2, Status::MAX_STR_LEN + 2, 8 + 2, 35 + 2],
-                            titles,
+                            used(widths, show_commit),
+                            used(titles, show_commit),
                             None,
                             terminal_table_opts,
                             stdout().lock(),
                         )?)
                     };
 
-                    for (id, wd) in &all_entries {
+                    let all_ids: Vec<_> = {
+                        let mut all_entries: Vec<_> =
+                            working_directory_pool.all_entries().collect();
+                        if sort_used {
+                            all_entries.sort_by(|a, b| a.1.last_use.cmp(&b.1.last_use))
+                        }
+                        all_entries.iter().map(|(id, _)| *id).collect()
+                    };
+
+                    for id in all_ids {
+                        let mut lock =
+                            working_directory_pool.lock_mut("evobench-run WdSubCommand::List")?;
+                        let mut wd = lock
+                            .get_working_directory_mut(id)
+                            .expect("got it from all_entries");
                         let WorkingDirectoryStatus {
                             creation_timestamp,
                             num_runs,
@@ -1291,16 +1319,19 @@ fn run() -> Result<Option<PathBuf>> {
                         };
                         if show {
                             if let Some(table) = &mut table {
-                                table.write_data_row(
-                                    &[
-                                        id.to_string(),
-                                        status.to_string(),
-                                        num_runs.to_string(),
-                                        creation_timestamp.to_string(),
-                                        system_time_to_rfc3339(wd.last_use),
-                                    ],
-                                    None,
-                                )?;
+                                let row = &[
+                                    id.to_string(),
+                                    status.to_string(),
+                                    num_runs.to_string(),
+                                    creation_timestamp.to_string(),
+                                    system_time_to_rfc3339(wd.last_use),
+                                    if show_commit {
+                                        wd.commit()?.to_string()
+                                    } else {
+                                        String::new()
+                                    },
+                                ];
+                                table.write_data_row(used(row, show_commit), None)?;
                             } else {
                                 println!("{id}");
                             }
