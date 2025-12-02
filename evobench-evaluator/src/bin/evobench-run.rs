@@ -298,9 +298,10 @@ enum WdSubCommand {
         #[clap(short, long)]
         id_only: bool,
 
-        /// Show a column with the checked-out commid id
+        /// Do not show the column with the checked-out commid id
+        /// (speeds up the listing)
         #[clap(long)]
-        show_commit: bool,
+        no_commit: bool,
     },
     /// Delete working directories that have been set aside due to
     /// errors
@@ -1256,7 +1257,7 @@ fn run() -> Result<Option<PathBuf>> {
                     error,
                     sort_used,
                     id_only,
-                    show_commit,
+                    no_commit,
                 } => {
                     let widths = &[3 + 2, Status::MAX_STR_LEN + 2, 8 + 2, 35 + 2, 35 + 2];
                     let titles = &[
@@ -1283,8 +1284,8 @@ fn run() -> Result<Option<PathBuf>> {
                         None
                     } else {
                         Some(TerminalTable::start(
-                            used(widths, show_commit),
-                            used(titles, show_commit),
+                            used(widths, !no_commit),
+                            used(titles, !no_commit),
                             None,
                             terminal_table_opts,
                             stdout().lock(),
@@ -1325,13 +1326,13 @@ fn run() -> Result<Option<PathBuf>> {
                                     num_runs.to_string(),
                                     creation_timestamp.to_string(),
                                     system_time_to_rfc3339(wd.last_use),
-                                    if show_commit {
+                                    if !no_commit {
                                         wd.commit()?.to_string()
                                     } else {
                                         String::new()
                                     },
                                 ];
-                                table.write_data_row(used(row, show_commit), None)?;
+                                table.write_data_row(used(row, !no_commit), None)?;
                             } else {
                                 println!("{id}");
                             }
