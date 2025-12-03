@@ -62,6 +62,7 @@ use evobench_evaluator::{
         git_branch_name::GitBranchName,
         priority::Priority,
     },
+    serde_util::serde_read_json,
     terminal_table::{TerminalTable, TerminalTableOpts, TerminalTableTitle},
     utillib::{
         arc::CloneArc,
@@ -1059,11 +1060,7 @@ fn run() -> Result<Option<PathBuf>> {
                 let mut job: BenchmarkingJob = if let Ok(backend) = backend_from_path(&path) {
                     backend.load_config_file(&path)?
                 } else {
-                    (|| -> Result<_> {
-                        let s = std::fs::read_to_string(&path)?;
-                        Ok(serde_json::from_str(&s)?)
-                    })()
-                    .map_err(ctx!("reading file {path:?}"))?
+                    serde_read_json(&path)?
                 };
 
                 job.check_and_init(
