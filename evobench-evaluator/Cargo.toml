@@ -69,3 +69,8 @@ regex = "1.7"
 memmap2 = "0.9.4"
 
 linfa-clustering = "0.8.0"
+linfa = "0.8.0"
+ndarray = "0.16.1"
+rand_xoshiro = "0.6.0"
+ndarray-rand = "0.15.0"
+approx = "0.5.1"
