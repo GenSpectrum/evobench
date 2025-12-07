@@ -74,3 +74,4 @@ ndarray = "0.16.1"
 rand_xoshiro = "0.6.0"
 ndarray-rand = "0.15.0"
 approx = "0.5.1"
+noisy_float = { version = "0.2.0", features = ["serde"] }
