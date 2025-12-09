@@ -95,6 +95,14 @@ pub struct EarlyContext {
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct CustomParameters(BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, CustomParameterValue>);
 
+impl From<BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, CustomParameterValue>>
+    for CustomParameters
+{
+    fn from(value: BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, CustomParameterValue>) -> Self {
+        Self(value)
+    }
+}
+
 impl CustomParameters {
     pub fn btree_map(
         &self,

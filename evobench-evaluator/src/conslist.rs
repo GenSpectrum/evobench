@@ -18,18 +18,21 @@ impl<'t, T> List<'t, T> {
             List::Null => 0,
         }
     }
+
     pub fn first(&self) -> Option<&T> {
         match self {
             List::Pair(v, _) => Some(v),
             List::Null => None,
         }
     }
+
     pub fn rest<'s>(&'s self) -> Option<&'s List<'s, T>> {
         match self {
             List::Pair(_, r) => Some(r),
             List::Null => None,
         }
     }
+
     pub fn last(&self) -> Option<&T> {
         match self {
             List::Pair(v, List::Null) => Some(v),
@@ -37,6 +40,7 @@ impl<'t, T> List<'t, T> {
             List::Null => None,
         }
     }
+
     /// A Vec of all the values as references.
     // For reverse simply reverse the Vec afterwards yourself? (Could
     // also get length then fill in unsafely or require Default.)
@@ -54,6 +58,7 @@ impl<'t, T> List<'t, T> {
         }
         vs
     }
+
     pub fn to_vec(&self) -> Vec<T>
     where
         T: Clone,
@@ -70,6 +75,21 @@ impl<'t, T> List<'t, T> {
             }
         }
         vs
+    }
+
+    pub fn any(&self, mut f: impl FnMut(&T) -> bool) -> bool {
+        let mut vs = self;
+        loop {
+            match vs {
+                List::Pair(val, list) => {
+                    if f(val) {
+                        return true;
+                    }
+                    vs = list;
+                }
+                List::Null => return false,
+            }
+        }
     }
 }
 

@@ -25,6 +25,7 @@ pub mod run;
 pub mod safe_string;
 pub mod serde;
 pub mod serde_util;
+pub mod silo;
 pub mod stats;
 pub mod tables;
 pub mod terminal_table;
