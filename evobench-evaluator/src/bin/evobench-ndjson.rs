@@ -147,6 +147,7 @@ struct ParseFile {
 
 #[derive(clap::Subcommand, Debug)]
 enum SubCommand {
+    /// Bring a queries file into canonical representation.
     Canonicalize {
         /// Whether to optimize filter expressions
         #[clap(long)]
@@ -161,6 +162,8 @@ enum SubCommand {
         output: PathBuf,
     },
 
+    /// Build queries clusters out of a queries file (includes
+    /// bringing queries into their canonical representation).
     Vectorize {
         /// Show values (with query id where it appears) with each key
         #[clap(short, long)]
@@ -176,6 +179,19 @@ enum SubCommand {
         /// Whether to write query (and job template) files
         #[clap(subcommand)]
         queries_output: Option<QueriesOutput>,
+    },
+
+    /// Copy contents of multiple queries dirs into a single new one
+    /// (does *not* run query canonicalization); creates a new
+    /// template file from scratch.
+    MergeClustersTo {
+        /// Path to new dir (no extension is added here!)
+        new_queries_dir: PathBuf,
+
+        /// Paths to existing queries dirs
+        queries_dirs: Vec<PathBuf>,
+        // Not adding `reason` override here; just rely on the
+        // default, OK?
     },
 }
 
@@ -218,7 +234,7 @@ fn write_queries_file<'a>(
     (|| -> Result<()> {
         let mut out = BufWriter::new(File::create(queries_file_path)?);
         for query in queries {
-            out.write_all(query.as_bytes())?;
+            out.write_all(query.trim_end().as_bytes())?;
             out.write_all(b"\n")?;
         }
         out.flush()?;
@@ -227,10 +243,25 @@ fn write_queries_file<'a>(
     .with_context(|| anyhow!("writing query file {queries_file_path:?}"))
 }
 
+// *Without* the .ndjson extension, that is added by the backend itself
+fn extension_for_cluster_id(cluster_id: Option<ClusterId>) -> String {
+    if let Some(cluster_id) = cluster_id {
+        format!("{cluster_id:03}")
+    } else {
+        format!("unclustered")
+    }
+}
+
 impl QueriesOutput {
+    // `extension` is the part *without* the .ndjson extension (that
+    // is added by the backend itself if targetting a file); None
+    // means nothing is added to the "base" paths in `self`.
+    // `queries` is/can be strings without the end of line character
+    // (any whitespace at the end is stripped before re-adding a
+    // newline).
     fn write_queries<'a>(
         &self,
-        cluster_id: Option<ClusterId>,
+        extension: Option<String>,
         queries: &mut dyn ExactSizeIterator<Item = &'a Arc<str>>,
     ) -> Result<()> {
         // Get this before mutating `queries`!
@@ -238,50 +269,46 @@ impl QueriesOutput {
 
         match self {
             QueriesOutput::ToFiles { file_base_path } => {
-                let extension = if let Some(cluster_id) = cluster_id {
-                    format!("{cluster_id:03}.ndjson")
-                } else {
-                    format!("unclustered.ndjson")
-                };
-                {
-                    let queries_file_path =
-                        add_extension(file_base_path, extension).ok_or_else(|| {
-                            anyhow!(
-                                "to-files requires a path to which a file \
+                let queries_file_path = if let Some(extension) = extension {
+                    let extension = format!("{extension}.ndjson");
+
+                    &add_extension(file_base_path, extension).ok_or_else(|| {
+                        anyhow!(
+                            "to-files requires a path to which a file \
                              extension can be added"
-                            )
-                        })?;
-                    write_queries_file(&queries_file_path, queries)
-                }
+                        )
+                    })?
+                } else {
+                    file_base_path
+                };
+                write_queries_file(queries_file_path, queries)
             }
             QueriesOutput::ToFolders {
                 folder_base_path,
                 reason,
             } => {
-                let extension = if let Some(cluster_id) = cluster_id {
-                    format!("{cluster_id:03}")
-                } else {
-                    format!("unclustered")
-                };
-                let folder_path = add_extension(folder_base_path, extension).ok_or_else(|| {
-                    anyhow!(
-                        "to-folders requires a path to which a file \
+                let folder_path = if let Some(extension) = extension {
+                    &add_extension(folder_base_path, extension).ok_or_else(|| {
+                        anyhow!(
+                            "to-folders requires a path to which a file \
                          extension can be added"
-                    )
-                })?;
+                        )
+                    })?
+                } else {
+                    folder_base_path
+                };
 
-                create_dir_if_not_exists(&folder_path, "folder for queries file")?;
+                create_dir_if_not_exists(folder_path, "folder for queries file")?;
 
                 // File with queries
                 {
-                    let queries_file_path = (&folder_path).append("queries.ndjson");
+                    let queries_file_path = folder_path.append("queries.ndjson");
                     write_queries_file(&queries_file_path, queries)?;
                 }
 
                 // Symlink
                 {
-                    let symlink_path =
-                        (&folder_path).append("ignore_queries_for_checksum_regex.txt");
+                    let symlink_path = folder_path.append("ignore_queries_for_checksum_regex.txt");
                     match symlink(
                         "../queries/ignore_queries_for_checksum_regex.txt",
                         &symlink_path,
@@ -296,7 +323,7 @@ impl QueriesOutput {
 
                 // Job template file
                 {
-                    let template_path = (&folder_path).append("job-template.json5");
+                    let template_path = folder_path.append("job-template.json5");
                     let reason: &str = if let Some(reason) = reason {
                         reason
                     } else {
@@ -328,7 +355,7 @@ impl QueriesOutput {
                         AllowedEnvVar<AllowableCustomEnvVar>,
                         CustomParameterValue,
                     )> = {
-                        let folder_name = (&folder_path)
+                        let folder_name = folder_path
                             .file_name()
                             .expect("can get back file name of path to which a suffix was added")
                             .to_string_lossy();
@@ -834,6 +861,14 @@ fn canonicalize(optimize: bool, line: &str, line0: usize, path: &Path) -> Result
     Ok((value, canonical_query))
 }
 
+fn read_queries_file_step_1(input: &Path) -> Result<String> {
+    std::fs::read_to_string(&input).map_err(ctx!("reading ndjson file {input:?}"))
+}
+
+fn read_queries_file_step_2(s: &str) -> impl Iterator<Item = (usize, &str)> {
+    s.trim_end().split("\n").enumerate()
+}
+
 fn main() -> Result<()> {
     let Opts {
         log_level,
@@ -849,12 +884,11 @@ fn main() -> Result<()> {
             output,
         } => {
             // ~copy paste from SubCommand::Vectorize
-            let s =
-                std::fs::read_to_string(&input).map_err(ctx!("reading ndjson file {input:?}"))?;
+            let s = read_queries_file_step_1(&input)?;
             let mut out = BufWriter::new(
                 File::create(&output).map_err(ctx!("opening output file {output:?}"))?,
             );
-            for (i, line) in s.trim_end().split("\n").enumerate() {
+            for (i, line) in read_queries_file_step_2(&s) {
                 let (_value, canonical_query) = canonicalize(optimize, line, i, &input)?;
                 (|| -> Result<()> {
                     out.write_all(canonical_query.as_bytes())?;
@@ -866,7 +900,6 @@ fn main() -> Result<()> {
             out.flush()
                 .with_context(|| anyhow!("writing to output file {output:?}"))?;
         }
-
         SubCommand::Vectorize {
             parse_file: ParseFile { path },
             show_values,
@@ -874,8 +907,8 @@ fn main() -> Result<()> {
             queries_output,
         } => {
             let mut queries = Queries::new();
-            let s = std::fs::read_to_string(&path).map_err(ctx!("reading ndjson file {path:?}"))?;
-            for (i, line) in s.trim_end().split("\n").enumerate() {
+            let s = read_queries_file_step_1(&path)?;
+            for (i, line) in read_queries_file_step_2(&s) {
                 let (value, canonical_query) = canonicalize(optimize, line, i, &path)?;
                 if let Some(id) = queries.insert_query(canonical_query.into()) {
                     queries.add_vectors(id, &value);
@@ -944,16 +977,44 @@ fn main() -> Result<()> {
 
             if let Some(queries_output) = queries_output {
                 for (cluster_id, cluster) in &easy_clusters {
-                    queries_output.write_queries(Some(*cluster_id), &mut cluster.iter())?;
+                    queries_output.write_queries(
+                        Some(extension_for_cluster_id(Some(*cluster_id))),
+                        &mut cluster.iter(),
+                    )?;
                 }
 
                 if !non_clustered.is_empty() {
-                    queries_output.write_queries(None, &mut non_clustered.iter())?;
+                    queries_output.write_queries(
+                        Some(extension_for_cluster_id(None)),
+                        &mut non_clustered.iter(),
+                    )?;
                 }
             } else {
                 dbg!(easy_clusters);
                 dbg!(non_clustered);
             }
+        }
+
+        SubCommand::MergeClustersTo {
+            new_queries_dir,
+            queries_dirs,
+        } => {
+            let mut queries = Vec::new();
+
+            for queries_dir in queries_dirs {
+                let queries_file_path = queries_dir.append("queries.ndjson");
+                let s = read_queries_file_step_1(&queries_file_path)?;
+                for (_i, line) in read_queries_file_step_2(&s) {
+                    queries.push(Arc::from(line.to_owned()));
+                }
+            }
+
+            // Re-use QueriesOutput; a bit hacky.
+            let queries_output = QueriesOutput::ToFolders {
+                reason: None,
+                folder_base_path: new_queries_dir,
+            };
+            queries_output.write_queries(None, &mut queries.iter())?;
         }
     }
 
