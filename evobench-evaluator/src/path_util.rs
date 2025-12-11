@@ -6,8 +6,6 @@ use std::{
 
 use anyhow::{anyhow, Context, Result};
 
-use crate::ctx;
-
 /// Make it easy to append a segment to an existing path.
 pub trait AppendToPath {
     /// Note: `segment` should be a single file/folder name and *not*
@@ -146,5 +144,5 @@ pub fn rename_tmp_path(tmp_path: impl AsRef<Path>) -> Result<()> {
     let tmp_path = tmp_path.as_ref();
     let path = remove_extension(&tmp_path)
         .ok_or_else(|| anyhow!("tmp path does not have a suffix: {tmp_path:?}"))?;
-    std::fs::rename(tmp_path, &path).map_err(ctx!("renaming {tmp_path:?} to {path:?}"))
+    std::fs::rename(tmp_path, &path).with_context(|| anyhow!("renaming {tmp_path:?} to {path:?}"))
 }
