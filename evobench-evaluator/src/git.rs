@@ -457,7 +457,7 @@ mod tests {
             return Ok(());
         }
         let graph = GitGraph::new();
-        let mut graph_lock = graph.lock();
+        let mut graph_guard = graph.lock();
 
         let interesting_commit_ids = [
             // a later commit:
@@ -472,7 +472,7 @@ mod tests {
         // Test depth:
 
         let refs = interesting_commit_ids.map(|name| {
-            graph_lock
+            graph_guard
                 .add_history_from_dir_ref(git_in_cwd, name)
                 .map_err(|e| e.to_string())
         });
@@ -486,18 +486,18 @@ mod tests {
 
         let ids: [Id<ToEnrichedCommit>; _] = refs.map(|res| res.unwrap().commit_id);
 
-        let depths = ids.map(|id| id.get(&graph_lock).unwrap().depth);
+        let depths = ids.map(|id| id.get(&graph_guard).unwrap().depth);
         assert_eq!(depths, [166, 163, 159, 161]);
 
         // Test closest_matching_ancestor_of:
 
-        let closest = graph_lock
+        let closest = graph_guard
             .closest_matching_ancestor_of(ids[0], |id| (&ids[2..]).contains(&id))?
             .expect("to find it");
         assert_eq!(closest, Id(165, ToEnrichedCommit));
         assert_eq!(
             closest
-                .get(&graph_lock)
+                .get(&graph_guard)
                 .expect("contained")
                 .commit
                 .commit_hash
