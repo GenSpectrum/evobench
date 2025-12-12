@@ -9,9 +9,12 @@ use cj_path_util::unix::fixup_path::CURRENT_DIRECTORY;
 use clap::Parser;
 use evobench_evaluator::get_terminal_width::get_terminal_width;
 use evobench_evaluator::git::GitGraph;
+use evobench_evaluator::git_tags::GitTags;
 use evobench_evaluator::serde::git_branch_name::GitBranchName;
 use evobench_evaluator::utillib::logging::set_log_level;
 use evobench_evaluator::utillib::logging::LogLevelOpt;
+use itertools::Itertools;
+use run_git::git::GitWorkingDir;
 
 #[derive(clap::Parser, Debug)]
 #[clap(next_line_help = true)]
@@ -19,6 +22,14 @@ use evobench_evaluator::utillib::logging::LogLevelOpt;
 struct Opts {
     #[clap(flatten)]
     log_level: LogLevelOpt,
+
+    /// Print commits and their parents
+    #[clap(long)]
+    show_graph: bool,
+
+    /// Print commits with their associated tags
+    #[clap(long)]
+    show_tags: bool,
 
     /// The git branch name to get the history from
     reference: GitBranchName,
@@ -30,6 +41,8 @@ struct Opts {
 fn main() -> Result<()> {
     let Opts {
         log_level,
+        show_graph,
+        show_tags,
         reference,
         directory,
     } = Opts::parse();
@@ -54,7 +67,8 @@ fn main() -> Result<()> {
     let sorted_ids = graph
         .lock()
         .sorted_by(&ids, |ecommit| ecommit.commit.committer_time);
-    {
+
+    if show_graph {
         let graph_lock = graph.lock();
         let ecommits = graph_lock.ids_as_commits(&sorted_ids);
         let mut out = BufWriter::new(stdout().lock());
@@ -63,6 +77,24 @@ fn main() -> Result<()> {
             writeln!(&mut out, "{commit}")?;
         }
         out.flush()?;
+    }
+
+    if show_tags {
+        let git = GitWorkingDir {
+            working_dir_path: directory.to_owned().into(),
+        };
+        let git_tags = GitTags::from_dir(&git)?;
+        {
+            let graph_lock = graph.lock();
+            let ecommits = graph_lock.ids_as_commits(&sorted_ids);
+            let mut out = BufWriter::new(stdout().lock());
+            for ecommit in ecommits {
+                let commit = ecommit.with_ids_as_hashes(&graph_lock);
+                let tags = git_tags.get_by_commit(&commit.commit.commit_hash).join(",");
+                writeln!(&mut out, "{}\t{tags}", commit.commit.commit_hash)?;
+            }
+            out.flush()?;
+        }
     }
 
     Ok(())
