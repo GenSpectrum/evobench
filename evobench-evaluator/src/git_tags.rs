@@ -1,0 +1,70 @@
+//! Extension of run-git crate, probably to be moved there at some point.
+
+use std::{collections::BTreeMap, str::FromStr, sync::Arc};
+
+use anyhow::{anyhow, Context, Result};
+use kstring::KString;
+use run_git::git::GitWorkingDir;
+
+use crate::{git::GitHash, warn};
+
+pub struct GitTag {
+    pub name: KString,
+    pub commit: Arc<GitHash>,
+}
+
+pub struct GitTags {
+    tags: Vec<GitTag>,
+    // To index in `tags`
+    by_hash: BTreeMap<Arc<GitHash>, Vec<usize>>,
+}
+
+impl GitTags {
+    pub fn from_dir(working_dir: &GitWorkingDir) -> Result<Self> {
+        let s = working_dir.git_stdout_string_trimmed(&[
+            "tag", "--list", // -l
+        ])?;
+        let mut tags = Vec::new();
+        let mut by_hash: BTreeMap<Arc<GitHash>, Vec<usize>> = Default::default();
+        for name in s.split("\n") {
+            if let Some(commit) = working_dir
+                .git_rev_parse(name, true)
+                .with_context(|| anyhow!("resolving tag name {name:?}"))?
+            {
+                let commit = Arc::new(
+                    GitHash::from_str(&commit)
+                        .with_context(|| anyhow!("resolving tag name {name:?}"))?,
+                );
+                match by_hash.entry(commit.clone()) {
+                    std::collections::btree_map::Entry::Vacant(vacant_entry) => {
+                        vacant_entry.insert(vec![tags.len()]);
+                    }
+                    std::collections::btree_map::Entry::Occupied(mut occupied_entry) => {
+                        occupied_entry.get_mut().push(tags.len());
+                    }
+                }
+
+                let name = KString::from_ref(name);
+                tags.push(GitTag { name, commit });
+            } else {
+                // This *can* happen, there is a race between getting
+                // the tag listing and another process deleting the
+                // tags.
+                warn!("could not resolve tag name {name:?} that we just got");
+            }
+        }
+        Ok(GitTags { tags, by_hash })
+    }
+
+    /// Returns the empty set for unknown commit ids. Returns tag
+    /// names in the order in which they appear in `git tag --list`.
+    pub fn get_by_commit(&self, commit_id: &GitHash) -> impl ExactSizeIterator<Item = &str> {
+        if let Some(items) = self.by_hash.get(commit_id) {
+            &**items
+        } else {
+            &[]
+        }
+        .iter()
+        .map(|i| &*self.tags[*i].name)
+    }
+}

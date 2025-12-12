@@ -9,6 +9,7 @@ pub mod dynamic_typing;
 pub mod evaluator;
 pub mod get_terminal_width;
 pub mod git;
+pub mod git_tags;
 pub mod io_utils;
 pub mod join;
 pub mod json5_from_str;
