@@ -1,4 +1,5 @@
 use anyhow::{anyhow, bail, Context, Result};
+use cj_path_util::{path_util::AppendToPath, unix::polyfill::add_extension};
 use clap::Parser;
 use evobench_evaluator::{
     config_file::backend_from_path,
@@ -8,7 +9,6 @@ use evobench_evaluator::{
     git::GitHash,
     io_utils::div::create_dir_if_not_exists,
     key::RunParameters,
-    path_util::{add_extension, AppendToPath},
     run::{
         benchmarking_job::{BenchmarkingJob, BenchmarkingJobPublic, BenchmarkingJobState},
         config::BenchmarkingCommand,

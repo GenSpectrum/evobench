@@ -12,6 +12,7 @@ use std::{
 };
 
 use anyhow::{anyhow, bail, Result};
+use cj_path_util::unix::polyfill::add_extension;
 use run_git::path_util::AppendToPath;
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -19,7 +20,6 @@ use crate::{
     ctx, info,
     io_utils::tempfile_utils::TempfileOptions,
     json5_from_str::{json5_from_str, Json5FromStrError},
-    path_util::add_extension,
     serde::proper_filename::ProperFilename,
     utillib::{
         home::{home_dir, HomeError},

@@ -11,6 +11,7 @@ use std::{
 
 use anyhow::{bail, Result};
 use chrono::{DateTime, Local};
+use cj_path_util::path_util::rename_tmp_path;
 use nix::{unistd::getpid, unistd::getuid};
 use run_git::path_util::AppendToPath;
 
@@ -23,7 +24,6 @@ use crate::{
         temporary_file::TemporaryFile,
     },
     key::{BenchmarkingJobParameters, RunParameters},
-    path_util::rename_tmp_path,
     run::{
         benchmarking_job::BenchmarkingJob, config::RunConfig, dataset_dir_env_var::dataset_dir_for,
         env_vars::assert_evobench_env_var, output_directory_structure::KeyDir,

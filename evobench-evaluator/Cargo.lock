@@ -200,6 +200,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "cj-path-util"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "87a5547454c561e7f7eebec0d4c42700b741c74c8ee7caec0d68eeca16d10d9f"
+dependencies = [
+ "anyhow",
+ "lazy_static",
+ "nix",
+]
+
+[[package]]
 name = "clap"
 version = "3.2.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -436,6 +447,7 @@ dependencies = [
  "approx",
  "base64",
  "chrono",
+ "cj-path-util",
  "clap",
  "enumn",
  "fixed",

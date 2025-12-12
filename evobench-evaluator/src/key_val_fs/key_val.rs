@@ -9,12 +9,10 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+use cj_path_util::path_util::AppendToPath;
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::{
-    lockable_file::{ExclusiveFileLock, LockableFile, SharedFileLock},
-    path_util::AppendToPath,
-};
+use crate::lockable_file::{ExclusiveFileLock, LockableFile, SharedFileLock};
 
 use super::as_key::AsKey;
 

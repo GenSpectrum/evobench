@@ -7,12 +7,12 @@ use std::{
 };
 
 use anyhow::{anyhow, bail, Result};
+use cj_path_util::path_util::AppendToPath;
 use run_git::git::GitWorkingDir;
 
 use crate::{
     ctx, debug,
     git::{GitGraph, GitGraphData, GitHash},
-    path_util::AppendToPath,
     serde::proper_filename::ProperFilename,
     warn,
 };

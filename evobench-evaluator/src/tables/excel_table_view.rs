@@ -1,11 +1,11 @@
 use std::{borrow::Cow, path::Path};
 
 use anyhow::{anyhow, Context, Result};
+use cj_path_util::unix::polyfill::add_extension;
 use rust_xlsxwriter::{workbook::Workbook, Color, Format, FormatAlign};
 
 use crate::{
     io_utils::div::xrename,
-    path_util::add_extension,
     tables::table_view::{ColumnFormatting, Highlight, TableView, Unit},
 };
 

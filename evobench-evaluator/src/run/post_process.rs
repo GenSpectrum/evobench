@@ -9,11 +9,11 @@ use std::{
 };
 
 use anyhow::{bail, Result};
+use cj_path_util::unix::polyfill::add_extension;
 use run_git::path_util::AppendToPath;
 
 use crate::{
     ctx, info,
-    path_util::add_extension,
     run::{
         command_log_file::CommandLogFile,
         config::{RunConfig, ScheduleCondition},

@@ -8,6 +8,7 @@ use std::{
 
 use anyhow::{bail, Result};
 use chrono::{DateTime, Local};
+use cj_path_util::path_util::AppendToPath;
 use genawaiter::rc::Gen;
 use itertools::{EitherOrBoth, Itertools};
 
@@ -20,7 +21,6 @@ use crate::{
         key_val::{KeyValConfig, KeyValSync},
         queue::{Queue, QueueGetItemOptions, QueueItem, TimeKey},
     },
-    path_util::AppendToPath,
     run::run_job::{JobRunnerJobData, JobRunnerWithJob},
     serde::{priority::Priority, proper_filename::ProperFilename},
     utillib::logging::{log_level, LogLevel},

@@ -16,6 +16,7 @@ use std::{
 };
 
 use anyhow::{anyhow, bail, Result};
+use cj_path_util::path_util::AppendToPath;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -25,7 +26,6 @@ use crate::{
     info, io_utils,
     key::{BenchmarkingJobParameters, RunParameters},
     owning_lockable_file::{OwningExclusiveFileLock, OwningLockableFile},
-    path_util::AppendToPath,
     run::working_directory::{
         WorkingDirectoryAutoCleanOpts, WorkingDirectoryWithPoolLock,
         WorkingDirectoryWithPoolLockMut, WorkingDirectoryWithPoolMut,
