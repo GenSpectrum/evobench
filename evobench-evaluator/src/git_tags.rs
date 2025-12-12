@@ -5,6 +5,7 @@ use std::{collections::BTreeMap, str::FromStr, sync::Arc};
 use anyhow::{anyhow, Context, Result};
 use kstring::KString;
 use run_git::git::GitWorkingDir;
+use smallvec::{smallvec, SmallVec};
 
 use crate::{git::GitHash, warn};
 
@@ -16,7 +17,7 @@ pub struct GitTag {
 pub struct GitTags {
     tags: Vec<GitTag>,
     // To index in `tags`
-    by_hash: BTreeMap<Arc<GitHash>, Vec<usize>>,
+    by_hash: BTreeMap<Arc<GitHash>, SmallVec<[u32; 1]>>,
 }
 
 impl GitTags {
@@ -25,7 +26,7 @@ impl GitTags {
             "tag", "--list", // -l
         ])?;
         let mut tags = Vec::new();
-        let mut by_hash: BTreeMap<Arc<GitHash>, Vec<usize>> = Default::default();
+        let mut by_hash: BTreeMap<Arc<GitHash>, SmallVec<[u32; 1]>> = Default::default();
         for name in s.split("\n") {
             if let Some(commit) = working_dir
                 .git_rev_parse(name, true)
@@ -35,12 +36,14 @@ impl GitTags {
                     GitHash::from_str(&commit)
                         .with_context(|| anyhow!("resolving tag name {name:?}"))?,
                 );
+                let id = u32::try_from(tags.len())
+                    .context("getting tags, you appear to have more than u32::MAX tags")?;
                 match by_hash.entry(commit.clone()) {
                     std::collections::btree_map::Entry::Vacant(vacant_entry) => {
-                        vacant_entry.insert(vec![tags.len()]);
+                        vacant_entry.insert(smallvec![id]);
                     }
                     std::collections::btree_map::Entry::Occupied(mut occupied_entry) => {
-                        occupied_entry.get_mut().push(tags.len());
+                        occupied_entry.get_mut().push(id);
                     }
                 }
 
@@ -65,6 +68,6 @@ impl GitTags {
             &[]
         }
         .iter()
-        .map(|i| &*self.tags[*i].name)
+        .map(|i| &*self.tags[usize::try_from(*i).expect("usize expected to be >= u32")].name)
     }
 }
