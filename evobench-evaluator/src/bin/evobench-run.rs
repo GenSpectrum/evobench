@@ -470,8 +470,10 @@ fn run_queues(
             |working_directory| -> Result<()> {
                 let working_directory = working_directory.into_inner().expect("still there");
 
-                // Avoid the risk of an old working directory having
-                // an older HEAD than all dataset versions.
+                // Fetch the tags so that comparing dataset versions
+                // can work. (Avoid the risk of an old working
+                // directory having an older HEAD than all dataset
+                // versions.)
                 working_directory
                     .git_working_dir
                     .git(&["fetch", "--tags"], true)?;
