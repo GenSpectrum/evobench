@@ -331,7 +331,7 @@ impl WorkingDirectoryPool {
         // entries.
         let mut slf = Self {
             opts,
-            remote_repository_url,
+            remote_repository_url: remote_repository_url.clone(),
             base_dir,
             next_id,
             all_entries: Default::default(),
@@ -377,7 +377,7 @@ impl WorkingDirectoryPool {
                             return Ok(None);
                         };
                         let path = entry.path();
-                        let wd = WorkingDirectory::open(path, &mut guard)?;
+                        let wd = WorkingDirectory::open(path, &remote_repository_url, &mut guard)?;
                         Ok(Some((id, wd)))
                     },
                 )

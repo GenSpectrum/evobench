@@ -21,12 +21,18 @@ use crate::{
     config_file::{load_ron_file, ron_to_file_pretty},
     ctx, debug,
     git::GitHash,
+    git_ext::MoreGitWorkingDir,
     info,
     run::working_directory_pool::{
         WorkingDirectoryId, WorkingDirectoryPoolGuard, WorkingDirectoryPoolGuardMut,
     },
     serde::{date_and_time::DateTimeWithOffset, git_url::GitUrl},
+    warn,
 };
+
+/// The name of the default upstream; just Git's default name when
+/// cloning, relying on that!
+const REMOTE_NAME: &str = "origin";
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
@@ -293,7 +299,19 @@ impl WorkingDirectory {
         Ok(self.standard_log_paths()?.pop())
     }
 
-    pub fn open<'pool>(path: PathBuf, guard: &WorkingDirectoryPoolGuard<'pool>) -> Result<Self> {
+    /// Open an existing working directory. Its default upstream
+    /// (origin) is checked against `url` and changed to `url` if
+    /// different; the idea here is that while the upstream URL may
+    /// change (perhaps even semi-often), a configuration is always
+    /// about the same target project, hence they share commits, hence
+    /// deleting and re-cloning the working dir is not necessary or
+    /// desired, just changing that url so that the newest changes can
+    /// be retrieved.
+    pub fn open<'pool>(
+        path: PathBuf,
+        url: &GitUrl,
+        guard: &WorkingDirectoryPoolGuard<'pool>,
+    ) -> Result<Self> {
         // let quiet = false;
 
         let working_directory_status_needs_saving;
@@ -327,13 +345,30 @@ impl WorkingDirectory {
         }
 
         let git_working_dir = GitWorkingDir::from(path);
+        let path = git_working_dir.working_dir_path_ref();
+
+        // XX What was the idea here, just ensure that the directory
+        // exists? But with the trailing `;`, seems like a left-over.
         {
-            let path = git_working_dir.working_dir_path_ref();
             std::fs::metadata(path)
                 .map_err(ctx!("WorkingDirectory::open({path:?})"))?
                 .modified()?
         };
+
+        // Check that the url is the same
+        {
+            let current_url = git_working_dir.get_url(REMOTE_NAME)?;
+            if current_url != url.as_str() {
+                warn!(
+                    "the working directory at {path:?} has an {REMOTE_NAME:?} url != {url:?}: \
+                     {current_url:?} -- setting it to the expected value"
+                );
+                git_working_dir.set_url(REMOTE_NAME, url)?;
+            }
+        }
+
         let status = working_directory_status.status;
+
         let mut slf = Self {
             git_working_dir,
             commit: None,
@@ -425,14 +460,11 @@ impl WorkingDirectory {
     pub fn fetch(&self, commit_id: &GitHash) -> Result<FetchedTags> {
         let commit_str = commit_id.to_string();
         let git_working_dir = &self.git_working_dir;
-        // XX really rely on "origin"? Seems we don't have a
-        // way to know or even query the default remote?  But
-        // it should be safe as long as we freshly clone those
-        // repositories. Fetching --tags in case
-        // `dataset_dir_for_commit` is used. Note: this does
-        // not update branches, right? But branch names should
-        // never be used for anything, OK? XX document?
-        git_working_dir.git(&["fetch", "origin", "--tags", &commit_str], true)?;
+        // Fetching --tags in case `dataset_dir_for_commit` is
+        // used. Note: this does not update branches, right? But
+        // branch names should never be used for anything, OK? XX
+        // document?
+        git_working_dir.git(&["fetch", REMOTE_NAME, "--tags", &commit_str], true)?;
         info!(
             "checkout({:?}, {commit_id}): ran git fetch origin --tags {commit_str}",
             git_working_dir.working_dir_path_ref()
