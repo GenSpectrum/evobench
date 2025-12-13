@@ -9,6 +9,7 @@ pub mod dynamic_typing;
 pub mod evaluator;
 pub mod get_terminal_width;
 pub mod git;
+pub mod git_ext;
 pub mod git_tags;
 pub mod io_utils;
 pub mod join;
