@@ -3,6 +3,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fmt::{Debug, Display},
     path::{Path, PathBuf},
+    str::FromStr,
     sync::Arc,
 };
 
@@ -26,6 +27,7 @@ use crate::{
         priority::Priority,
         proper_dirname::ProperDirname,
         proper_filename::ProperFilename,
+        regex::SerializableRegex,
         tilde_path::TildePath,
         val_or_ref::{ValOrRef, ValOrRefTarget},
     },
@@ -523,6 +525,11 @@ pub struct RunConfigOpts {
     /// the benchmarking entry point of the client app. Supports `~/`
     /// for specifying the home directory.
     pub versioned_datasets_base_dir: Option<Arc<TildePath<PathBuf>>>,
+
+    /// A regular expression matching those Git tags that should be
+    /// passed to the target in the `COMMIT_TAGS` env variable (as
+    /// comma-separated strings). By default, all tags are passed.
+    pub commit_tags_regex: Option<SerializableRegex>,
 }
 
 #[derive(Debug)]
@@ -552,6 +559,7 @@ pub struct RunConfig {
     pub output_base_dir: Arc<Path>,
     pub versioned_datasets_base_dir: Option<Arc<Path>>,
     pub targets: BTreeMap<ProperDirname, Arc<BenchmarkingTarget>>,
+    pub commit_tags_regex: SerializableRegex,
 }
 
 impl RunConfig {
@@ -589,6 +597,7 @@ impl RunConfigOpts {
             remote_repository,
             output_base_dir,
             versioned_datasets_base_dir,
+            commit_tags_regex,
         } = self;
 
         let targets: BTreeMap<ProperDirname, Arc<BenchmarkingTarget>> = {
@@ -637,6 +646,13 @@ impl RunConfigOpts {
 
         let remote_repository = remote_repository.check(&job_template_lists, &targets)?;
 
+        let commit_tags_regex: SerializableRegex =
+            if let Some(commit_tags_regex) = commit_tags_regex {
+                (*commit_tags_regex).clone()
+            } else {
+                SerializableRegex::from_str(".*")?
+            };
+
         Ok(RunConfig {
             queues: queues.clone_arc(),
             run_jobs_instance_path: run_jobs_instance_path
@@ -656,6 +672,7 @@ impl RunConfigOpts {
                 .map(|d| d.resolve())
                 .transpose()?
                 .map(Arc::<Path>::from),
+            commit_tags_regex,
         })
     }
 }

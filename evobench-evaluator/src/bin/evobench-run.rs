@@ -1565,8 +1565,9 @@ fn run() -> Result<Option<PathBuf>> {
                     };
 
                     let commit_tags = get_commit_tags(
-                        &working_directory.git_working_dir,
+                        working_directory,
                         commit_id,
+                        &conf.commit_tags_regex,
                         fetched_tags.clone(),
                     )?;
 

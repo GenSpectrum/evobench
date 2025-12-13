@@ -13,10 +13,9 @@ use anyhow::{bail, Result};
 use chrono::{DateTime, Local};
 use cj_path_util::path_util::rename_tmp_path;
 use itertools::Itertools;
-use lazy_static::lazy_static;
 use nix::{unistd::getpid, unistd::getuid};
 use regex::Regex;
-use run_git::{git::GitWorkingDir, path_util::AppendToPath};
+use run_git::path_util::AppendToPath;
 
 use crate::{
     config_file::ron_to_string_pretty,
@@ -39,7 +38,7 @@ use crate::{
         post_process::compress_file_as,
         run_queues::RunQueuesData,
         versioned_dataset_dir::VersionedDatasetDir,
-        working_directory::{FetchTags, FetchedTags},
+        working_directory::{FetchTags, FetchedTags, WorkingDirectory},
     },
     serde::{date_and_time::DateTimeWithOffset, proper_dirname::ProperDirname},
     utillib::{
@@ -101,26 +100,23 @@ fn bench_tmp_dir() -> Result<PathBuf> {
 /// "foo,v1.2.3". Wants to be assured that `git fetch --tags` was run
 /// (see methods that return a `FetchedTags`).
 pub fn get_commit_tags(
-    git_working_dir: &GitWorkingDir,
+    working_dir: &WorkingDirectory,
     commit_id: &GitHash,
+    re: &Regex,
     fetched_tags: FetchedTags,
 ) -> Result<String> {
     if fetched_tags != FetchedTags::Yes {
         bail!("need up to date tags, but got {fetched_tags:?}")
     }
 
-    let git_tags = GitTags::from_dir(&git_working_dir)?;
+    let git_working_dir = &working_dir.git_working_dir;
+
+    let git_tags = GitTags::from_dir(git_working_dir)?;
     // (Huh, `let s = ` being required here makes
     // no sense to me. rustc 1.90.0)
     let s = git_tags
         .get_by_commit(&commit_id)
-        .filter(|s| {
-            lazy_static! {
-                // XX make configurable?
-                static ref RE: Regex = Regex::new(r"^v\d+").expect("ok");
-            }
-            RE.is_match(s)
-        })
+        .filter(|s| re.is_match(s))
         .join(",");
     Ok(s)
 }
@@ -255,8 +251,9 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                     )?;
 
                     let commit_tags = get_commit_tags(
-                        &working_directory.git_working_dir,
+                        &working_directory,
                         &commit_id,
+                        &self.job_runner.run_config.commit_tags_regex,
                         fetched_tags,
                     )?;
 
