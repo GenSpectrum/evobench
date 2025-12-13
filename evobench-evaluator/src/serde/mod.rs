@@ -14,5 +14,6 @@ pub mod map;
 pub mod priority;
 pub mod proper_dirname;
 pub mod proper_filename;
+pub mod regex;
 pub mod tilde_path;
 pub mod val_or_ref;

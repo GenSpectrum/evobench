@@ -8,8 +8,8 @@ use serde::de::Visitor;
 
 use crate::utillib::path_resolve_home::path_resolve_home;
 
-/// Accept paths starting with `~` to denote the user's home
-/// directory. Does not currently support `~user`.
+/// Accept paths starting with `~/` to mean going from the user's home
+/// directory. Does not currently support `~user/`.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
 pub struct TildePath<P: AsRef<Path>>(P);
 
