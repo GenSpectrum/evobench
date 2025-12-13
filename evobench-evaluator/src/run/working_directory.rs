@@ -32,7 +32,7 @@ use crate::{
 
 /// The name of the default upstream; just Git's default name when
 /// cloning, relying on that!
-const REMOTE_NAME: &str = "origin";
+pub const REMOTE_NAME: &str = "origin";
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]

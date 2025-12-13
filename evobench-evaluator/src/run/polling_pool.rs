@@ -9,7 +9,9 @@ use run_git::git::GitWorkingDir;
 
 use crate::{
     git::GitHash,
-    run::working_directory::{WorkingDirectoryAutoCleanOpts, WorkingDirectoryWithPoolMut},
+    run::working_directory::{
+        WorkingDirectoryAutoCleanOpts, WorkingDirectoryWithPoolMut, REMOTE_NAME,
+    },
     serde::{date_and_time::DateTimeWithOffset, git_branch_name::GitBranchName, git_url::GitUrl},
     utillib::arc::CloneArc,
 };
@@ -172,7 +174,7 @@ impl PollingPool {
                 let git_working_dir = &working_directory.git_working_dir;
                 let mut ids = Vec::new();
                 for (name, job_templates) in branch_names {
-                    let ref_string = name.to_ref_string_in_remote("origin");
+                    let ref_string = name.to_ref_string_in_remote(REMOTE_NAME);
                     if let Some(id) = git_working_dir.git_rev_parse(&ref_string, true)? {
                         ids.push((name, GitHash::from_str(&id)?, job_templates.clone_arc()))
                     } else {
