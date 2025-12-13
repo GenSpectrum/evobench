@@ -43,15 +43,16 @@ use evobench_evaluator::{
         command_log_file::CommandLogFile,
         config::{BenchmarkingCommand, RunConfig, RunConfigWithReload},
         dataset_dir_env_var::dataset_dir_for,
+        env_vars::assert_evobench_env_var,
         global_app_state_dir::GlobalAppStateDir,
         insert_jobs::{insert_jobs, open_already_inserted, ForceOpt, QuietOpt},
         polling_pool::PollingPool,
         run_context::RunContext,
-        run_job::JobRunner,
+        run_job::{get_commit_tags, JobRunner},
         run_queue::RunQueue,
         run_queues::RunQueues,
         versioned_dataset_dir::VersionedDatasetDir,
-        working_directory::{Status, WorkingDirectory, WorkingDirectoryStatus},
+        working_directory::{FetchedTags, Status, WorkingDirectory, WorkingDirectoryStatus},
         working_directory_pool::{
             WorkingDirectoryId, WorkingDirectoryPool, WorkingDirectoryPoolAndLock,
             WorkingDirectoryPoolBaseDir,
@@ -373,6 +374,13 @@ enum WdSubCommand {
         /// (without asking, and even if the directory was marked)
         #[clap(long)]
         unmark: bool,
+
+        /// Do not run `git fetch --tags` inside the working directory
+        /// (usually it's a good idea to run it, to ensure the dataset
+        /// dir and `COMMIT_TAGS` are chosen based on up to date
+        /// remote data)
+        #[clap(long)]
+        no_fetch: bool,
 
         /// The ID of the working directory to mark and enter
         id: WorkingDirectoryId,
@@ -1505,7 +1513,12 @@ fn run() -> Result<Option<PathBuf>> {
                         }
                     }
                 }
-                WdSubCommand::Enter { mark, unmark, id } => {
+                WdSubCommand::Enter {
+                    mark,
+                    unmark,
+                    no_fetch,
+                    id,
+                } => {
                     if mark && unmark {
                         bail!("please only give one of the --mark or --unmark options")
                     }
@@ -1543,14 +1556,31 @@ fn run() -> Result<Option<PathBuf>> {
                         arguments,
                     } = &*command;
 
+                    let fetched_tags = if no_fetch {
+                        // Just pretend that they were fetched (they
+                        // were, just further in the past, OK?)
+                        FetchedTags::Yes
+                    } else {
+                        working_directory.fetch(commit_id)?
+                    };
+
+                    let commit_tags = get_commit_tags(
+                        &working_directory.git_working_dir,
+                        commit_id,
+                        fetched_tags.clone(),
+                    )?;
+
                     let mut vars: Vec<(&str, &OsStr)> = custom_parameters
                         .btree_map()
                         .iter()
                         .map(|(k, v)| (k.as_str(), v.as_ref()))
                         .collect();
 
+                    let check = assert_evobench_env_var;
+
                     let commit_id_str = commit_id.to_string();
-                    vars.push(("COMMIT_ID", &commit_id_str.as_ref()));
+                    vars.push((check("COMMIT_ID"), commit_id_str.as_ref()));
+                    vars.push((check("COMMIT_TAGS"), commit_tags.as_ref()));
 
                     let versioned_dataset_dir = VersionedDatasetDir::new();
                     let dataset_dir_;
@@ -1560,9 +1590,10 @@ fn run() -> Result<Option<PathBuf>> {
                         &versioned_dataset_dir,
                         &working_directory.git_working_dir,
                         &commit_id,
+                        fetched_tags,
                     )? {
                         dataset_dir_ = dataset_dir;
-                        vars.push(("DATASET_DIR", &dataset_dir_.as_ref()));
+                        vars.push((check("DATASET_DIR"), dataset_dir_.as_ref()));
                     }
 
                     let exports = vars

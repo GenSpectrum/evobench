@@ -12,12 +12,18 @@ use std::{
 use anyhow::{bail, Result};
 use chrono::{DateTime, Local};
 use cj_path_util::path_util::rename_tmp_path;
+use itertools::Itertools;
+use lazy_static::lazy_static;
 use nix::{unistd::getpid, unistd::getuid};
-use run_git::path_util::AppendToPath;
+use regex::Regex;
+use run_git::{git::GitWorkingDir, path_util::AppendToPath};
 
 use crate::{
     config_file::ron_to_string_pretty,
-    ctx, info,
+    ctx,
+    git::GitHash,
+    git_tags::GitTags,
+    info,
     io_utils::{
         bash::bash_string_from_program_string_and_args,
         capture::{CaptureOptions, OutFile},
@@ -25,10 +31,15 @@ use crate::{
     },
     key::{BenchmarkingJobParameters, RunParameters},
     run::{
-        benchmarking_job::BenchmarkingJob, config::RunConfig, dataset_dir_env_var::dataset_dir_for,
-        env_vars::assert_evobench_env_var, output_directory_structure::KeyDir,
-        post_process::compress_file_as, run_queues::RunQueuesData,
+        benchmarking_job::BenchmarkingJob,
+        config::RunConfig,
+        dataset_dir_env_var::dataset_dir_for,
+        env_vars::assert_evobench_env_var,
+        output_directory_structure::KeyDir,
+        post_process::compress_file_as,
+        run_queues::RunQueuesData,
         versioned_dataset_dir::VersionedDatasetDir,
+        working_directory::{FetchTags, FetchedTags},
     },
     serde::{date_and_time::DateTimeWithOffset, proper_dirname::ProperDirname},
     utillib::{
@@ -84,6 +95,34 @@ fn bench_tmp_dir() -> Result<PathBuf> {
             Ok(tmp)
         }
     }
+}
+
+/// Get the string for the `COMMIT_TAGS` env var, e.g. "" or
+/// "foo,v1.2.3". Wants to be assured that `git fetch --tags` was run
+/// (see methods that return a `FetchedTags`).
+pub fn get_commit_tags(
+    git_working_dir: &GitWorkingDir,
+    commit_id: &GitHash,
+    fetched_tags: FetchedTags,
+) -> Result<String> {
+    if fetched_tags != FetchedTags::Yes {
+        bail!("need up to date tags, but got {fetched_tags:?}")
+    }
+
+    let git_tags = GitTags::from_dir(&git_working_dir)?;
+    // (Huh, `let s = ` being required here makes
+    // no sense to me. rustc 1.90.0)
+    let s = git_tags
+        .get_by_commit(&commit_id)
+        .filter(|s| {
+            lazy_static! {
+                // XX make configurable?
+                static ref RE: Regex = Regex::new(r"^v\d+").expect("ok");
+            }
+            RE.is_match(s)
+        })
+        .join(",");
+    Ok(s)
 }
 
 /// The context for running a job (information that should not be part
@@ -183,12 +222,22 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                 working_directory_id,
                 &self.job_runner.timestamp,
                 |mut working_directory| -> Result<Option<(&ProperDirname, PathBuf)>> {
-                    // `checkout` also fetches the remote tags, which
-                    // is necessary for `dataset_dir_for_commit`
-                    working_directory
+                    // Have `checkout` always run git fetch to update
+                    // the remote tags, to get them even if there have
+                    // been past runs where they were not present yet;
+                    // this is so that when the user changes the
+                    // dataset directory and then makes a matching
+                    // tag, we must have that matching tag. Also, for
+                    // the release hack feature, we need to learn when
+                    // the tag was added later. Thus always try to
+                    // update from the git repository (failures
+                    // leading to the working directory ending in
+                    // error state and on repetition the job being
+                    // aborted).
+                    let fetched_tags = working_directory
                         .get()
                         .expect("not removed")
-                        .checkout(commit_id.clone())?;
+                        .checkout(commit_id.clone(), FetchTags::Always)?;
 
                     // Drop the lock on the pool
                     let working_directory = working_directory.into_inner().expect("not removed");
@@ -202,6 +251,13 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                         self.job_runner.versioned_dataset_dir,
                         &working_directory.git_working_dir,
                         commit_id,
+                        fetched_tags.clone(),
+                    )?;
+
+                    let commit_tags = get_commit_tags(
+                        &working_directory.git_working_dir,
+                        &commit_id,
+                        fetched_tags,
                     )?;
 
                     let BenchmarkingCommand {
@@ -230,13 +286,15 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                         evobench_log.path()
                     );
 
-                    let mut command = Command::new(command);
                     let check = assert_evobench_env_var;
+
+                    let mut command = Command::new(command);
                     command
                         .envs(custom_parameters.btree_map())
                         .env(check("EVOBENCH_LOG"), evobench_log.path())
                         .env(check("BENCH_OUTPUT_LOG"), bench_output_log.path())
                         .env(check("COMMIT_ID"), commit_id.to_string())
+                        .env(check("COMMIT_TAGS"), commit_tags)
                         .args(arguments)
                         .current_dir(&dir);
                     if let Some(dataset_dir) = &dataset_dir {

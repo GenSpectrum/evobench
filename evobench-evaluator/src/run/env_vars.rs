@@ -4,6 +4,7 @@ pub const EVOBENCH_ENV_VARS: &[&str] = &[
     "EVOBENCH_LOG",
     "BENCH_OUTPUT_LOG",
     "COMMIT_ID",
+    "COMMIT_TAGS",
     "DATASET_DIR",
 ];
 
@@ -79,7 +80,7 @@ mod tests {
                 .unwrap()
                 .to_string(),
             "AllowableCustomEnvVar env variable \"EVOBENCH_LOG\" is reserved, expecting a variable name \
-             that is *not* any of EVOBENCH_LOG, BENCH_OUTPUT_LOG, COMMIT_ID, DATASET_DIR"
+             that is *not* any of EVOBENCH_LOG, BENCH_OUTPUT_LOG, COMMIT_ID, COMMIT_TAGS, DATASET_DIR"
         );
     }
 }

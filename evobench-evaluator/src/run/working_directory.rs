@@ -418,6 +418,41 @@ impl WorkingDirectory {
             Ok(false)
         }
     }
+
+    /// Unconditionally run `git fetch --tags` in the working dir. Is
+    /// called by `checkout` as needed. If `commit_id` is given, it is
+    /// fetched explicitly
+    pub fn fetch(&self, commit_id: &GitHash) -> Result<FetchedTags> {
+        let commit_str = commit_id.to_string();
+        let git_working_dir = &self.git_working_dir;
+        // XX really rely on "origin"? Seems we don't have a
+        // way to know or even query the default remote?  But
+        // it should be safe as long as we freshly clone those
+        // repositories. Fetching --tags in case
+        // `dataset_dir_for_commit` is used. Note: this does
+        // not update branches, right? But branch names should
+        // never be used for anything, OK? XX document?
+        git_working_dir.git(&["fetch", "origin", "--tags", &commit_str], true)?;
+        info!(
+            "checkout({:?}, {commit_id}): ran git fetch origin --tags {commit_str}",
+            git_working_dir.working_dir_path_ref()
+        );
+
+        Ok(FetchedTags::Yes)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[must_use]
+pub enum FetchedTags {
+    No,
+    Yes,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum FetchTags {
+    WhenMissingCommit,
+    Always,
 }
 
 impl<'guard> WorkingDirectoryWithPoolLockMut<'guard> {
@@ -437,30 +472,33 @@ impl<'guard> WorkingDirectoryWithPoolLockMut<'guard> {
     }
 
     /// Checks and is a no-op if already on the commit.
-    pub fn checkout(&mut self, commit: GitHash) -> Result<()> {
+    pub fn checkout(&mut self, commit: GitHash, fetch_tags: FetchTags) -> Result<FetchedTags> {
         let commit_str = commit.to_string();
         let quiet = false;
         let current_commit = self.wd.git_working_dir.get_head_commit_id()?;
+
+        let fetch_tags_always = match fetch_tags {
+            FetchTags::WhenMissingCommit => false,
+            FetchTags::Always => true,
+        };
+
+        let ran_fetch;
         if current_commit == commit_str {
             if self.commit()? != &commit {
                 bail!("consistency failure: dir on disk has different commit id from obj")
             }
-            Ok(())
+            if fetch_tags_always {
+                ran_fetch = self.fetch(&commit)?;
+            } else {
+                ran_fetch = FetchedTags::No;
+            }
         } else {
             let git_working_dir = &self.wd.git_working_dir;
-            if !git_working_dir.contains_reference(&commit_str)? {
-                // XX really rely on "origin"? Seems we don't have a
-                // way to know or even query the default remote?  But
-                // it should be safe as long as we freshly clone those
-                // repositories. Fetching --tags in case
-                // `dataset_dir_for_commit` is used. Note: this does
-                // not update branches, right? But branch names should
-                // never be used for anything, OK? XX document?
-                git_working_dir.git(&["fetch", "origin", "--tags", &commit_str], true)?;
-                info!(
-                    "checkout({:?}, {commit}): ran git fetch origin --tags {commit_str}",
-                    self.wd.git_working_dir.working_dir_path_ref()
-                );
+
+            if (!fetch_tags_always) && git_working_dir.contains_reference(&commit_str)? {
+                ran_fetch = FetchedTags::No;
+            } else {
+                ran_fetch = self.fetch(&commit)?;
             }
 
             // First stash, merge --abort, cherry-pick --abort, and all
@@ -473,8 +511,8 @@ impl<'guard> WorkingDirectoryWithPoolLockMut<'guard> {
             );
             self.wd.commit = Some(commit);
             self.set_and_save_status(Status::CheckedOut)?;
-            Ok(())
         }
+        Ok(ran_fetch)
     }
 
     /// Set status to `status`. Also increments the run count if the

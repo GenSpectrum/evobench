@@ -6,7 +6,10 @@ use run_git::git::GitWorkingDir;
 use crate::{
     git::GitHash,
     key::CustomParameters,
-    run::{custom_parameter::CustomParameterType, versioned_dataset_dir::VersionedDatasetDir},
+    run::{
+        custom_parameter::CustomParameterType, versioned_dataset_dir::VersionedDatasetDir,
+        working_directory::FetchedTags,
+    },
 };
 
 macro_rules! try_ok {
@@ -20,7 +23,9 @@ macro_rules! try_ok {
 
 /// Find the matching dataset if both the
 /// `versioned_datasets_base_dir` config and the `DATASET` custom
-/// parameter values are provided.
+/// parameter values are provided. Wants to be assured via
+/// `fetched_tags` that `git fetch --tags` was run (see methods that
+/// return a `FetchedTags`).
 pub fn dataset_dir_for(
     // If those two are given:
     versioned_datasets_base_dir: Option<&Path>,
@@ -29,7 +34,12 @@ pub fn dataset_dir_for(
     versioned_dataset_dir: &VersionedDatasetDir,
     git_working_dir: &GitWorkingDir,
     commit_id: &GitHash,
+    fetched_tags: FetchedTags,
 ) -> Result<Option<PathBuf>> {
+    if fetched_tags != FetchedTags::Yes {
+        bail!("dataset_dir_for: require updated tags, but got {fetched_tags:?}")
+    }
+
     let versioned_datasets_base_dir = try_ok!(versioned_datasets_base_dir);
 
     let key = "DATASET";
