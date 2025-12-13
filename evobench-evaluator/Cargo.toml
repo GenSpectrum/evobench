@@ -9,8 +9,8 @@ collapsible_if = "allow"
 
 [profile.release]
 overflow-checks = true
-# Or remove again and use `cargo build --profile=release-with-debug`
-debug = true
+# Or remove again and use `cargo build --profile=release-with-debug`:
+#debug = true
 
 [profile.release-with-debug]
 inherits = "release"
