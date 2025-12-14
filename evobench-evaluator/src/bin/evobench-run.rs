@@ -341,8 +341,14 @@ enum WdSubCommand {
     /// Open the log file for the last run in a working directory in
     /// the `PAGER` (or `less`)
     Log {
-        /// The ID of the working direcory for which to show the last
-        /// log file
+        /// Instead of opening the last log file, show a list of all
+        /// log files for the given working directory, sorted by run
+        /// start time (newest at the bottom)
+        #[clap(short, long)]
+        list: bool,
+
+        /// The ID of the working direcory for which to show the (last)
+        /// log file(s)
         id: WorkingDirectoryId,
     },
     /// Mark the given working directories for examination, so that
@@ -1545,7 +1551,7 @@ fn run() -> Result<Option<PathBuf>> {
                         }
                     }
                 }
-                WdSubCommand::Log { id } => {
+                WdSubCommand::Log { list, id } => {
                     let working_directory_path =
                         if let Some(wd) = working_directory_pool.get_working_directory(id) {
                             wd.working_directory_path()
@@ -1561,23 +1567,35 @@ fn run() -> Result<Option<PathBuf>> {
                             working_directory_pool.get_working_directory_path(id)
                         };
 
-                    let (standard_log_path, _id) = working_directory_path
-                        .last_standard_log_path()?
-                        .ok_or_else(|| {
-                            anyhow!("could not find a log file for working directory {id}")
-                        })?;
+                    if list {
+                        let mut out = BufWriter::new(stdout().lock());
+                        for (standard_log_path, _run_id) in
+                            working_directory_path.standard_log_paths()?
+                        {
+                            out.write_all(standard_log_path.as_os_str().as_bytes())?;
+                            out.write_all(b"\n")?;
+                        }
+                        out.flush()?;
+                    } else {
+                        let (standard_log_path, _run_id) = working_directory_path
+                            .last_standard_log_path()?
+                            .ok_or_else(|| {
+                                anyhow!("could not find a log file for working directory {id}")
+                            })?;
 
-                    let pager = match std::env::var("PAGER") {
-                        Ok(s) => s,
-                        Err(e) => match e {
-                            std::env::VarError::NotPresent => "less".into(),
-                            _ => bail!("can't decode PAGER env var: {e}"),
-                        },
-                    };
+                        let pager = match std::env::var("PAGER") {
+                            Ok(s) => s,
+                            Err(e) => match e {
+                                std::env::VarError::NotPresent => "less".into(),
+                                _ => bail!("can't decode PAGER env var: {e}"),
+                            },
+                        };
 
-                    let mut cmd = Command::new(&pager);
-                    cmd.arg(standard_log_path);
-                    return Err(cmd.exec()).with_context(|| anyhow!("executing pager {pager:?}"));
+                        let mut cmd = Command::new(&pager);
+                        cmd.arg(standard_log_path);
+                        return Err(cmd.exec())
+                            .with_context(|| anyhow!("executing pager {pager:?}"));
+                    }
                 }
                 WdSubCommand::Mark { ids } => {
                     for id in ids {
