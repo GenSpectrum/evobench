@@ -33,6 +33,7 @@ use evobench_evaluator::{
     io_utils::bash::{bash_export_variable_string, bash_string_from_program_path_and_args},
     key::{BenchmarkingJobParameters, RunParameters, RunParametersOpts},
     key_val_fs::key_val::Entry,
+    lazy::LazyResult,
     lazyresult,
     lockable_file::{LockStatus, StandaloneExclusiveFileLock, StandaloneFileLockError},
     polling_signals::PollingSignals,
@@ -1310,7 +1311,9 @@ fn run() -> Result<Option<PathBuf>> {
             // to be passed in.
             let mut do_mark = |wanted_status: Status,
                                id,
-                               working_directory_change_signals: Option<&mut PollingSignals>|
+                               working_directory_change_signals: Option<
+                &mut LazyResult<PollingSignals, anyhow::Error, _>,
+            >|
              -> Result<Option<Status>, DoMarkError> {
                 let mut guard = working_directory_pool
                     .lock_mut("evobench-run SubCommand::Wd do_mark")
@@ -1323,7 +1326,10 @@ fn run() -> Result<Option<PathBuf>> {
                         .map_err(DoMarkError::Generic)?;
                     if let Some(working_directory_change_signals) = working_directory_change_signals
                     {
-                        working_directory_change_signals.send_signal();
+                        working_directory_change_signals
+                            .force_mut()
+                            .map_err(DoMarkError::Generic)?
+                            .send_signal();
                     }
                     Ok(Some(original_status))
                 } else {
@@ -1595,7 +1601,7 @@ fn run() -> Result<Option<PathBuf>> {
                         if do_mark(
                             Status::CheckedOut,
                             id,
-                            Some(working_directory_change_signals.force_mut()?),
+                            Some(&mut working_directory_change_signals),
                         )?
                         .is_none()
                         {
