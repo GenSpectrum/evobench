@@ -75,18 +75,14 @@ use evobench_evaluator::{
     warn,
 };
 
-fn unicode_is_fine() -> bool {
-    (|| -> Option<bool> {
+lazy_static! {
+    static ref UNICODE_IS_FINE: bool = (|| -> Option<bool> {
         let term = env::var_os("TERM")?;
         let lang = env::var_os("LANG")?;
         let lang = lang.to_str()?;
         Some(term.as_bytes().starts_with(b"xterm") && lang.contains("UTF-8"))
     })()
-    .unwrap_or(false)
-}
-
-lazy_static! {
-    static ref UNICODE_IS_FINE: bool = unicode_is_fine();
+    .unwrap_or(false);
 }
 
 #[derive(clap::Parser, Debug)]
