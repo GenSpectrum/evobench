@@ -59,7 +59,7 @@ use super::{
 /// at the same time (and take a lock to ensure that), but also
 /// because we're now currently actually also adding the pid to the
 /// file paths inside.
-fn bench_tmp_dir() -> Result<PathBuf> {
+pub fn bench_tmp_dir() -> Result<PathBuf> {
     // XX use src/installation/binaries_repo.rs from xmlhub-indexer
     // instead once that's separated?
     let user = get_username()?;
