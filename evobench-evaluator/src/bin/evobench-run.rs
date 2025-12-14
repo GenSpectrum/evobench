@@ -1272,26 +1272,24 @@ fn run() -> Result<Option<PathBuf>> {
                     // XX might we want to hold onto the lock?
                     .into_inner();
 
-            let check_original_status = |wd: &WorkingDirectory,
-                                         allow_access: bool,
-                                         allowed_statuses: &str|
-             -> Result<Status> {
-                let status = wd.working_directory_status.status;
-                if status.can_be_used_for_jobs() && !allow_access {
-                    bail!(
-                        "this action is only for working directories in {allowed_statuses} \
+            let check_original_status =
+                |wd: &WorkingDirectory, allowed_statuses: &str| -> Result<Status> {
+                    let status = wd.working_directory_status.status;
+                    if status.can_be_used_for_jobs() {
+                        bail!(
+                            "this action is only for working directories in {allowed_statuses} \
                          status, but directory {} has status '{}'",
-                        wd.parent_path_and_id()?.1,
-                        status
-                    )
-                    // Also can't currently signal working dir status
-                    // changes to the running daemon, only Error and
-                    // Examination are safe as those are ignored by
-                    // the daemon
-                } else {
-                    Ok(status)
-                }
-            };
+                            wd.parent_path_and_id()?.1,
+                            status
+                        )
+                        // Also can't currently signal working dir status
+                        // changes to the running daemon, only Error and
+                        // Examination are safe as those are ignored by
+                        // the daemon
+                    } else {
+                        Ok(status)
+                    }
+                };
 
             #[derive(Debug, thiserror::Error)]
             enum DoMarkError {
@@ -1312,7 +1310,7 @@ fn run() -> Result<Option<PathBuf>> {
                     .lock_mut("evobench-run SubCommand::Wd do_mark")
                     .map_err(DoMarkError::Generic)?;
                 if let Some(mut wd) = guard.get_working_directory_mut(id) {
-                    let original_status = check_original_status(&*wd, false, "error/examination")
+                    let original_status = check_original_status(&*wd, "error/examination")
                         .map_err(ctx!("refusing working directory {id}"))
                         .map_err(DoMarkError::Check)?;
                     wd.set_and_save_status(wanted_status)
@@ -1552,8 +1550,6 @@ fn run() -> Result<Option<PathBuf>> {
                     let working_directory = working_directory_pool
                         .get_working_directory(id)
                         .ok_or_else(&no_exist)?;
-
-                    check_original_status(working_directory, true, "non-finished")?;
 
                     let (standard_log_path, _id) =
                         working_directory.last_standard_log_path()?.ok_or_else(|| {
