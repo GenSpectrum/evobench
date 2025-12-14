@@ -18,6 +18,7 @@ impl<T, F: FnOnce() -> T> Lazy<T, F> {
     pub fn new(f: F) -> Self {
         Self::Thunk(f)
     }
+
     pub fn into_inner(self) -> Result<T, F> {
         match self {
             Lazy::Value(v) => Ok(v),
@@ -25,7 +26,30 @@ impl<T, F: FnOnce() -> T> Lazy<T, F> {
             Lazy::Poisoned => panic!("Lazy instance has previously been poisoned"),
         }
     }
+
     pub fn force(&mut self) -> &T {
+        match self {
+            Lazy::Thunk(_) => {
+                let mut thunk = Lazy::Poisoned;
+                std::mem::swap(self, &mut thunk);
+                match thunk {
+                    Lazy::Thunk(t) => {
+                        let mut new = Lazy::Value(t());
+                        std::mem::swap(self, &mut new);
+                        match self {
+                            Lazy::Value(v) => v,
+                            _ => panic!(),
+                        }
+                    }
+                    _ => panic!(),
+                }
+            }
+            Lazy::Value(v) => v,
+            Lazy::Poisoned => panic!("Lazy instance has previously been poisoned"),
+        }
+    }
+
+    pub fn force_mut(&mut self) -> &mut T {
         match self {
             Lazy::Thunk(_) => {
                 let mut thunk = Lazy::Poisoned;
@@ -62,6 +86,7 @@ impl<T, E, F: FnOnce() -> Result<T, E>> LazyResult<T, E, F> {
     pub fn new(f: F) -> Self {
         Self::Thunk(f)
     }
+
     pub fn into_inner(self) -> Result<T, F> {
         match self {
             Self::Value(v) => Ok(v),
@@ -69,7 +94,30 @@ impl<T, E, F: FnOnce() -> Result<T, E>> LazyResult<T, E, F> {
             Self::Poisoned => panic!("Lazy instance has previously been poisoned"),
         }
     }
+
     pub fn force(&mut self) -> Result<&T, E> {
+        match self {
+            Self::Thunk(_) => {
+                let mut thunk = Self::Poisoned;
+                std::mem::swap(self, &mut thunk);
+                match thunk {
+                    Self::Thunk(t) => {
+                        let mut new: Self = Self::Value(t()?);
+                        std::mem::swap(self, &mut new);
+                        match self {
+                            Self::Value(v) => Ok(v),
+                            _ => panic!(),
+                        }
+                    }
+                    _ => panic!(),
+                }
+            }
+            Self::Value(v) => Ok(v),
+            Self::Poisoned => panic!("Lazy instance has previously been poisoned"),
+        }
+    }
+
+    pub fn force_mut(&mut self) -> Result<&mut T, E> {
         match self {
             Self::Thunk(_) => {
                 let mut thunk = Self::Poisoned;
