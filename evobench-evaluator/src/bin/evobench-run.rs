@@ -1518,10 +1518,15 @@ fn run() -> Result<Option<PathBuf>> {
                         } else {
                             if status.can_be_used_for_jobs() {
                                 working_directory_change_signals.send_signal();
+                                // No race possible since we're
+                                // holding the working dir pool lock,
+                                // right?
                             }
 
-                            // XX Note: can this fail if a concurrent
+                            // Note: can this fail if a concurrent
                             // instance deletes it in the mean time?
+                            // But can't since each instance must be
+                            // holding the pool lock, right?
                             lock_mut.delete_working_directory(id)?;
                             if verbose {
                                 println!("{id}");
