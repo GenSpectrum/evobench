@@ -33,7 +33,7 @@ use evobench_evaluator::{
     io_utils::bash::{bash_export_variable_string, bash_string_from_program_path_and_args},
     key::{BenchmarkingJobParameters, RunParameters, RunParametersOpts},
     key_val_fs::key_val::Entry,
-    lockable_file::{LockStatus, StandaloneExclusiveFileLock},
+    lockable_file::{LockStatus, StandaloneExclusiveFileLock, StandaloneFileLockError},
     polling_signals::PollingSignals,
     run::{
         benchmarking_job::{
@@ -619,6 +619,51 @@ fn run_queues(
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+enum GetRunLockError {
+    #[error("{0}")]
+    AlreadyLocked(StandaloneFileLockError),
+    #[error("{0}")]
+    Generic(anyhow::Error),
+}
+
+// omg the error handling.
+fn get_run_lock(
+    conf: &RunConfig,
+    global_app_state_dir: &GlobalAppStateDir,
+) -> Result<StandaloneExclusiveFileLock, GetRunLockError> {
+    let run_lock_path = conf
+        .run_jobs_instance_basedir(global_app_state_dir)
+        .map_err(GetRunLockError::Generic)?;
+
+    match StandaloneExclusiveFileLock::try_lock_path(run_lock_path, || {
+        "getting the global lock for running jobs".into()
+    }) {
+        Ok(run_lock) => Ok(run_lock),
+        Err(e) => match &e {
+            StandaloneFileLockError::IOError { path: _, error: _ } => {
+                Err(GetRunLockError::Generic(e.into()))
+            }
+            StandaloneFileLockError::AlreadyLocked { path: _, msg: _ } => {
+                Err(GetRunLockError::AlreadyLocked(e))
+            }
+        },
+    }
+}
+
+/// Checks via temporary flock. XX should use shared for this, oh
+/// my. Already have such code in flock module, too! Make properly
+/// usable.
+fn daemon_is_running(conf: &RunConfig, global_app_state_dir: &GlobalAppStateDir) -> Result<bool> {
+    match get_run_lock(&conf, &global_app_state_dir) {
+        Ok(_) => Ok(false),
+        Err(e) => match &e {
+            GetRunLockError::AlreadyLocked(_) => Ok(true),
+            GetRunLockError::Generic(_) => Err(e.into()),
+        },
+    }
+}
+
 const TARGET_NAME_WIDTH: usize = 14;
 
 fn run() -> Result<Option<PathBuf>> {
@@ -1162,10 +1207,7 @@ fn run() -> Result<Option<PathBuf>> {
         }
 
         SubCommand::Run { mode } => {
-            let run_lock_path = conf.run_jobs_instance_basedir(&global_app_state_dir)?;
-            let _run_lock = StandaloneExclusiveFileLock::try_lock_path(run_lock_path, || {
-                "getting the global lock for running jobs".into()
-            })?;
+            let _run_lock = get_run_lock(&conf, &global_app_state_dir)?;
 
             let working_directory_pool =
                 open_working_directory_pool(conf, working_directory_base_dir.clone(), true)?
@@ -1446,13 +1488,14 @@ fn run() -> Result<Option<PathBuf>> {
                                     Status::Examination => false,
                                 };
                                 if status_is_in_use {
-                                    // XX todo: check if daemon is
-                                    // running via flock, add
-                                    // abstraction for it.
-                                    bail!(
-                                        "working directory {id} is in use (iff the daemon is \
-                                         running, todo check)"
-                                    );
+                                    if daemon_is_running(conf, &global_app_state_dir)? {
+                                        bail!(
+                                            "working directory {id} is in use and \
+                                             the daemon is running"
+                                        );
+                                    } else {
+                                        // Allow
+                                    }
                                 }
                             }
                         } else {
