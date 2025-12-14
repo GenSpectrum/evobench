@@ -39,7 +39,7 @@ impl GlobalAppStateDir {
     ///    instance is running,
     ///  * holding additional files specific for
     ///    that instance, e.g. `PollingSignals` files
-    pub fn default_run_jobs_instance_path(&self) -> Result<PathBuf> {
+    pub fn default_run_jobs_instance_basedir(&self) -> Result<PathBuf> {
         self.subdir("run_jobs_instance")
     }
 

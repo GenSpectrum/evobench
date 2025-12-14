@@ -475,7 +475,7 @@ pub struct RunConfigOpts {
     /// ...`) lock (with error when taken), and for additional files
     /// specific for that instance. By default,
     /// `~/.evobench-run/run_jobs_instance`.
-    pub run_jobs_instance_path: Option<Arc<TildePath<PathBuf>>>,
+    pub run_jobs_instance_basedir: Option<Arc<TildePath<PathBuf>>>,
 
     pub working_directory_pool: Arc<WorkingDirectoryPoolOpts>,
 
@@ -549,7 +549,7 @@ impl DefaultConfigPath for RunConfigOpts {
 /// Checked, produced from `RunConfigOpts`, for docs see there.
 pub struct RunConfig {
     pub queues: Arc<QueuesConfig>,
-    run_jobs_instance_path: Option<PathBuf>,
+    run_jobs_instance_basedir: Option<PathBuf>,
     pub working_directory_pool: Arc<WorkingDirectoryPoolOpts>,
     // targets: BTreeMap<ProperDirname, Arc<BenchmarkingTarget>>,
     pub job_template_lists: BTreeMap<KString, Arc<[JobTemplate]>>,
@@ -563,14 +563,14 @@ pub struct RunConfig {
 }
 
 impl RunConfig {
-    pub fn run_jobs_instance_path(
+    pub fn run_jobs_instance_basedir(
         &self,
         global_app_state_dir: &GlobalAppStateDir,
     ) -> Result<PathBuf> {
-        if let Some(path) = &self.run_jobs_instance_path {
+        if let Some(path) = &self.run_jobs_instance_basedir {
             Ok(path.into())
         } else {
-            global_app_state_dir.default_run_jobs_instance_path()
+            global_app_state_dir.default_run_jobs_instance_basedir()
         }
     }
 
@@ -578,7 +578,7 @@ impl RunConfig {
         &self,
         global_app_state_dir: &GlobalAppStateDir,
     ) -> Result<PathBuf> {
-        self.run_jobs_instance_path(global_app_state_dir)
+        self.run_jobs_instance_basedir(global_app_state_dir)
             .map(|p| p.append("working_directory_change.signals"))
     }
 }
@@ -588,7 +588,7 @@ impl RunConfigOpts {
     pub fn check(&self) -> Result<RunConfig> {
         let RunConfigOpts {
             queues,
-            run_jobs_instance_path,
+            run_jobs_instance_basedir,
             working_directory_pool,
             targets,
             job_template_lists,
@@ -655,7 +655,7 @@ impl RunConfigOpts {
 
         Ok(RunConfig {
             queues: queues.clone_arc(),
-            run_jobs_instance_path: run_jobs_instance_path
+            run_jobs_instance_basedir: run_jobs_instance_basedir
                 .as_ref()
                 .map(|p| p.resolve())
                 .transpose()?
