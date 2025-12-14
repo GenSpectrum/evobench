@@ -140,6 +140,13 @@ impl WorkingDirectoryPoolBaseDir {
         &self.path
     }
 
+    // Keep private!, pub use should be the typed
+    // `get_working_directory_path` method on `WorkingDirectoryPool`.
+    fn get_working_directory_path(&self, working_directory_id: WorkingDirectoryId) -> PathBuf {
+        self.path
+            .append(working_directory_id.to_directory_file_name())
+    }
+
     /// The path to the symlink to the currently used working
     /// directory
     fn current_working_directory_symlink_path(&self) -> PathBuf {
@@ -204,7 +211,7 @@ impl<'t> WorkingDirectoryPoolBaseDirLock<'t> {
         &self,
         id: WorkingDirectoryId,
     ) -> Result<WorkingDirectoryStatus> {
-        let path = self.base_dir.path().append(id.to_directory_file_name());
+        let path = self.base_dir.get_working_directory_path(id);
         // XX partial copy paste from WorkingDirectory::open (ok not too much though)
         let status_path = WorkingDirectory::status_path_from_working_dir_path(&path)?;
         load_ron_file(&status_path)
@@ -415,14 +422,15 @@ impl WorkingDirectoryPool {
     }
 
     /// For cases where the working directory existing does not matter
+    // Also see private get_working_directory_path() method on
+    // WorkingDirectoryPoolBaseDir.
     pub fn get_working_directory_path(
         &self,
         working_directory_id: WorkingDirectoryId,
     ) -> WorkingDirectoryPath {
         Arc::new(
             self.base_dir
-                .path
-                .append(working_directory_id.to_directory_file_name()),
+                .get_working_directory_path(working_directory_id),
         )
         .into()
     }
