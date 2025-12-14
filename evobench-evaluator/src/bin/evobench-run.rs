@@ -375,6 +375,10 @@ enum WdSubCommand {
         #[clap(long)]
         unmark: bool,
 
+        /// Force entering even when the status is `processing`; in this case,
+        #[clap(long)]
+        force: bool,
+
         /// Do not run `git fetch --tags` inside the working directory
         /// (usually it's a good idea to run it, to ensure the dataset
         /// dir and `COMMIT_TAGS` are chosen based on up to date
@@ -1244,13 +1248,24 @@ fn run() -> Result<Option<PathBuf>> {
                 }
             };
 
-            let mut do_mark = |wanted_status: Status, id| -> Result<Option<Status>> {
-                let mut guard =
-                    working_directory_pool.lock_mut("evobench-run SubCommand::Wd do_mark")?;
+            #[derive(Debug, thiserror::Error)]
+            enum DoMarkError {
+                #[error("{0}")]
+                Check(anyhow::Error),
+                #[error("{0}")]
+                Generic(anyhow::Error),
+            }
+
+            let mut do_mark = |wanted_status: Status, id| -> Result<Option<Status>, DoMarkError> {
+                let mut guard = working_directory_pool
+                    .lock_mut("evobench-run SubCommand::Wd do_mark")
+                    .map_err(DoMarkError::Generic)?;
                 if let Some(mut wd) = guard.get_working_directory_mut(id) {
                     let original_status = check_original_status(&*wd, false, "error/examination")
-                        .map_err(ctx!("refusing working directory {id}"))?;
-                    wd.set_and_save_status(wanted_status)?;
+                        .map_err(ctx!("refusing working directory {id}"))
+                        .map_err(DoMarkError::Check)?;
+                    wd.set_and_save_status(wanted_status)
+                        .map_err(DoMarkError::Generic)?;
                     Ok(Some(original_status))
                 } else {
                     Ok(None)
@@ -1516,6 +1531,7 @@ fn run() -> Result<Option<PathBuf>> {
                 WdSubCommand::Enter {
                     mark,
                     unmark,
+                    force,
                     no_fetch,
                     id,
                 } => {
@@ -1524,8 +1540,27 @@ fn run() -> Result<Option<PathBuf>> {
                     }
 
                     let no_exist = || anyhow!("there is no working directory for id {id}");
-                    let original_status =
-                        do_mark(Status::Examination, id)?.ok_or_else(&no_exist)?;
+
+                    // Try to change the status; if it's in an
+                    // unacceptable status, enter anyway if `force` is
+                    // given, but don't restore it then
+                    let original_status: Option<Status> = match do_mark(Status::Examination, id) {
+                        Ok(status) => {
+                            if let Some(status) = status {
+                                Some(status)
+                            } else {
+                                Err(no_exist())?
+                            }
+                        }
+                        Err(DoMarkError::Check(e)) => {
+                            if force {
+                                None
+                            } else {
+                                Err(e)?
+                            }
+                        }
+                        Err(DoMarkError::Generic(e)) => Err(e)?,
+                    };
 
                     let working_directory = working_directory_pool
                         .get_working_directory(id)
@@ -1637,6 +1672,13 @@ fn run() -> Result<Option<PathBuf>> {
                         );
                     }
 
+                    if original_status.is_none() {
+                        println!(
+                            "*** WARNING: processing is ongoing, entering this directory \
+                             by force! Please do not hinder the benchmarking process! ***\n"
+                        );
+                    }
+
                     // Enter dir without any locking (other than dir
                     // being in Status::Examination now), OK?
 
@@ -1650,37 +1692,51 @@ fn run() -> Result<Option<PathBuf>> {
                     );
                     let status = cmd.status()?;
 
-                    if unmark || original_status != Status::Examination {
+                    if unmark || original_status != Some(Status::Examination) {
                         if mark {
                             // keep marked
                         } else {
-                            let do_revert = unmark
-                                || ask_yn(&format!(
-                                    "Should the working directory status be reverted to \
-                                     '{original_status}' (i.e. are you done)?"
-                                ))?;
+                            if let Some(original_status) = original_status {
+                                let do_revert = unmark
+                                    || ask_yn(&format!(
+                                        "Should the working directory status be reverted to \
+                                         '{original_status}' (i.e. are you done)?"
+                                    ))?;
 
-                            if do_revert {
-                                let mut wd = working_directory_pool
-                                    .lock_mut("evobench-run WdSubCommand::Enter do_revert")?
-                                    .into_get_working_directory_mut(id);
-                                let mut working_directory = wd.get().ok_or_else(|| {
-                                    anyhow!("there is no working directory for id {id}")
-                                })?;
-                                let wanted_status = Status::Error;
-                                assert!(
-                                    original_status == wanted_status
-                                        || original_status == Status::Examination
-                                );
-                                working_directory.set_and_save_status(wanted_status)?;
-                                println!("Changed status to '{wanted_status}'");
+                                if do_revert {
+                                    let mut wd = working_directory_pool
+                                        .lock_mut("evobench-run WdSubCommand::Enter do_revert")?
+                                        .into_get_working_directory_mut(id);
+                                    let mut working_directory = wd.get().ok_or_else(|| {
+                                        anyhow!("there is no working directory for id {id}")
+                                    })?;
+                                    let wanted_status = Status::Error;
+                                    assert!(
+                                        original_status == wanted_status
+                                            || original_status == Status::Examination
+                                    );
+                                    working_directory.set_and_save_status(wanted_status)?;
+                                    println!("Changed status to '{wanted_status}'");
+                                } else {
+                                    println!("Leaving status at 'examination'");
+                                }
                             } else {
-                                println!("Leaving status at 'examination'");
+                                // original status was unacceptable
+                                // and `force` was given, thus do not
+                                // restore
                             }
                         }
                     } else {
                         if !mark {
-                            println!("Leaving working directory status at 'examination'");
+                            let status_str = if let Some(original_status) = original_status {
+                                &original_status.to_string()
+                            } else {
+                                "processing(?)"
+                            };
+                            println!(
+                                "Leaving working directory status at the original status, \
+                                 {status_str}",
+                            );
                         }
                     }
 
