@@ -27,7 +27,7 @@ use crate::{
     key::{BenchmarkingJobParameters, RunParameters},
     owning_lockable_file::{OwningExclusiveFileLock, OwningLockableFile},
     run::working_directory::{
-        WorkingDirectoryAutoCleanOpts, WorkingDirectoryWithPoolLock,
+        WorkingDirectoryAutoCleanOpts, WorkingDirectoryPath, WorkingDirectoryWithPoolLock,
         WorkingDirectoryWithPoolLockMut, WorkingDirectoryWithPoolMut,
     },
     serde::{date_and_time::DateTimeWithOffset, git_url::GitUrl},
@@ -412,6 +412,19 @@ impl WorkingDirectoryPool {
         working_directory_id: WorkingDirectoryId,
     ) -> Option<&WorkingDirectory> {
         self.all_entries.get(&working_directory_id)
+    }
+
+    /// For cases where the working directory existing does not matter
+    pub fn get_working_directory_path(
+        &self,
+        working_directory_id: WorkingDirectoryId,
+    ) -> WorkingDirectoryPath {
+        Arc::new(
+            self.base_dir
+                .path
+                .append(working_directory_id.to_directory_file_name()),
+        )
+        .into()
     }
 
     /// Also see the method on `WorkingDirectoryPoolGuard`!

@@ -11,7 +11,7 @@ use std::{
     env,
     ffi::OsStr,
     fmt::Display,
-    io::{stdout, IsTerminal, Write},
+    io::{stderr, stdout, BufWriter, IsTerminal, Write},
     os::unix::{ffi::OsStrExt, process::CommandExt},
     path::PathBuf,
     process::{exit, Command},
@@ -1279,7 +1279,7 @@ fn run() -> Result<Option<PathBuf>> {
                         bail!(
                             "this action is only for working directories in {allowed_statuses} \
                          status, but directory {} has status '{}'",
-                            wd.parent_path_and_id()?.1,
+                            wd.working_directory_path().parent_path_and_id()?.1,
                             status
                         )
                         // Also can't currently signal working dir status
@@ -1546,13 +1546,24 @@ fn run() -> Result<Option<PathBuf>> {
                     }
                 }
                 WdSubCommand::Log { id } => {
-                    let no_exist = || anyhow!("there is no working directory for id {id}");
-                    let working_directory = working_directory_pool
-                        .get_working_directory(id)
-                        .ok_or_else(&no_exist)?;
+                    let working_directory_path =
+                        if let Some(wd) = working_directory_pool.get_working_directory(id) {
+                            wd.working_directory_path()
+                        } else {
+                            let mut out = BufWriter::new(stderr().lock());
+                            writeln!(
+                                &mut out,
+                                "NOTE: working directory with id {id} does not exist. \
+                                 Looking for log files anyway."
+                            )?;
+                            out.flush()?;
+                            thread::sleep(Duration::from_millis(1400));
+                            working_directory_pool.get_working_directory_path(id)
+                        };
 
-                    let (standard_log_path, _id) =
-                        working_directory.last_standard_log_path()?.ok_or_else(|| {
+                    let (standard_log_path, _id) = working_directory_path
+                        .last_standard_log_path()?
+                        .ok_or_else(|| {
                             anyhow!("could not find a log file for working directory {id}")
                         })?;
 
@@ -1634,8 +1645,10 @@ fn run() -> Result<Option<PathBuf>> {
                         .get_working_directory(id)
                         .ok_or_else(&no_exist)?;
 
-                    let (standard_log_path, _id) =
-                        working_directory.last_standard_log_path()?.ok_or_else(|| {
+                    let (standard_log_path, _id) = working_directory
+                        .working_directory_path()
+                        .last_standard_log_path()?
+                        .ok_or_else(|| {
                             anyhow!("could not find a log file for working directory {id}")
                         })?;
 

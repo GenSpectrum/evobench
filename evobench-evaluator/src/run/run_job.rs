@@ -299,7 +299,9 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                     }
 
                     let command_output_file = OutFile::create(
-                        &working_directory.standard_log_path(&self.job_runner.timestamp)?,
+                        &working_directory
+                            .working_directory_path()
+                            .standard_log_path(&self.job_runner.timestamp)?,
                     )?;
 
                     // Add info header in YAML -- XX abstraction, and

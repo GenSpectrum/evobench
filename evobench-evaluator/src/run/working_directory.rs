@@ -7,6 +7,7 @@ use std::{
     ops::{Deref, DerefMut},
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
+    sync::Arc,
     time::{Duration, SystemTime},
 };
 
@@ -141,6 +142,82 @@ impl WorkingDirectoryStatus {
     }
 }
 
+// This is pretty much like WorkingDirectoryPool has a separate
+// WorkingDirectoryPoolBaseDir, right? (Need to store Arc<PathBuf>
+// since that's what `run-git` currently uses, should change that.)
+/// A path to a working directory. Has methods that only need a path,
+/// nothing else.
+pub struct WorkingDirectoryPath(Arc<PathBuf>);
+
+impl From<Arc<PathBuf>> for WorkingDirectoryPath {
+    fn from(value: Arc<PathBuf>) -> Self {
+        Self(value)
+    }
+}
+
+impl WorkingDirectoryPath {
+    const STANDARD_LOG_EXTENSION_BASE: &str = "output_of_benchmarking_command_at_";
+    pub fn standard_log_path_from_working_dir_path(
+        path: &Path,
+        timestamp: &DateTimeWithOffset,
+    ) -> Result<PathBuf> {
+        add_extension(
+            path,
+            format!("{}{timestamp}", Self::STANDARD_LOG_EXTENSION_BASE),
+        )
+        .ok_or_else(|| anyhow!("can't add extension to path {path:?}"))
+    }
+    pub fn standard_log_path(&self, timestamp: &DateTimeWithOffset) -> Result<PathBuf> {
+        Self::standard_log_path_from_working_dir_path(&self.0, timestamp)
+    }
+
+    /// Originally thought `id` is a pool matter only, but now need it
+    /// to filter for standard_log paths. Leaving id as string,
+    /// though.)
+    pub fn parent_path_and_id(&self) -> Result<(&Path, &str)> {
+        let p = &self.0;
+        let parent = p
+            .parent()
+            .ok_or_else(|| anyhow!("working directory path {p:?} doesn't have parent path"))?;
+        let file_name = p
+            .file_name()
+            .ok_or_else(|| anyhow!("working directory path {p:?} doesn't have file_name"))?;
+        let file_name = file_name.to_str().ok_or_else(|| {
+            anyhow!("working directory path {p:?} does not have a file name in unicode")
+        })?;
+        Ok((parent, file_name))
+    }
+
+    /// All stdout log files that were written for this working
+    /// directory: path including file name, just the
+    /// timestamp. Sorted by timestamp, newest last.
+    pub fn standard_log_paths(&self) -> Result<Vec<(PathBuf, String)>> {
+        let (parent_path, id_str) = self.parent_path_and_id()?;
+        let filename_prefix = format!("{id_str}.{}", Self::STANDARD_LOG_EXTENSION_BASE,);
+
+        (|| -> Result<Vec<(PathBuf, String)>> {
+            let mut paths = vec![];
+            for item in std::fs::read_dir(&parent_path)? {
+                let item = item?;
+                if let Ok(file_name) = item.file_name().into_string() {
+                    if let Some(timestamp) = file_name.strip_prefix(&filename_prefix) {
+                        paths.push((item.path(), timestamp.to_owned()));
+                    }
+                }
+            }
+            paths.sort_by(|a, b| a.1.cmp(&b.1));
+            Ok(paths)
+        })()
+        .map_err(ctx!(
+            "opening working directory parent dir {parent_path:?} for reading"
+        ))
+    }
+
+    pub fn last_standard_log_path(&self) -> Result<Option<(PathBuf, String)>> {
+        Ok(self.standard_log_paths()?.pop())
+    }
+}
+
 #[derive(Debug)]
 pub struct WorkingDirectory {
     pub git_working_dir: GitWorkingDir,
@@ -235,68 +312,10 @@ impl WorkingDirectory {
         Self::status_path_from_working_dir_path(self.git_working_dir.working_dir_path_ref())
     }
 
-    const STANDARD_LOG_EXTENSION_BASE: &str = "output_of_benchmarking_command_at_";
-    pub fn standard_log_path_from_working_dir_path(
-        path: &Path,
-        timestamp: &DateTimeWithOffset,
-    ) -> Result<PathBuf> {
-        add_extension(
-            path,
-            format!("{}{timestamp}", Self::STANDARD_LOG_EXTENSION_BASE),
-        )
-        .ok_or_else(|| anyhow!("can't add extension to path {path:?}"))
-    }
-    pub fn standard_log_path(&self, timestamp: &DateTimeWithOffset) -> Result<PathBuf> {
-        Self::standard_log_path_from_working_dir_path(
-            self.git_working_dir.working_dir_path_ref(),
-            timestamp,
-        )
-    }
-
-    /// Originally thought `id` is a pool matter only, but now need it
-    /// to filter for standard_log paths. Leaving id as string,
-    /// though.)
-    pub fn parent_path_and_id(&self) -> Result<(&Path, &str)> {
-        let p = self.git_working_dir.working_dir_path_ref();
-        let parent = p
-            .parent()
-            .ok_or_else(|| anyhow!("working directory path {p:?} doesn't have parent path"))?;
-        let file_name = p
-            .file_name()
-            .ok_or_else(|| anyhow!("working directory path {p:?} doesn't have file_name"))?;
-        let file_name = file_name.to_str().ok_or_else(|| {
-            anyhow!("working directory path {p:?} does not have a file name in unicode")
-        })?;
-        Ok((parent, file_name))
-    }
-
-    /// All stdout log files that were written for this working
-    /// directory: path including file name, just the
-    /// timestamp. Sorted by timestamp, newest last.
-    pub fn standard_log_paths(&self) -> Result<Vec<(PathBuf, String)>> {
-        let (parent_path, id_str) = self.parent_path_and_id()?;
-        let filename_prefix = format!("{id_str}.{}", Self::STANDARD_LOG_EXTENSION_BASE,);
-
-        (|| -> Result<Vec<(PathBuf, String)>> {
-            let mut paths = vec![];
-            for item in std::fs::read_dir(&parent_path)? {
-                let item = item?;
-                if let Ok(file_name) = item.file_name().into_string() {
-                    if let Some(timestamp) = file_name.strip_prefix(&filename_prefix) {
-                        paths.push((item.path(), timestamp.to_owned()));
-                    }
-                }
-            }
-            paths.sort_by(|a, b| a.1.cmp(&b.1));
-            Ok(paths)
-        })()
-        .map_err(ctx!(
-            "opening working directory parent dir {parent_path:?} for reading"
-        ))
-    }
-
-    pub fn last_standard_log_path(&self) -> Result<Option<(PathBuf, String)>> {
-        Ok(self.standard_log_paths()?.pop())
+    /// To get access to methods that don't need a full
+    /// WorkingDirectory, just its path.
+    pub fn working_directory_path(&self) -> WorkingDirectoryPath {
+        WorkingDirectoryPath(self.git_working_dir.working_dir_path_arc())
     }
 
     /// Open an existing working directory. Its default upstream
