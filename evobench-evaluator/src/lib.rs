@@ -16,6 +16,7 @@ pub mod join;
 pub mod json5_from_str;
 pub mod key;
 pub mod key_val_fs;
+pub mod lazy;
 pub mod linear;
 pub mod lockable_file;
 pub mod owning_lockable_file;

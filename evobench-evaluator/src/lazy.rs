@@ -11,7 +11,7 @@ use std::fmt;
 pub enum Lazy<T, F: FnOnce() -> T> {
     Thunk(F),
     Poisoned,
-    Value(T)
+    Value(T),
 }
 
 impl<T, F: FnOnce() -> T> Lazy<T, F> {
@@ -36,18 +36,17 @@ impl<T, F: FnOnce() -> T> Lazy<T, F> {
                         std::mem::swap(self, &mut new);
                         match self {
                             Lazy::Value(v) => v,
-                            _ => panic!()
+                            _ => panic!(),
                         }
                     }
-                    _ => panic!()
+                    _ => panic!(),
                 }
             }
             Lazy::Value(v) => v,
-            Lazy::Poisoned => panic!("Lazy instance has previously been poisoned")
+            Lazy::Poisoned => panic!("Lazy instance has previously been poisoned"),
         }
     }
 }
-
 
 /// Variant that does not store error resuls from the thunk in the
 /// promise, so that Result or E do not need to support clone yet
@@ -56,7 +55,7 @@ impl<T, F: FnOnce() -> T> Lazy<T, F> {
 pub enum LazyResult<T, E, F: FnOnce() -> Result<T, E>> {
     Thunk(F),
     Poisoned,
-    Value(T)
+    Value(T),
 }
 
 impl<T, E, F: FnOnce() -> Result<T, E>> LazyResult<T, E, F> {
@@ -81,18 +80,17 @@ impl<T, E, F: FnOnce() -> Result<T, E>> LazyResult<T, E, F> {
                         std::mem::swap(self, &mut new);
                         match self {
                             Self::Value(v) => Ok(v),
-                            _ => panic!()
+                            _ => panic!(),
                         }
                     }
-                    _ => panic!()
+                    _ => panic!(),
                 }
             }
             Self::Value(v) => Ok(v),
-            Self::Poisoned => panic!("Lazy instance has previously been poisoned")
+            Self::Poisoned => panic!("Lazy instance has previously been poisoned"),
         }
     }
 }
-
 
 impl<T: fmt::Debug, F: FnOnce() -> T> fmt::Debug for Lazy<T, F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -154,4 +152,3 @@ macro_rules! lazyresult {
         dev_utils::lazy::LazyResult::new(|| { $($body)* })
     }
 }
-
