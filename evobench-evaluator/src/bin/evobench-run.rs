@@ -1163,9 +1163,6 @@ fn run() -> Result<Option<PathBuf>> {
 
         SubCommand::Run { mode } => {
             let run_lock_path = conf.run_jobs_instance_basedir(&global_app_state_dir)?;
-            // Should StandaloneExclusiveFileLock have an option to
-            // create itself?
-            let _ = std::fs::write(&run_lock_path, "");
             let _run_lock = StandaloneExclusiveFileLock::try_lock_path(run_lock_path, || {
                 "getting the global lock for running jobs".into()
             })?;
