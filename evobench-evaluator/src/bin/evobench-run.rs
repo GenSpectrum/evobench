@@ -33,6 +33,7 @@ use evobench_evaluator::{
     io_utils::bash::{bash_export_variable_string, bash_string_from_program_path_and_args},
     key::{BenchmarkingJobParameters, RunParameters, RunParametersOpts},
     key_val_fs::key_val::Entry,
+    lazyresult,
     lockable_file::{LockStatus, StandaloneExclusiveFileLock, StandaloneFileLockError},
     polling_signals::PollingSignals,
     run::{
@@ -359,6 +360,15 @@ enum WdSubCommand {
     /// cleanup`
     Unmark {
         /// The IDs of the working direcories to unmark
+        ids: Vec<WorkingDirectoryId>,
+    },
+    /// Change the status of the given working directories back to
+    /// "checkedout", so that they can be used again by `evobench-run
+    /// run`. (Be careful that you don't recycle dirs with problems
+    /// that lead to errors again. It may be safer, albeit costlier,
+    /// to `delete` the dirs instead.)
+    Recycle {
+        /// The IDs of the working direcories to recycle
         ids: Vec<WorkingDirectoryId>,
     },
     /// Mark the given working directory for examination, then open a
@@ -1295,7 +1305,13 @@ fn run() -> Result<Option<PathBuf>> {
                 Generic(anyhow::Error),
             }
 
-            let mut do_mark = |wanted_status: Status, id| -> Result<Option<Status>, DoMarkError> {
+            // When giving a status that can be used by the daemon
+            // (Recycle action), working_directory_change_signals has
+            // to be passed in.
+            let mut do_mark = |wanted_status: Status,
+                               id,
+                               working_directory_change_signals: Option<&mut PollingSignals>|
+             -> Result<Option<Status>, DoMarkError> {
                 let mut guard = working_directory_pool
                     .lock_mut("evobench-run SubCommand::Wd do_mark")
                     .map_err(DoMarkError::Generic)?;
@@ -1305,11 +1321,18 @@ fn run() -> Result<Option<PathBuf>> {
                         .map_err(DoMarkError::Check)?;
                     wd.set_and_save_status(wanted_status)
                         .map_err(DoMarkError::Generic)?;
+                    if let Some(working_directory_change_signals) = working_directory_change_signals
+                    {
+                        working_directory_change_signals.send_signal();
+                    }
                     Ok(Some(original_status))
                 } else {
                     Ok(None)
                 }
             };
+
+            let mut working_directory_change_signals =
+                lazyresult!(open_polling_signals(conf, &global_app_state_dir));
 
             match subcommand {
                 WdSubCommand::List {
@@ -1460,12 +1483,6 @@ fn run() -> Result<Option<PathBuf>> {
                     verbose,
                     ids,
                 } => {
-                    let global_app_state_dir = GlobalAppStateDir::new()?;
-                    let mut working_directory_change_signals = open_polling_signals(
-                        &config_with_reload.run_config,
-                        &global_app_state_dir,
-                    )?;
-
                     let mut lock_mut =
                         working_directory_pool.lock_mut("evobench-run WdSubCommand::Delete")?;
                     let opt_current_wd_id = lock_mut
@@ -1517,7 +1534,7 @@ fn run() -> Result<Option<PathBuf>> {
                             eprintln!("would delete working directory at {path:?}");
                         } else {
                             if status.can_be_used_for_jobs() {
-                                working_directory_change_signals.send_signal();
+                                working_directory_change_signals.force_mut()?.send_signal();
                                 // No race possible since we're
                                 // holding the working dir pool lock,
                                 // right?
@@ -1561,14 +1578,27 @@ fn run() -> Result<Option<PathBuf>> {
                 }
                 WdSubCommand::Mark { ids } => {
                     for id in ids {
-                        if do_mark(Status::Examination, id)?.is_none() {
+                        if do_mark(Status::Examination, id, None)?.is_none() {
                             warn!("there is no working directory for id {id}");
                         }
                     }
                 }
                 WdSubCommand::Unmark { ids } => {
                     for id in ids {
-                        if do_mark(Status::Error, id)?.is_none() {
+                        if do_mark(Status::Error, id, None)?.is_none() {
+                            warn!("there is no working directory for id {id}");
+                        }
+                    }
+                }
+                WdSubCommand::Recycle { ids } => {
+                    for id in ids {
+                        if do_mark(
+                            Status::CheckedOut,
+                            id,
+                            Some(working_directory_change_signals.force_mut()?),
+                        )?
+                        .is_none()
+                        {
                             warn!("there is no working directory for id {id}");
                         }
                     }
@@ -1589,23 +1619,24 @@ fn run() -> Result<Option<PathBuf>> {
                     // Try to change the status; if it's in an
                     // unacceptable status, enter anyway if `force` is
                     // given, but don't restore it then
-                    let original_status: Option<Status> = match do_mark(Status::Examination, id) {
-                        Ok(status) => {
-                            if let Some(status) = status {
-                                Some(status)
-                            } else {
-                                Err(no_exist())?
+                    let original_status: Option<Status> =
+                        match do_mark(Status::Examination, id, None) {
+                            Ok(status) => {
+                                if let Some(status) = status {
+                                    Some(status)
+                                } else {
+                                    Err(no_exist())?
+                                }
                             }
-                        }
-                        Err(DoMarkError::Check(e)) => {
-                            if force {
-                                None
-                            } else {
-                                Err(e)?
+                            Err(DoMarkError::Check(e)) => {
+                                if force {
+                                    None
+                                } else {
+                                    Err(e)?
+                                }
                             }
-                        }
-                        Err(DoMarkError::Generic(e)) => Err(e)?,
-                    };
+                            Err(DoMarkError::Generic(e)) => Err(e)?,
+                        };
 
                     let working_directory = working_directory_pool
                         .get_working_directory(id)
