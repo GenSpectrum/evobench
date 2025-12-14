@@ -130,10 +130,10 @@ impl<T: fmt::Debug, E, F: FnOnce() -> Result<T, E>> fmt::Debug for LazyResult<T,
 #[macro_export]
 macro_rules! lazy {
     { move $($body:tt)* } => {
-        dev_utils::lazy::Lazy::new(move || { $($body)* })
+        $crate::lazy::Lazy::new(move || { $($body)* })
     };
     { $($body:tt)* } => {
-        dev_utils::lazy::Lazy::new(|| { $($body)* })
+        $crate::lazy::Lazy::new(|| { $($body)* })
     }
 }
 
@@ -146,9 +146,9 @@ macro_rules! lazy {
 #[macro_export]
 macro_rules! lazyresult {
     { move $($body:tt)* } => {
-        dev_utils::lazy::LazyResult::new(move || { $($body)* })
+        $crate::lazy::LazyResult::new(move || { $($body)* })
     };
     { $($body:tt)* } => {
-        dev_utils::lazy::LazyResult::new(|| { $($body)* })
+        $crate::lazy::LazyResult::new(|| { $($body)* })
     }
 }
