@@ -146,7 +146,11 @@ impl<'s> VersionedDatasetDirLock<'s> {
                 let commit = self.git_graph_data.get(id).expect("internal consistency");
                 commit_to_dirname.contains_key(&commit.commit.commit_hash)
             })?
-            .ok_or_else(|| anyhow!("can't find a dataset for commit {commit_id:?} in dir "))?;
+            .ok_or_else(|| {
+                anyhow!(
+                    "can't find a dataset for commit {commit_id:?} in dir {versioned_datasets_dir:?}"
+                )
+            })?;
         let ancestor_or_self = &self
             .git_graph_data
             .get(ancestor_or_self_id)
