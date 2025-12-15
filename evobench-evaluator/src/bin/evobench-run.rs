@@ -1563,7 +1563,9 @@ fn run() -> Result<Option<PathBuf>> {
                                  Looking for log files anyway."
                             )?;
                             out.flush()?;
-                            thread::sleep(Duration::from_millis(1400));
+                            if !list {
+                                thread::sleep(Duration::from_millis(1400));
+                            }
                             working_directory_pool.get_working_directory_path(id)
                         };
 
