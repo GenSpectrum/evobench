@@ -246,5 +246,8 @@ The default location for this pool is at
 contains the log files from running benchmarking jobs; they start with
 `$n.output_of_benchmarking_command*`, where `$n` is the number of the
 working directory. There are also `$n.error*` files in case a job
-failed, and soon `$n.status` files to store the status of a working
+failed, and `$n.status` files to store the status of a working
 directory.
+
+The `evobench-run wd` subcommand should normally suffice to interact
+with working directories.
