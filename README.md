@@ -20,7 +20,8 @@ It consists of multiple parts:
     file path, the library becomes active and retrieves and logs the
     data.
 
- -  [evobench-evaluator](evobench-evaluator/), a program written in
+ -  [evobench-evaluator](evobench-evaluator/docs/overview.md), 
+    a program written in
     Rust that can parse the log files written by evobench-probes,
     builds a tree representation of the benchmarking calls (probe
     calls) according to their dynamic nesting, and generates

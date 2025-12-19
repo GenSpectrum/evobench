@@ -22,7 +22,41 @@ and runs those when appropriate, only ever one at the same time (to
 avoid the jobs from interfering with each other and influencing the
 benchmarking results). The tool has various subcommands, for polling a
 repository for changes, inserting jobs, listing them, and running them
-(daemon). Run it with `--help`.
+(daemon). It has various subcommands (as running it with `--help` will
+also show):
+
+<dl>
+  <dt>insert</dt>
+  <dd>Insert a job into the benchmarking queue, giving the commit id
+    (hence, unlike the <code>insert-local</code> command, not
+    requiring a working directory)</dd>
+  
+  <dt>insert-file</dt>
+  <dd>(Re-)insert a job from a job file (in the same format as written in
+    the queue directories)</dd>
+
+  <dt>insert-local</dt>
+  <dd>Insert a job into the benchmarking queue. The given reference is
+    resolved in a given working directory; if you have a commit id,
+    then you can use the <code>insert</code> subcommand instead</dd>
+  
+  <dt>list</dt>
+  <dd>List the currently scheduled and running jobs</dd>
+
+  <dt>list-all</dt>
+  <dd>Show the list of all inserted jobs, including already processed ones</dd>
+
+  <dt>poll</dt>
+  <dd>Insert jobs for new commits on branch names configured in the
+    config option <code>remote_branch_names_for_poll</code></dd>
+
+  <dt>run</dt>
+  <dd>Run the existing jobs; this takes a lock or stops with an error
+    if the lock is already taken</dd>
+
+  <dt>wd</dt>
+  <dd>Handle working directories (visiting, reading logs, cleanup)</dd>
+</dl>
 
 It has a concept of a "key", which is all pieces of information that
 influence a benchmarking run (which commit of the target project was
@@ -33,6 +67,8 @@ used as results are currently only stored locally)).
 It currently runs the `evobench-evaluator` after each finished job run
 to evaluate the results of the run and also generate summary
 statistics across all runs for the same "key".
+
+![](evobench-run-list-2025-11-25.png "Example output of `evobench-run list`")
 
 ### Configuration
 
