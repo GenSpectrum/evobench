@@ -15,7 +15,10 @@ fn lookup<'m, K: Ord, V>(map: &'m BTreeMap<K, V>, key: &K) -> (&'m K, &'m V) {
         .expect("we fill in index 0 thus will always find a value")
 }
 
-pub const WEIGHT_ONE: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(1) };
+pub const WEIGHT_ONE: NonZeroU32 = unsafe {
+    // 1 satisfies NonZero. There is no NonZeroU32::ONE, sadly.
+    NonZeroU32::new_unchecked(1)
+};
 
 /// Representation of statistical probes: their value with the count
 /// of skipped runs that need to be compensated for.
