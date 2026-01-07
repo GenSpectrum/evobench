@@ -17,6 +17,8 @@ inherits = "release"
 debug = true
 
 [dependencies]
+chj-unix-util = { path = "../../../XMLHUB/xmlhub-indexer/libs/chj-unix-util/" }
+
 cj-path-util = { version = "0.1.0", features = [ "unix" ] }
 
 run-git  = "0.1.0"
