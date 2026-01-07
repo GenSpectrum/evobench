@@ -50,7 +50,7 @@ pub fn compress_file_as(
 
 // XX here, *too*, do capture for consistency? XX: could do "nice" scheduling here.
 pub fn evobench_evaluator(args: &[OsString]) -> Result<()> {
-    let prog = "evobench-evaluator";
+    let prog = "evobench-eval";
     let mut c = Command::new(prog);
     c.args(args);
     let mut child = c.spawn().map_err(ctx!("spawning command {c:?}"))?;

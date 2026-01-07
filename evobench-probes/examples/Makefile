@@ -2,7 +2,7 @@
 FLAGS=-std=c++20 -O2 -Wall -Wextra -I../include
 OBJS=evobench.o sum_of_fibs.o
 
-EVALUATOR=../../evobench-tools/target/release/evobench-evaluator
+EVALUATOR=../../evobench-tools/target/release/evobench-eval
 
 sum_of_fibs: $(OBJS)
 	c++ $(FLAGS) -o $@ $(OBJS)

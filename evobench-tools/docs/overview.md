@@ -1,11 +1,11 @@
 # Overview over how evobench works
 
 The evobench project/repository maintains 3 parts: two tools,
-`evobench-evaluator` and `evobench-jobs` (described below), and a C++
+`evobench-eval` and `evobench-jobs` (described below), and a C++
 library to collect benchmarking data,
 [evobench-probes](../../evobench-probes/README.md).
 
-## evobench-evaluator
+## evobench-eval
 
 This is a tool to evaluate the log files from benchmark runs using
 (currently) the [evobench-probes](../../evobench-probes/README.md)
@@ -64,7 +64,7 @@ run, with which custom parameters, in which queuing context
 (configurable), and on which machine/OS (but which is not currently
 used as results are currently only stored locally)).
 
-It currently runs the `evobench-evaluator` after each finished job run
+It currently runs the `evobench-eval` after each finished job run
 to evaluate the results of the run and also generate summary
 statistics across all runs for the same "key".
 

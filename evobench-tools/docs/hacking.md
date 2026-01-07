@@ -22,7 +22,7 @@ Also see the [overview](overview.md).
 
 ## Specifics
 
-* [internals/evaluator/](internals/evaluator/index.md) -- how evobench-evaluator works internally
+* [internals/eval/](internals/eval/index.md) -- how evobench-eval works internally
 
 * [internals/jobs/](internals/jobs/index.md) -- how evobench-jobs works internally
 

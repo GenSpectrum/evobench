@@ -29,12 +29,12 @@ scripts for doing this; example for
     destruction time.
 
   - Place `EVOBENCH_POINT("module", "action")` if you want a single
-    time measurement; but currently evobench-evaluator does not do
+    time measurement; but currently evobench-eval does not do
     anything useful with these (XX right?, todo).
 
   - Place `EVOBENCH_KEY_VALUE("key", value)` to log a runtime value
     (`value` needs to evaluate to a string), without any timings;
-    evobench-evaluator adds these as a pseudo scope into the tree (and
+    evobench-eval adds these as a pseudo scope into the tree (and
     automatically closes the pseudo scope when getting the closing
     measurement of the surrounding `EVOBENCH_SCOPE` probe.
 
@@ -78,11 +78,11 @@ setting that variable to the desired path to write the log to.
     e.g. LAPIS-SILO does that when receiving SIGINT, but *not* when
     receiving the default signal that the `kill` bash built-in uses,
     SIGTERM. If the program does not shut down cleanly,
-    evobench-evaluator detects the missing scope / thread / program
+    evobench-eval detects the missing scope / thread / program
     end messages and reports an error.
 
   - Since flushing those buffers need actual IO, the flush action also
-    logs the timings; but currently evobench-evaluator ignores those.
+    logs the timings; but currently evobench-eval ignores those.
     It could use them to judge the cost of the flushing calls and
     then subtract those from the other timings, to virtually eliminate
     this overhead; the overhead is currently deemed low enough to not
@@ -95,5 +95,5 @@ setting that variable to the desired path to write the log to.
     fruit for optimization.
 
     The evobench-probes library writes the files uncompressed. But
-    evobench-evaluator transparently decompresses files with `.zstd`
+    evobench-eval transparently decompresses files with `.zstd`
     suffix; the idea is to compress the files for archival.

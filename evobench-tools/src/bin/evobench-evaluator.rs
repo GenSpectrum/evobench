@@ -20,7 +20,7 @@ static GLOBAL: MiMalloc = MiMalloc;
 
 include!("../../include/evobench_version.rs");
 
-const PROGRAM_NAME: &str = "evobench-evaluator";
+const PROGRAM_NAME: &str = "evobench-eval";
 
 #[derive(clap::Parser, Debug)]
 #[clap(next_line_help = true)]

@@ -85,7 +85,7 @@ class Buffer {
 // `num_calls`: how many calls this log entry represents; it is the
 // `every_n` parameter from `EVOBENCH_SCOPE_EVERY` or statically 1, or
 // 0 when unknown (0 does not make sense as a value and is hence used
-// as a null value; evobench-evaluator checks that it never uses 0 for
+// as a null value; evobench-eval checks that it never uses 0 for
 // spans, the spans always have the valid number from the start timing
 // record, hence the macro doesn't need to specify the value when
 // ending the scope).
@@ -157,7 +157,7 @@ class Scope {
       if (output.is_enabled) {
          // For consistency with `~ScopeEveryN`, just send 0 as the
          // `num_calls` value for this scope end, too (it doesn't
-         // currently matter what we send as evobench-evaluator
+         // currently matter what we send as evobench-eval
          // ignores the value for end scope timings)
          _log_any(ProbeName, PointKind::TE, 0);
       }
