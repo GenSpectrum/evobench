@@ -1,7 +1,7 @@
 # Overview over how evobench works
 
 The evobench project/repository maintains 3 parts: two tools,
-`evobench-evaluator` and `evobench-run` (described below), and a C++
+`evobench-evaluator` and `evobench-jobs` (described below), and a C++
 library to collect benchmarking data,
 [evobench-probes](../../evobench-probes/README.md).
 
@@ -14,7 +14,7 @@ needs to be given a file or files explicitly to do its work, it
 doesn't know on its own about what log files might belong together. It
 also doesn't execute new benchmarking runs. Run it with `--help`.
 
-## evobench-run
+## evobench-jobs
 
 This is a tool to maintain a (currently single) pipeline of queues of
 benchmarking jobs that need execution now or at some particular time,
@@ -73,7 +73,7 @@ statistics across all runs for the same "key".
 ### Configuration
 
 Currently the best documentation of the configuration file is in the
-[evobench-run.ron](https://github.com/GenSpectrum/silo-benchmark-ci/blob/master/etc/evobench-run.ron)
+[evobench-jobs.ron](https://github.com/GenSpectrum/silo-benchmark-ci/blob/master/etc/evobench-jobs.ron)
 file of the
 [silo-benchmark-ci](https://github.com/GenSpectrum/silo-benchmark-ci)
 repository. It also mentions where to start looking in the code if
@@ -88,11 +88,11 @@ the configuration file (currently it's not possible to specify a job
 template on the command line). Each such job in turn is execute any
 number of time again as configured. The configuration can assign
 different job templates depending on the source of the commit (which
-branch it was found on, or whether it came from the `evobench-run
+branch it was found on, or whether it came from the `evobench-jobs
 insert` or `insert-local` commands).
 
-`evobench-run list` and `evobench-run list-all` show one
-`BenchmarkingJob` instance per line; `evobench-run list` shows how the
+`evobench-jobs list` and `evobench-jobs list-all` show one
+`BenchmarkingJob` instance per line; `evobench-jobs list` shows how the
 jobs progress, each time a job changes queue or its queue insertion
 time that means a run has concluded.
 
@@ -145,7 +145,7 @@ More details on jobs and the other entities follow below.
   `remaining_error_budget` and `current_boost` which can temporarily
   increase the priority, currently just for the initial run which then
   sets it back to zero). (You can see the full information on jobs via
-  `evobench-run list -v`.)
+  `evobench-jobs list -v`.)
 
 * One commit leads to the insertion of any number of jobs as
   statically determined in the configuration, with different
@@ -179,7 +179,7 @@ More details on jobs and the other entities follow below.
 
 * Queues are (currently) implemented as a directory with files, one
   per job. By default each queue has a subdirectory under
-  `~/.evobench-run/queues/`. Entries are inserted with the current
+  `~/.evobench-jobs/queues/`. Entries are inserted with the current
   hi-res time stamp (plus process id and a process-local counter to
   disambiguate) as the file name, and are serialized `BenchmarkingJob`
   structs.
@@ -197,7 +197,7 @@ More details on jobs and the other entities follow below.
   finished, and one to catch all jobs that error out. If either is
   `None`, jobs will be dropped instead in that case.
 
-* Whenever a job execution is finished, `evobench-run run daemon` tries to select
+* Whenever a job execution is finished, `evobench-jobs run daemon` tries to select
   the next job to execute, if any, by first filtering the queue pipeline
   for the queues that are executable at the given time, then selecting
   the job(s) with the maximum total priority, where the total priority
@@ -209,7 +209,7 @@ More details on jobs and the other entities follow below.
   (`TIMED_QUEUE_DEFAULT_PRIORITY` constant in the code). Of all the
   jobs with the same maximum priority, the oldest in the earliest
   queue (i.e. the one appearing closest to the top in the
-  `evobench-run list` view) is chosen.
+  `evobench-jobs list` view) is chosen.
 
 * Queues have (at least currently, and it seems useful to keep it that
   way) no state other than the jobs that they contain. (Jobs however
@@ -219,7 +219,7 @@ More details on jobs and the other entities follow below.
   process a job once or infinitely, or, if that really seems useful,
   have a condition like "process jobs until their `remaining_count` is
   <= 5". But it seemed more direct (easier to understand and see via
-  `evobench-run list`) to just have e.g. 5 `Immediately` queues in a
+  `evobench-jobs list`) to just have e.g. 5 `Immediately` queues in a
   row in the pipeline to run a job 5 times. (If really needed, my
   suggestion would be to add another stateful field to *jobs*, rather
   than to queues, that contains the number of runs in the current
@@ -234,7 +234,7 @@ To avoid the overhead of cloning that repository and rebuilding it,
 and for the targetted program to allow caching cachable data across
 runs, those working directories are kept around. Also, since the
 queues can contain jobs for multiple commit ids, and with different
-parameters, but those jobs need multiple executions, evobench-run is
+parameters, but those jobs need multiple executions, evobench-jobs is
 keeping a pool of working directories around (configurable in
 `capacity` under `working_directory_pool`), and tracks which directory
 has which commit id checked out (and perhaps more data soon), to then
@@ -242,12 +242,12 @@ try and allocate job runs to the working directory that is closest to
 the job for minimizing the overhead.
 
 The default location for this pool is at
-`~/.evobench-run/working_directory_pool/`. The same directory also
+`~/.evobench-jobs/working_directory_pool/`. The same directory also
 contains the log files from running benchmarking jobs; they start with
 `$n.output_of_benchmarking_command*`, where `$n` is the number of the
 working directory. There are also `$n.error*` files in case a job
 failed, and `$n.status` files to store the status of a working
 directory.
 
-The `evobench-run wd` subcommand should normally suffice to interact
+The `evobench-jobs wd` subcommand should normally suffice to interact
 with working directories.

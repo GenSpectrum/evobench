@@ -94,7 +94,7 @@ struct Opts {
     log_level: LogLevelOpt,
 
     /// Override the path to the config file (default: the paths
-    /// `~/.evobench-run.*` where a single one exists where the `*` is
+    /// `~/.evobench-jobs.*` where a single one exists where the `*` is
     /// the suffix for one of the supported config file formats (run
     /// `config-formats` to get the list), and if those are missing,
     /// use compiled-in default config values)
@@ -194,7 +194,7 @@ enum SubCommand {
         reason: BenchmarkingJobReasonOpt,
 
         /// Path(s) to the JSON file(s) to insert. The format is the
-        /// one used in the `~/.evobench-run/queues/` directories,
+        /// one used in the `~/.evobench-jobs/queues/` directories,
         /// except you can alternatively choose JSON5, RON, or one of
         /// the other formats shown in `config-formats` if the file
         /// has a corresponding file extension.
@@ -266,7 +266,7 @@ pub enum RunMode {
         #[clap(subcommand)]
         action: Option<DaemonizationAction>,
 
-        /// Check if the evobench-run binary is changed (older or
+        /// Check if the evobench-jobs binary is changed (older or
         /// newer modification time), and if so, re-execute it with
         /// the original arguments.
         #[clap(long)]
@@ -352,20 +352,20 @@ enum WdSubCommand {
         id: WorkingDirectoryId,
     },
     /// Mark the given working directories for examination, so that
-    /// they are not deleted by `evobench-run wd cleanup`
+    /// they are not deleted by `evobench-jobs wd cleanup`
     Mark {
         /// The IDs of the working direcories to mark
         ids: Vec<WorkingDirectoryId>,
     },
     /// Change the status of the given working directories back to
-    /// "error", so that they are again deleted by `evobench-run wd
+    /// "error", so that they are again deleted by `evobench-jobs wd
     /// cleanup`
     Unmark {
         /// The IDs of the working direcories to unmark
         ids: Vec<WorkingDirectoryId>,
     },
     /// Change the status of the given working directories back to
-    /// "checkedout", so that they can be used again by `evobench-run
+    /// "checkedout", so that they can be used again by `evobench-jobs
     /// run`. (Be careful that you don't recycle dirs with problems
     /// that lead to errors again. It may be safer, albeit costlier,
     /// to `delete` the dirs instead.)
@@ -483,7 +483,7 @@ fn run_queues(
 
         let working_directory_id;
         {
-            let mut pool = working_directory_pool.lock_mut("evobench-run::run_queues")?;
+            let mut pool = working_directory_pool.lock_mut("evobench-jobs::run_queues")?;
             working_directory_id = pool.get_first()?;
             pool.clear_current_working_directory()?;
         }
@@ -1315,7 +1315,7 @@ fn run() -> Result<Option<PathBuf>> {
                                working_directory_change_signals: Option<&mut PollingSignals>|
              -> Result<Option<Status>, DoMarkError> {
                 let mut guard = working_directory_pool
-                    .lock_mut("evobench-run SubCommand::Wd do_mark")
+                    .lock_mut("evobench-jobs SubCommand::Wd do_mark")
                     .map_err(DoMarkError::Generic)?;
                 if let Some(mut wd) = guard.get_working_directory_mut(id) {
                     let original_status = check_original_status(&*wd, "error/examination")
@@ -1390,7 +1390,7 @@ fn run() -> Result<Option<PathBuf>> {
 
                     for id in all_ids {
                         let mut lock =
-                            working_directory_pool.lock_mut("evobench-run WdSubCommand::List")?;
+                            working_directory_pool.lock_mut("evobench-jobs WdSubCommand::List")?;
                         let mut wd = lock
                             .get_working_directory_mut(id)
                             .expect("got it from all_entries");
@@ -1465,7 +1465,7 @@ fn run() -> Result<Option<PathBuf>> {
 
                     {
                         let mut lock = working_directory_pool
-                            .lock_mut("evobench-run WdSubCommand::Cleanup")?;
+                            .lock_mut("evobench-jobs WdSubCommand::Cleanup")?;
                         for id in cleanup_ids {
                             if dry_run {
                                 eprintln!("would delete working directory {id}");
@@ -1487,7 +1487,7 @@ fn run() -> Result<Option<PathBuf>> {
                     ids,
                 } => {
                     let mut lock_mut =
-                        working_directory_pool.lock_mut("evobench-run WdSubCommand::Delete")?;
+                        working_directory_pool.lock_mut("evobench-jobs WdSubCommand::Delete")?;
                     let opt_current_wd_id = lock_mut
                         .locked_base_dir()
                         .read_current_working_directory()?;
@@ -1809,7 +1809,7 @@ fn run() -> Result<Option<PathBuf>> {
 
                                 if do_revert {
                                     let mut wd = working_directory_pool
-                                        .lock_mut("evobench-run WdSubCommand::Enter do_revert")?
+                                        .lock_mut("evobench-jobs WdSubCommand::Enter do_revert")?
                                         .into_get_working_directory_mut(id);
                                     let mut working_directory = wd.get().ok_or_else(|| {
                                         anyhow!("there is no working directory for id {id}")

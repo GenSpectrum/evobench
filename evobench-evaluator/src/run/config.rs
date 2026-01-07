@@ -269,8 +269,8 @@ impl ScheduleCondition {
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct QueuesConfig {
-    /// If not given, `~/.evobench-run/queues/` is used. Also used for
-    /// locking the `run` action of evobench-run, to ensure only one
+    /// If not given, `~/.evobench-jobs/queues/` is used. Also used for
+    /// locking the `run` action of evobench-jobs, to ensure only one
     /// benchmarking job is executed at the same time--if you
     /// configure multiple such directories then you don't have this
     /// guarantee any more. Supports `~/`
@@ -378,7 +378,7 @@ pub struct BenchmarkingCommand {
     /// The name is matched on the `target_name` field in
     /// `JobTemplate`, and it is used as the first path segment below
     /// `output_base_dir` for storing the results. It will also be
-    /// shown by `evobench-run list`.
+    /// shown by `evobench-jobs list`.
     pub target_name: ProperDirname,
 
     /// Relative path to the subdirectory (provide "." for the top
@@ -463,7 +463,7 @@ impl JobTemplateOpts {
     }
 }
 
-/// Direct representation of the evobench-run config file
+/// Direct representation of the evobench-jobs config file
 // For why `Arc` is used, see `docs/hacking.md`
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -471,10 +471,10 @@ impl JobTemplateOpts {
 pub struct RunConfigOpts {
     pub queues: Arc<QueuesConfig>,
 
-    /// The path to the directory that job runners (`evobench-run run
+    /// The path to the directory that job runners (`evobench-jobs run
     /// ...`) lock (with error when taken), and for additional files
     /// specific for that instance. By default,
-    /// `~/.evobench-run/run_jobs_instance`.
+    /// `~/.evobench-jobs/run_jobs_instance`.
     pub run_jobs_instance_basedir: Option<Arc<TildePath<PathBuf>>>,
 
     pub working_directory_pool: Arc<WorkingDirectoryPoolOpts>,
@@ -495,7 +495,7 @@ pub struct RunConfigOpts {
     /// its first run only.
     pub job_template_lists: BTreeMap<KString, Vec<JobTemplateOpts>>,
 
-    /// Job templates for using the "evobench-run insert" (or currently
+    /// Job templates for using the "evobench-jobs insert" (or currently
     /// also "insert-local", but this sub-command is planned to be
     /// removed) sub-command. Reference into `job_template_lists` via
     /// `Ref()`, or provide a list of JobTemplate entries directly via
@@ -542,7 +542,7 @@ impl ValOrRefTarget for JobTemplateListsField {
 
 impl DefaultConfigPath for RunConfigOpts {
     fn default_config_file_name_without_suffix() -> Result<Option<ProperFilename>> {
-        Ok(Some("evobench-run".parse().map_err(|e| anyhow!("{e}"))?))
+        Ok(Some("evobench-jobs".parse().map_err(|e| anyhow!("{e}"))?))
     }
 }
 

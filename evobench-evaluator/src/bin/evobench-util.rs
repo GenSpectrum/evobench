@@ -31,7 +31,7 @@ struct Opts {
 
     // XX should wrap that help text (COPYPASTE) in a wrapper for flatten
     /// Override the path to the config file (default: the paths
-    /// `~/.evobench-run.*` where a single one exists where the `*` is
+    /// `~/.evobench-jobs.*` where a single one exists where the `*` is
     /// the suffix for one of the supported config file formats (run
     /// `config-formats` to get the list), and if those are missing,
     /// use compiled-in default config values)
@@ -78,7 +78,7 @@ enum SubCommand {
         regex_end: String,
 
         /// Override the path to the config file (default: the paths
-        /// `~/.evobench-run.*` where a single one exists where the `*` is
+        /// `~/.evobench-jobs.*` where a single one exists where the `*` is
         /// the suffix for one of the supported config file formats (run
         /// `config-formats` to get the list), and if those are missing,
         /// use compiled-in default config values)
@@ -86,7 +86,7 @@ enum SubCommand {
     },
 
     /// Do the same "single" post-processing on a single benchmark
-    /// results as `evobench-run daemon` does--useful in case new
+    /// results as `evobench-jobs daemon` does--useful in case new
     /// features were added or the configuration was changed.
     PostProcessSingle {
         /// Skip (re)generation of the normal evobench.log Excel and
@@ -100,7 +100,7 @@ enum SubCommand {
     },
 
     /// Do the same "summary" post-processing on a set of benchmark
-    /// results as `evobench-run daemon` does--useful in case new
+    /// results as `evobench-jobs daemon` does--useful in case new
     /// features were added or the configuration was changed.
     PostProcessSummary {
         /// Run `post-process-single` on all sub-directories for the

@@ -24,5 +24,5 @@ Also see the [overview](overview.md).
 
 * [internals/evaluator/](internals/evaluator/index.md) -- how evobench-evaluator works internally
 
-* [internals/runner/](internals/runner/index.md) -- how evobench-run works internally
+* [internals/jobs/](internals/jobs/index.md) -- how evobench-jobs works internally
 

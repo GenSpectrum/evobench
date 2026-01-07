@@ -7,7 +7,7 @@ use crate::{ctx, utillib::home::home_dir};
 
 /// Relative path to directory from $HOME in which to keep state files
 /// for the application.
-const GLOBAL_APP_STATE_DIR_NAME: &str = ".evobench-run";
+const GLOBAL_APP_STATE_DIR_NAME: &str = ".evobench-jobs";
 
 /// Representation of a directory below $HOME in which to keep state
 /// for the installation. The full folder structure of that folder
