@@ -1,4 +1,5 @@
 use anyhow::{Context, Result, anyhow, bail};
+use chj_unix_util::polling_signals::PollingSignals;
 use chrono::{DateTime, Local};
 use clap::Parser;
 use itertools::Itertools;
@@ -35,7 +36,6 @@ use evobench_tools::{
     key_val_fs::key_val::Entry,
     lazyresult,
     lockable_file::{LockStatus, StandaloneExclusiveFileLock, StandaloneFileLockError},
-    polling_signals::PollingSignals,
     run::{
         benchmarking_job::{
             BenchmarkingJob, BenchmarkingJobOpts, BenchmarkingJobReasonOpt,

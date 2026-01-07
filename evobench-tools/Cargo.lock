@@ -192,6 +192,8 @@ dependencies = [
  "anyhow",
  "chrono",
  "cj-path-util",
+ "clap",
+ "memmap2",
  "nix",
  "num_threads",
  "ouroboros",
