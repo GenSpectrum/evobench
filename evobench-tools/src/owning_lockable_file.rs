@@ -3,10 +3,10 @@
 
 use std::{fs::File, ops::Deref, path::Path, sync::Arc};
 
-use fs2::{lock_contended_error, FileExt};
+use fs2::{FileExt, lock_contended_error};
 use lazy_static::lazy_static;
 
-use crate::lockable_file::{LockStatus, HELD_LOCKS};
+use crate::lockable_file::{HELD_LOCKS, LockStatus};
 
 // -----------------------------------------------------------------------------
 

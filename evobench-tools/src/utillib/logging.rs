@@ -1,12 +1,12 @@
 // Use logging library instead?
 
 use std::{
-    io::{stderr, StderrLock, Write},
+    io::{StderrLock, Write, stderr},
     sync::atomic::{AtomicU8, Ordering},
     time::SystemTime,
 };
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 use crate::serde::date_and_time::system_time_to_rfc3339;
 

@@ -18,11 +18,11 @@ use crate::{
         index_by_call_path::IndexByCallPath,
         options::TILE_COUNT,
     },
-    join::{keyval_inner_join, KeyVal},
+    join::{KeyVal, keyval_inner_join},
     rayon_util::ParRun,
     stats::{
-        weighted::{WeightedValue, WEIGHT_ONE},
         Stats, StatsError, StatsField, ToStatsString,
+        weighted::{WEIGHT_ONE, WeightedValue},
     },
     tables::{
         table::{Table, TableKind},

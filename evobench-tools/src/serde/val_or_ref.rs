@@ -1,7 +1,7 @@
 //! Do not confuse with `RefOrOwned`: `RefOrOwned` is for Rust
 //! references, this is for string references to some keyed collection.
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use kstring::KString;
 use serde::{Deserialize, Serialize};
 use std::{borrow::Cow, collections::BTreeMap, fmt::Debug, marker::PhantomData};

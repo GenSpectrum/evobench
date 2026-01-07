@@ -1,12 +1,12 @@
 use std::{
-    collections::{btree_map::Entry, BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, btree_map::Entry},
     ops::Neg,
     path::PathBuf,
     sync::Arc,
     time::SystemTime,
 };
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use chrono::{DateTime, Local};
 use cj_path_util::path_util::AppendToPath;
 use genawaiter::rc::Gen;
@@ -23,7 +23,7 @@ use crate::{
     },
     run::run_job::{JobRunnerJobData, JobRunnerWithJob},
     serde::{priority::Priority, proper_filename::ProperFilename},
-    utillib::logging::{log_level, LogLevel},
+    utillib::logging::{LogLevel, log_level},
 };
 
 use super::{

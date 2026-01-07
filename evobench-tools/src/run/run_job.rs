@@ -1,7 +1,7 @@
 //! Running a benchmarking job
 
 use std::{
-    io::{stderr, Write},
+    io::{Write, stderr},
     ops::Deref,
     os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
@@ -9,7 +9,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use chrono::{DateTime, Local};
 use cj_path_util::path_util::rename_tmp_path;
 use itertools::Itertools;
@@ -42,7 +42,7 @@ use crate::{
     },
     serde::{date_and_time::DateTimeWithOffset, proper_dirname::ProperDirname},
     utillib::{
-        logging::{log_level, LogLevel},
+        logging::{LogLevel, log_level},
         user::get_username,
     },
 };

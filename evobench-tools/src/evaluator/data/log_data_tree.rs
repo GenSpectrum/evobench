@@ -7,14 +7,14 @@
 //! and builds up a tree of all spans.
 
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{HashMap, hash_map::Entry},
     fmt::{Display, Write},
     marker::PhantomData,
     num::NonZeroU32,
     ops::Deref,
 };
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 
 use crate::evaluator::data::{
     log_data::LogData,
@@ -439,7 +439,9 @@ impl<'t> LogDataTree<'t> {
                             e.get_mut().push(span_id);
                         }
                         Entry::Vacant(_e) => {
-                            bail!("KeyValue must be below some span (but creating a thread counts, too)")
+                            bail!(
+                                "KeyValue must be below some span (but creating a thread counts, too)"
+                            )
                         }
                     }
                 }

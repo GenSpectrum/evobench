@@ -1,6 +1,6 @@
 use std::time::SystemTime;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use itertools::Itertools;
 
 use crate::{

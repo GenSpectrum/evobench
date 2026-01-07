@@ -1,6 +1,6 @@
 use std::{ffi::OsString, path::PathBuf};
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use clap::Parser;
 
 use evobench_tools::{
@@ -17,7 +17,7 @@ use evobench_tools::{
     },
     serde::proper_dirname::ProperDirname,
     util::grep_diff::GrepDiffRegion,
-    utillib::logging::{set_log_level, LogLevelOpt},
+    utillib::logging::{LogLevelOpt, set_log_level},
 };
 use run_git::path_util::AppendToPath;
 

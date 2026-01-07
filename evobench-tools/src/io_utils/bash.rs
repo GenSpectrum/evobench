@@ -1,6 +1,6 @@
 use std::{borrow::Cow, path::Path};
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use itertools::Itertools;
 
 // (Todo?: add randomized tests with these calling bash)

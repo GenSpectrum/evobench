@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use chrono::{DateTime, Local};
 use clap::Parser;
 use itertools::Itertools;
@@ -11,10 +11,10 @@ use std::{
     env,
     ffi::OsStr,
     fmt::Display,
-    io::{stderr, stdout, BufWriter, IsTerminal, Write},
+    io::{BufWriter, IsTerminal, Write, stderr, stdout},
     os::unix::{ffi::OsStrExt, process::CommandExt},
     path::PathBuf,
-    process::{exit, Command},
+    process::{Command, exit},
     str::FromStr,
     sync::Arc,
     thread,
@@ -46,10 +46,10 @@ use evobench_tools::{
         dataset_dir_env_var::dataset_dir_for,
         env_vars::assert_evobench_env_var,
         global_app_state_dir::GlobalAppStateDir,
-        insert_jobs::{insert_jobs, open_already_inserted, ForceOpt, QuietOpt},
+        insert_jobs::{ForceOpt, QuietOpt, insert_jobs, open_already_inserted},
         polling_pool::PollingPool,
         run_context::RunContext,
-        run_job::{get_commit_tags, JobRunner},
+        run_job::{JobRunner, get_commit_tags},
         run_queue::RunQueue,
         run_queues::RunQueues,
         versioned_dataset_dir::VersionedDatasetDir,
@@ -60,7 +60,7 @@ use evobench_tools::{
         },
     },
     serde::{
-        date_and_time::{system_time_to_rfc3339, DateTimeWithOffset},
+        date_and_time::{DateTimeWithOffset, system_time_to_rfc3339},
         git_branch_name::GitBranchName,
         priority::Priority,
     },
@@ -68,7 +68,7 @@ use evobench_tools::{
     terminal_table::{TerminalTable, TerminalTableOpts, TerminalTableTitle},
     utillib::{
         arc::CloneArc,
-        logging::{set_log_level, LogLevelOpt},
+        logging::{LogLevelOpt, set_log_level},
         re_exec::re_exec_with_existing_args_and_env,
         unix::ToExitCode,
     },
@@ -1266,7 +1266,7 @@ fn run() -> Result<Option<PathBuf>> {
                         )? {
                             RunResult::OnceResult(_) => unreachable!(),
                             RunResult::NeedReExec(executable_path) => {
-                                return Ok(Some(executable_path))
+                                return Ok(Some(executable_path));
                             }
                         }
                     }

@@ -7,7 +7,7 @@ use std::{
     str::FromStr,
 };
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use kstring::KString;
 use run_git::path_util::AppendToPath;
 

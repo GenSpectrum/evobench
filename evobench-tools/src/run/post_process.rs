@@ -2,13 +2,13 @@
 //! of benchmark runs belonging to the same 'key'.
 
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{HashMap, hash_map::Entry},
     ffi::OsString,
     path::{Path, PathBuf},
     process::Command,
 };
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use cj_path_util::unix::polyfill::add_extension;
 use run_git::path_util::AppendToPath;
 
@@ -20,7 +20,7 @@ use crate::{
         output_directory_structure::{KeyDir, RunDir},
     },
     serde::{proper_dirname::ProperDirname, proper_filename::ProperFilename},
-    utillib::logging::{log_level, LogLevel},
+    utillib::logging::{LogLevel, log_level},
     zstd_file::compress_file,
 };
 

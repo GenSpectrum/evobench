@@ -14,7 +14,7 @@ use std::{
     io::{BufWriter, IsTerminal, Write},
 };
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use itertools::{EitherOrBoth, Itertools};
 use strum_macros::EnumString;
 use yansi::{Paint, Style};

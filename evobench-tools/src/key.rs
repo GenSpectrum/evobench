@@ -26,7 +26,7 @@ use std::{
     collections::BTreeMap, fmt::Display, num::NonZeroU32, path::PathBuf, str::FromStr, sync::Arc,
 };
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use itertools::Itertools;
 use kstring::KString;
 use serde::{Deserialize, Serialize};

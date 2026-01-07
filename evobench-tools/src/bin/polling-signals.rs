@@ -1,6 +1,6 @@
 use std::{path::PathBuf, time::Duration};
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use clap::Parser;
 
 use evobench_tools::{get_terminal_width::get_terminal_width, polling_signals::PollingSignals};

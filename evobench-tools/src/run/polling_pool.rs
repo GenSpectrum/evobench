@@ -10,7 +10,7 @@ use run_git::git::GitWorkingDir;
 use crate::{
     git::GitHash,
     run::working_directory::{
-        WorkingDirectoryAutoCleanOpts, WorkingDirectoryWithPoolMut, REMOTE_NAME,
+        REMOTE_NAME, WorkingDirectoryAutoCleanOpts, WorkingDirectoryWithPoolMut,
     },
     serde::{date_and_time::DateTimeWithOffset, git_branch_name::GitBranchName, git_url::GitUrl},
     utillib::arc::CloneArc,

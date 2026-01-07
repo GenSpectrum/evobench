@@ -3,7 +3,7 @@ use std::{
     str::FromStr,
 };
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use serde::de::Visitor;
 
 fn decode_hex_digit(b: u8) -> Result<u8> {

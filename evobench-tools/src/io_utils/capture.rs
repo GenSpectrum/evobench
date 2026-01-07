@@ -9,7 +9,7 @@ use std::{
     thread::{Scope, ScopedJoinHandle},
 };
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 
 use crate::{ctx, serde::date_and_time::DateTimeWithOffset};
 

@@ -10,7 +10,7 @@ use std::{
 use chrono::{DateTime, Local};
 use genawaiter::rc::Gen;
 use ouroboros::self_referencing;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
     info_if,
@@ -283,7 +283,7 @@ impl<'basedir, V: DeserializeOwned + Serialize> QueueItem<'basedir, V> {
                         ctx: "QueueItem.lock_exclusive",
                         error,
                     }
-                })
+                });
             }
             PerhapsLock::EntryGone => (),
             PerhapsLock::Lock(_) => (),

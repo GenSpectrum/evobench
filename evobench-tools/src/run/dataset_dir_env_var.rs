@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use run_git::git::GitWorkingDir;
 
 use crate::{
@@ -43,9 +43,11 @@ pub fn dataset_dir_for(
     let versioned_datasets_base_dir = try_ok!(versioned_datasets_base_dir);
 
     let key = "DATASET";
-    let dataset_name = try_ok!(custom_parameters
-        .btree_map()
-        .get(&key.parse().expect("fits requirements")));
+    let dataset_name = try_ok!(
+        custom_parameters
+            .btree_map()
+            .get(&key.parse().expect("fits requirements"))
+    );
 
     let ty = dataset_name.r#type();
     if ty != CustomParameterType::Dirname {

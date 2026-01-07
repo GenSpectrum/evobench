@@ -4,7 +4,7 @@ use std::{
     io::{BufRead, BufReader},
 };
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 pub fn ask_yn(question: &str) -> Result<bool> {
     let mut opts = OpenOptions::new();

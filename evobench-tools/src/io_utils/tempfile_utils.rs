@@ -9,7 +9,7 @@ use std::{
 
 use nix::{
     errno::Errno,
-    unistd::{chown, getpid, gettid, Gid, Uid},
+    unistd::{Gid, Uid, chown, getpid, gettid},
 };
 use run_git::path_util::AppendToPath;
 

@@ -13,7 +13,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use fs2::{lock_contended_error, FileExt};
+use fs2::{FileExt, lock_contended_error};
 use lazy_static::lazy_static;
 use ouroboros::self_referencing;
 

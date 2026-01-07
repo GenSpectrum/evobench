@@ -5,8 +5,8 @@ use std::{
     path::PathBuf,
 };
 
-use anyhow::{anyhow, bail, Result};
-use run_git::path_util::{add_extension, AppendToPath};
+use anyhow::{Result, anyhow, bail};
+use run_git::path_util::{AppendToPath, add_extension};
 
 use crate::{
     config_file::ron_to_file_pretty,

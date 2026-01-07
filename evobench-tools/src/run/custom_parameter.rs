@@ -1,6 +1,6 @@
 use std::{ffi::OsStr, num::NonZeroU32, str::FromStr};
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use kstring::KString;
 
 use crate::{

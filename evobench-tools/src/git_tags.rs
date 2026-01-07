@@ -2,10 +2,10 @@
 
 use std::{collections::BTreeMap, str::FromStr, sync::Arc};
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use kstring::KString;
 use run_git::git::GitWorkingDir;
-use smallvec::{smallvec, SmallVec};
+use smallvec::{SmallVec, smallvec};
 
 use crate::{git::GitHash, warn};
 

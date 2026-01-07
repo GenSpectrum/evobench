@@ -7,13 +7,13 @@ use std::{
     sync::Arc,
 };
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use chrono::{DateTime, Local};
 use kstring::KString;
 use run_git::path_util::AppendToPath;
 
 use crate::{
-    config_file::{ron_to_string_pretty, ConfigFile, DefaultConfigPath},
+    config_file::{ConfigFile, DefaultConfigPath, ron_to_string_pretty},
     date_and_time::time_ranges::{DateTimeRange, LocalNaiveTimeRange},
     info,
     io_utils::{bash::bash_string_from_cmd, div::create_dir_if_not_exists},

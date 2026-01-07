@@ -1,6 +1,6 @@
 use std::{ffi::OsStr, fmt::Display, marker::PhantomData, ops::Deref, str::FromStr};
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use kstring::KString;
 use serde::de::Visitor;
 

@@ -1,6 +1,6 @@
 //! Extension trait for `GitWorkingDir` from the `run-git` crate
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use run_git::git::GitWorkingDir;
 
 use crate::serde::git_url::GitUrl;

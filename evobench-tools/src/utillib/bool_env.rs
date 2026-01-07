@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 /// Get the boolean value from env variable `name`. If missing, if
 /// `default` is given, return that, otherwise return an

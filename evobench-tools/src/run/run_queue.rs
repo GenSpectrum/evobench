@@ -1,6 +1,6 @@
 use std::process::Command;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 use crate::{
     config_file::ron_to_string_pretty,
@@ -11,7 +11,7 @@ use crate::{
     },
     run::{benchmarking_job::BenchmarkingJobState, run_job::JobRunnerWithJob},
     serde::{priority::Priority, proper_filename::ProperFilename},
-    utillib::logging::{log_level, LogLevel},
+    utillib::logging::{LogLevel, log_level},
 };
 
 use super::{
@@ -109,7 +109,7 @@ impl<'conf> RunQueue<'conf> {
     pub fn jobs<'s>(
         &'s self,
     ) -> impl Iterator<Item = Result<(QueueItem<'s, BenchmarkingJob>, BenchmarkingJob), KeyValError>>
-           + use<'s> {
+    + use<'s> {
         let opts = QueueIterationOptions {
             get_item_opts: QueueGetItemOptions {
                 no_lock: true,

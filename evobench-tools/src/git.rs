@@ -7,7 +7,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use itertools::Itertools;
 use kstring::KString;
 use smallvec::SmallVec;
@@ -265,8 +265,8 @@ impl GitGraphData {
         &'s self,
         ids: &'ids [Id<ToEnrichedCommit>],
     ) -> impl DoubleEndedIterator<Item = &'s EnrichedGitCommit<Id<ToEnrichedCommit>>>
-           + ExactSizeIterator
-           + use<'s, 'ids> {
+    + ExactSizeIterator
+    + use<'s, 'ids> {
         ids.iter().map(|id| &self[*id])
     }
 

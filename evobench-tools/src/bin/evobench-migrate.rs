@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use clap::Parser;
 
 use evobench_tools::{
@@ -15,7 +15,7 @@ use evobench_tools::{
     },
     utillib::{
         arc::CloneArc,
-        logging::{set_log_level, LogLevelOpt},
+        logging::{LogLevelOpt, set_log_level},
     },
 };
 

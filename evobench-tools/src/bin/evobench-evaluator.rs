@@ -12,7 +12,7 @@ use evobench_tools::evaluator::options::{
 };
 use evobench_tools::get_terminal_width::get_terminal_width;
 use evobench_tools::stats::StatsField;
-use evobench_tools::utillib::logging::{set_log_level, LogLevelOpt};
+use evobench_tools::utillib::logging::{LogLevelOpt, set_log_level};
 use mimalloc::MiMalloc;
 
 #[global_allocator]

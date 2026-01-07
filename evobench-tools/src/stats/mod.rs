@@ -9,9 +9,9 @@ use std::marker::PhantomData;
 use std::{borrow::Cow, str::FromStr};
 
 use anyhow::bail;
+use fixed::FixedU128;
 use fixed::traits::LossyFrom;
 use fixed::types::extra::U32;
-use fixed::FixedU128;
 use num_traits::Zero;
 
 use crate::stats::average::Average;
@@ -32,11 +32,7 @@ fn u64_from_fixed(f: FixedU128<U32>) -> Option<u64> {
 }
 
 fn absdiff(a: FixedU128<U32>, b: FixedU128<U32>) -> FixedU128<U32> {
-    if a > b {
-        a - b
-    } else {
-        b - a
-    }
+    if a > b { a - b } else { b - a }
 }
 
 fn square(x: FixedU128<U32>) -> FixedU128<U32> {

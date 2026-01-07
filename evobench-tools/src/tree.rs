@@ -1,7 +1,7 @@
 //! A simple, heap allocation based hence slow, string key based tree
 //! representation.
 
-use std::collections::{btree_map::Entry, BTreeMap};
+use std::collections::{BTreeMap, btree_map::Entry};
 
 #[derive(Debug)]
 pub struct Tree<'t, T> {

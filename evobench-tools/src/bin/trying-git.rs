@@ -1,6 +1,6 @@
-use std::io::stdout;
 use std::io::BufWriter;
 use std::io::Write;
+use std::io::stdout;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -11,8 +11,8 @@ use evobench_tools::get_terminal_width::get_terminal_width;
 use evobench_tools::git::GitGraph;
 use evobench_tools::git_tags::GitTags;
 use evobench_tools::serde::git_branch_name::GitBranchName;
-use evobench_tools::utillib::logging::set_log_level;
 use evobench_tools::utillib::logging::LogLevelOpt;
+use evobench_tools::utillib::logging::set_log_level;
 use itertools::Itertools;
 use run_git::git::GitWorkingDir;
 

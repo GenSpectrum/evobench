@@ -1,9 +1,9 @@
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use cj_path_util::{path_util::AppendToPath, unix::polyfill::add_extension};
 use clap::Parser;
 use evobench_tools::{
     config_file::backend_from_path,
-    conslist::{cons, List},
+    conslist::{List, cons},
     ctx,
     get_terminal_width::get_terminal_width,
     git::GitHash,
@@ -21,7 +21,7 @@ use evobench_tools::{
     util::integers::rounding_integer_division,
     utillib::{
         arc::CloneArc,
-        logging::{set_log_level, LogLevelOpt},
+        logging::{LogLevelOpt, set_log_level},
     },
     warn,
 };
@@ -37,7 +37,7 @@ use regex::Regex;
 use serde_json::{Number, Value};
 
 use std::{
-    collections::{btree_map::Entry, BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, btree_map::Entry},
     fmt::Display,
     fs::File,
     io::{BufWriter, Write},
@@ -317,7 +317,9 @@ impl QueriesOutput {
                         let original_len = 33126;
 
                         if queries_len > original_len {
-                            bail!("queries_len {queries_len} > hard-coded original_len {original_len}");
+                            bail!(
+                                "queries_len {queries_len} > hard-coded original_len {original_len}"
+                            );
                         }
 
                         rounding_integer_division(original_len, queries_len)

@@ -6,7 +6,7 @@ use std::{
     sync::{Arc, MutexGuard},
 };
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use cj_path_util::path_util::AppendToPath;
 use run_git::git::GitWorkingDir;
 

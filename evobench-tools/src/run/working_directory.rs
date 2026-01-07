@@ -11,9 +11,9 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use run_git::{
-    git::{git_clone, GitResetMode, GitWorkingDir},
+    git::{GitResetMode, GitWorkingDir, git_clone},
     path_util::add_extension,
 };
 use serde::{Deserialize, Serialize};
@@ -357,7 +357,7 @@ impl WorkingDirectory {
                     _ => {
                         return Err(e).map_err(ctx!(
                             "checking working directory status file path {status_path:?}"
-                        ))
+                        ));
                     }
                 };
             }

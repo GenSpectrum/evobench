@@ -1,10 +1,10 @@
 use std::{
     ffi::{OsStr, OsString},
     path::{Path, PathBuf},
-    process::{exit, Command},
+    process::{Command, exit},
 };
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use clap::Parser;
 
 use evobench_tools::{

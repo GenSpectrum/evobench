@@ -3,7 +3,7 @@
 
 use std::{fs::File, os::fd::AsRawFd};
 
-use terminal_size::{terminal_size, terminal_size_using_fd, Height, Width};
+use terminal_size::{Height, Width, terminal_size, terminal_size_using_fd};
 
 /// Unlike `terminal_size::terminal_size()` which uses stdout, this
 /// opens `/dev/tty` if possible, then falls back to the former.

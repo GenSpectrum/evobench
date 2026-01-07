@@ -1,7 +1,7 @@
 use std::{
     ffi::{OsStr, OsString},
     fmt::Debug,
-    fs::{create_dir, File},
+    fs::{File, create_dir},
     io::{Read, Write},
     marker::PhantomData,
     path::{Path, PathBuf},
@@ -10,7 +10,7 @@ use std::{
 };
 
 use cj_path_util::path_util::AppendToPath;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
 use crate::lockable_file::{ExclusiveFileLock, LockableFile, SharedFileLock};
 

@@ -3,7 +3,7 @@ use std::{
     path::Path,
 };
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 
 pub fn xrename(from: &Path, to: &Path) -> Result<()> {
     rename(from, to).with_context(|| anyhow!("renaming {from:?} to {to:?}"))?;
