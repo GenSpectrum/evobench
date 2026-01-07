@@ -396,14 +396,17 @@ pub fn git_log_commits(
     let in_directory = in_directory.as_ref();
     let mut c = Command::new("git");
 
-    let log_args = {
-        let commit_hash = "%H";
-        let author_time = "%at";
-        let committer_time = "%ct";
-        let parent_hashes = "%P";
-        format!("--pretty={commit_hash},{author_time},{committer_time},{parent_hashes}")
-    };
-    c.args(&["log", &log_args, entry_reference]);
+    c.args(&[
+        "log",
+        &{
+            let commit_hash = "%H";
+            let author_time = "%at";
+            let committer_time = "%ct";
+            let parent_hashes = "%P";
+            format!("--pretty={commit_hash},{author_time},{committer_time},{parent_hashes}")
+        },
+        entry_reference,
+    ]);
     let str_from_bytes =
         |bs| std::str::from_utf8(bs).expect("git always gives ascii with given arguments");
     c.current_dir(in_directory);
