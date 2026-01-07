@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use anyhow::{bail, Result};
 use clap::Parser;
 
-use evobench_evaluator::{
+use evobench_tools::{
     get_terminal_width::get_terminal_width,
     info,
     run::{

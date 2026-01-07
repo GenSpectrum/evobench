@@ -1,7 +1,7 @@
 use anyhow::{anyhow, bail, Context, Result};
 use cj_path_util::{path_util::AppendToPath, unix::polyfill::add_extension};
 use clap::Parser;
-use evobench_evaluator::{
+use evobench_tools::{
     config_file::backend_from_path,
     conslist::{cons, List},
     ctx,

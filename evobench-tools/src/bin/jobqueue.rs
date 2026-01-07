@@ -7,7 +7,7 @@ use std::{
 use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
 
-use evobench_evaluator::{
+use evobench_tools::{
     get_terminal_width::get_terminal_width,
     info_if,
     key_val_fs::{

@@ -7,12 +7,12 @@ use std::path::PathBuf;
 use anyhow::Result;
 use cj_path_util::unix::fixup_path::CURRENT_DIRECTORY;
 use clap::Parser;
-use evobench_evaluator::get_terminal_width::get_terminal_width;
-use evobench_evaluator::git::GitGraph;
-use evobench_evaluator::git_tags::GitTags;
-use evobench_evaluator::serde::git_branch_name::GitBranchName;
-use evobench_evaluator::utillib::logging::set_log_level;
-use evobench_evaluator::utillib::logging::LogLevelOpt;
+use evobench_tools::get_terminal_width::get_terminal_width;
+use evobench_tools::git::GitGraph;
+use evobench_tools::git_tags::GitTags;
+use evobench_tools::serde::git_branch_name::GitBranchName;
+use evobench_tools::utillib::logging::set_log_level;
+use evobench_tools::utillib::logging::LogLevelOpt;
 use itertools::Itertools;
 use run_git::git::GitWorkingDir;
 

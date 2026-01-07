@@ -120,7 +120,7 @@ pub enum LogMessage {
     Metadata(Metadata),
     /// Random information from the program.
     KeyValue(KeyValue),
-    /// For the other items, see the doc comments in evobench_evaluator.hpp
+    /// For the other items, see the doc comments in hpp file
     TStart(Timing),
     T(Timing),
     TS(Timing),

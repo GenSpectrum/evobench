@@ -21,7 +21,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use evobench_evaluator::{
+use evobench_tools::{
     ask::ask_yn,
     config_file::{self, backend_from_path, ron_to_string_pretty, save_config_file},
     ctx,

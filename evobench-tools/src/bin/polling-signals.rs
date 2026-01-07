@@ -3,7 +3,7 @@ use std::{path::PathBuf, time::Duration};
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 
-use evobench_evaluator::{get_terminal_width::get_terminal_width, polling_signals::PollingSignals};
+use evobench_tools::{get_terminal_width::get_terminal_width, polling_signals::PollingSignals};
 
 #[derive(clap::Parser, Debug)]
 #[clap(next_line_help = true)]

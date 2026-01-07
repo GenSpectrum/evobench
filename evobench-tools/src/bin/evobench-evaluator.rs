@@ -3,16 +3,16 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::Parser;
-use evobench_evaluator::evaluator::all_fields_table::{SingleRunStats, SummaryStats};
-use evobench_evaluator::evaluator::all_outputs_all_fields_table::AllOutputsAllFieldsTable;
-use evobench_evaluator::evaluator::data::log_data_and_tree::LogDataAndTree;
-use evobench_evaluator::evaluator::options::{
+use evobench_tools::evaluator::all_fields_table::{SingleRunStats, SummaryStats};
+use evobench_tools::evaluator::all_outputs_all_fields_table::AllOutputsAllFieldsTable;
+use evobench_tools::evaluator::data::log_data_and_tree::LogDataAndTree;
+use evobench_tools::evaluator::options::{
     CheckedOutputOptions, EvaluationAndOutputOpts, FieldSelectorDimension3Opt,
     FieldSelectorDimension4Opt, FlameFieldOpt,
 };
-use evobench_evaluator::get_terminal_width::get_terminal_width;
-use evobench_evaluator::stats::StatsField;
-use evobench_evaluator::utillib::logging::{set_log_level, LogLevelOpt};
+use evobench_tools::get_terminal_width::get_terminal_width;
+use evobench_tools::stats::StatsField;
+use evobench_tools::utillib::logging::{set_log_level, LogLevelOpt};
 use mimalloc::MiMalloc;
 
 #[global_allocator]
