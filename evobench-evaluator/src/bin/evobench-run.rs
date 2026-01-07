@@ -428,7 +428,7 @@ fn open_working_directory_pool(
     )
 }
 
-fn open_polling_signals(
+fn open_working_directory_change_signals(
     conf: &RunConfig,
     global_app_state_dir: &GlobalAppStateDir,
 ) -> Result<PollingSignals> {
@@ -541,8 +541,10 @@ fn run_queues(
         working_directory_pool.working_directory_cleanup(token)?;
     }
 
-    let mut working_directory_change_signals =
-        open_polling_signals(&config_with_reload.run_config, global_app_state_dir)?;
+    let mut working_directory_change_signals = open_working_directory_change_signals(
+        &config_with_reload.run_config,
+        global_app_state_dir,
+    )?;
 
     loop {
         // XX handle errors without exiting? Or do that above
@@ -1331,8 +1333,9 @@ fn run() -> Result<Option<PathBuf>> {
                 }
             };
 
-            let mut working_directory_change_signals =
-                lazyresult!(open_polling_signals(conf, &global_app_state_dir));
+            let mut working_directory_change_signals = lazyresult!(
+                open_working_directory_change_signals(conf, &global_app_state_dir)
+            );
 
             match subcommand {
                 WdSubCommand::List {
