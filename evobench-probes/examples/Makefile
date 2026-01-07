@@ -2,7 +2,7 @@
 FLAGS=-std=c++20 -O2 -Wall -Wextra -I../include
 OBJS=evobench.o sum_of_fibs.o
 
-EVALUATOR=../../evobench-evaluator/target/release/evobench-evaluator
+EVALUATOR=../../evobench-tools/target/release/evobench-evaluator
 
 sum_of_fibs: $(OBJS)
 	c++ $(FLAGS) -o $@ $(OBJS)
@@ -22,7 +22,7 @@ bench.log: sum_of_fibs
 run: bench.log
 
 $(EVALUATOR):
-	cd ../../evobench-evaluator && cargo build --release
+	cd ../../evobench-tools && cargo build --release
 
 bench.xlsx: bench.log $(EVALUATOR)
 	$(EVALUATOR) -d single -e bench.xlsx bench.log
