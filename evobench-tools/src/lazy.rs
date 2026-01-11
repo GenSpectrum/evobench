@@ -27,6 +27,14 @@ impl<T, F: FnOnce() -> T> Lazy<T, F> {
         }
     }
 
+    /// Forces evaluation if not already evaluated
+    pub fn into_value(self) -> T {
+        match self.into_inner() {
+            Ok(v) => v,
+            Err(f) => f(),
+        }
+    }
+
     pub fn force(&mut self) -> &T {
         match self {
             Lazy::Thunk(_) => {
@@ -92,6 +100,14 @@ impl<T, E, F: FnOnce() -> Result<T, E>> LazyResult<T, E, F> {
             Self::Value(v) => Ok(v),
             Self::Thunk(f) => Err(f),
             Self::Poisoned => panic!("Lazy instance has previously been poisoned"),
+        }
+    }
+
+    /// Forces evaluation if not already evaluated
+    pub fn into_value(self) -> Result<T, E> {
+        match self.into_inner() {
+            Ok(v) => Ok(v),
+            Err(f) => f(),
         }
     }
 
