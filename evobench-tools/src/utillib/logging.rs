@@ -1,7 +1,7 @@
 // Use logging library instead?
 
 use std::{
-    io::{StderrLock, Write, stderr},
+    io::{BufWriter, StderrLock, Write, stderr},
     sync::atomic::{AtomicU8, Ordering},
     time::SystemTime,
 };
@@ -10,10 +10,10 @@ use anyhow::{Result, bail};
 
 use crate::serde::date_and_time::system_time_to_rfc3339;
 
-pub fn write_time(file: &str, line: u32, column: u32) -> StderrLock<'static> {
+pub fn write_time(file: &str, line: u32, column: u32) -> BufWriter<StderrLock<'static>> {
     let t = SystemTime::now();
     let t_str = system_time_to_rfc3339(t); // Costs an allocation
-    let mut lock = stderr().lock();
+    let mut lock = BufWriter::new(stderr().lock());
     _ = write!(&mut lock, "{t_str}\t{file}:{line}:{column}\t");
     lock
 }
