@@ -158,12 +158,12 @@ impl<'p, K: AsKey, V: DeserializeOwned + Serialize> Entry<'p, K, V> {
 
 #[derive(thiserror::Error, Debug)]
 pub enum KeyValError {
-    #[error("creating directory {base_dir:?}: {error}")]
+    #[error("creating directory {base_dir:?}: {error:#}")]
     CreateDir {
         base_dir: PathBuf,
         error: std::io::Error,
     },
-    #[error("key_val_fs db at {base_dir:?}: {ctx} {path:?}: {error}")]
+    #[error("key_val_fs db at {base_dir:?}: {ctx} {path:?}: {error:#}")]
     IO {
         base_dir: PathBuf,
         path: PathBuf,
@@ -175,7 +175,7 @@ pub enum KeyValError {
         #[from]
         error: serde_json::Error,
     },
-    #[error("deserializing value from JSON at {base_dir:?}: file {path:?}: {error}")]
+    #[error("deserializing value from JSON at {base_dir:?}: file {path:?}: {error:#}")]
     Deserialization {
         base_dir: PathBuf,
         path: PathBuf,

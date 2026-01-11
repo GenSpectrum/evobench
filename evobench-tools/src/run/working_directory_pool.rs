@@ -588,7 +588,7 @@ impl WorkingDirectoryPool {
                     },
                     timestamp,
                 )
-                .map_err(ctx!("error storing the error {err}"))?;
+                .map_err(ctx!("error storing the error {err:#}"))?;
 
                 info!(
                     // Do not show error as it might be large; XX
