@@ -14,7 +14,7 @@ pub fn write_time(file: &str, line: u32, column: u32) -> StderrLock<'static> {
     let t = SystemTime::now();
     let t_str = system_time_to_rfc3339(t); // Costs an allocation
     let mut lock = stderr().lock();
-    write!(&mut lock, "{t_str}\t{file}:{line}:{column}\t").expect("stderr must not fail");
+    _ = write!(&mut lock, "{t_str}\t{file}:{line}:{column}\t");
     lock
 }
 
@@ -24,7 +24,7 @@ macro_rules! info_if {
         if $verbose {
             use std::io::Write;
             let mut lock = $crate::utillib::logging::write_time(file!(), line!(), column!());
-            writeln!(&mut lock, $($arg)*).expect("stderr must not fail");
+            _ = writeln!(&mut lock, $($arg)*);
         }
     }
 }
@@ -149,7 +149,7 @@ macro_rules! warn {
         if $crate::utillib::logging::log_level() >= $crate::utillib::logging::LogLevel::Warn {
             use std::io::Write;
             let mut lock = $crate::utillib::logging::write_time(file!(), line!(), column!());
-            writeln!(&mut lock, $($arg)*).expect("stderr must not fail");
+            _ = writeln!(&mut lock, $($arg)*);
         }
     }
 }
@@ -160,7 +160,7 @@ macro_rules! info {
         if $crate::utillib::logging::log_level() >= $crate::utillib::logging::LogLevel::Info {
             use std::io::Write;
             let mut lock = $crate::utillib::logging::write_time(file!(), line!(), column!());
-            writeln!(&mut lock, $($arg)*).expect("stderr must not fail");
+            _ = writeln!(&mut lock, $($arg)*);
         }
     }
 }
@@ -171,7 +171,7 @@ macro_rules! debug {
         if $crate::utillib::logging::log_level() >= $crate::utillib::logging::LogLevel::Debug {
             use std::io::Write;
             let mut lock = $crate::utillib::logging::write_time(file!(), line!(), column!());
-            writeln!(&mut lock, $($arg)*).expect("stderr must not fail");
+            _ = writeln!(&mut lock, $($arg)*);
         }
     }
 }
@@ -185,15 +185,15 @@ macro_rules! unfinished {
         if $crate::utillib::logging::log_level() >= $crate::utillib::logging::LogLevel::Warn {
             use std::io::Write;
             let mut lock = $crate::utillib::logging::write_time(file!(), line!(), column!());
-            writeln!(&mut lock, "WARNING: unfinished!").expect("stderr must not fail");
+            _ = writeln!(&mut lock, "WARNING: unfinished!");
         }
     };
     { $fmt:tt $($arg:tt)* } => {
         if $crate::utillib::logging::log_level() >= $crate::utillib::logging::LogLevel::Warn {
             use std::io::Write;
             let mut lock = $crate::utillib::logging::write_time(file!(), line!(), column!());
-            lock.write_all("WARNING: unfinished!: ".as_bytes()).expect("stderr must not fail");
-            writeln!(&mut lock, $fmt $($arg)*).expect("stderr must not fail");
+            _ = lock.write_all("WARNING: unfinished!: ".as_bytes());
+            _ = writeln!(&mut lock, $fmt $($arg)*);
         }
     }
 }
@@ -205,15 +205,15 @@ macro_rules! untested {
         if $crate::utillib::logging::log_level() >= $crate::utillib::logging::LogLevel::Warn {
             use std::io::Write;
             let mut lock = $crate::utillib::logging::write_time(file!(), line!(), column!());
-            writeln!(&mut lock, "WARNING: untested!").expect("stderr must not fail");
+            _ = writeln!(&mut lock, "WARNING: untested!");
         }
     };
     { $fmt:tt $($arg:tt)* } => {
         if $crate::utillib::logging::log_level() >= $crate::utillib::logging::LogLevel::Warn {
             use std::io::Write;
             let mut lock = $crate::utillib::logging::write_time(file!(), line!(), column!());
-            lock.write_all("WARNING: untested!: ".as_bytes()).expect("stderr must not fail");
-            writeln!(&mut lock, $fmt $($arg)*).expect("stderr must not fail");
+            _ = lock.write_all("WARNING: untested!: ".as_bytes());
+            _ = writeln!(&mut lock, $fmt $($arg)*);
         }
     }
 }
