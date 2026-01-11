@@ -24,8 +24,8 @@ impl FromStr for LocalNaiveTimeRange {
                 let to = to.trim();
                 let from = from
                     .parse()
-                    .map_err(|e| anyhow!("from time {from:?}: {e}"))?;
-                let to = to.parse().map_err(|e| anyhow!("to time {to:?}: {e}"))?;
+                    .map_err(|e| anyhow!("from time {from:?}: {e:#}"))?;
+                let to = to.parse().map_err(|e| anyhow!("to time {to:?}: {e:#}"))?;
                 Ok(LocalNaiveTimeRange { from, to })
             }
             &[_] => {

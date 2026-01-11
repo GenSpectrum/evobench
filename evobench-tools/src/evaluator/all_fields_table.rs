@@ -478,7 +478,7 @@ where
                         unreachable!("expecting to never see values > u64")
                     }
                     StatsError::VirtualCountDoesNotFitUSize => unreachable!("on 64bit archs"),
-                    StatsError::VirtualSumDoesNotFitU96 => panic!("stats error: {e}"),
+                    StatsError::VirtualSumDoesNotFitU96 => panic!("stats error: {e:#}"),
                 },
             };
             let val = maybe_val?;

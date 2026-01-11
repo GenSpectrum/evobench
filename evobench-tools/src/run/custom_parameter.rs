@@ -63,10 +63,10 @@ impl CustomParameterValue {
                 }
             }
             CustomParameterType::Filename => {
-                let _ = ProperFilename::from_str(value).map_err(|e| anyhow!("expecting {e}"))?;
+                let _ = ProperFilename::from_str(value).map_err(|e| anyhow!("expecting {e:#}"))?;
             }
             CustomParameterType::Dirname => {
-                let _ = ProperDirname::from_str(value).map_err(|e| anyhow!("expecting {e}"))?;
+                let _ = ProperDirname::from_str(value).map_err(|e| anyhow!("expecting {e:#}"))?;
             }
             CustomParameterType::Bool => match value.as_str() {
                 "0" | "1" => (),

@@ -63,7 +63,7 @@ where
             Err(e) => {
                 bail!(
                     "dir name {file_name_str:?} in {dir:?} \
-                     does not parse as {}: {e}",
+                     does not parse as {}: {e:#}",
                     type_name_short::<T>()
                 )
             }

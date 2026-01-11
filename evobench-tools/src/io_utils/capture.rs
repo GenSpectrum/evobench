@@ -81,7 +81,7 @@ where
             }
             Ok(())
         })
-        .map_err(move |e| anyhow!("{e}"))
+        .map_err(move |e| anyhow!("{e:#}"))
 }
 
 #[derive(Clone, Debug)]

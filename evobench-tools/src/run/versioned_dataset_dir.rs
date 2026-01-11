@@ -49,7 +49,7 @@ impl VersionedDatasetReferencesIndex {
                     let folder_name: ProperFilename = file_name.parse().map_err(|e| {
                         anyhow!(
                             "versioned dataset dir {versioned_datasets_dir:?} \
-                             entry {file_name:?}: {e}"
+                             entry {file_name:?}: {e:#}"
                         )
                     })?;
                     commit_to_dirname.insert(commit, folder_name);

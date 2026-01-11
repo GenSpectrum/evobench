@@ -76,7 +76,7 @@ impl<const TILE_COUNT: usize> FromStr for StatsField<TILE_COUNT> {
                 }
                 Err(e) => bail!(
                     "expecting one of n|sum|average|median|sd or a floating \
-                     point number between 0 and 1, floating point parse error for {s:?}: {e}"
+                     point number between 0 and 1, floating point parse error for {s:?}: {e:#}"
                 ),
             },
         }

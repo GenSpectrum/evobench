@@ -112,7 +112,7 @@ impl FromStr for Priority {
             "normal" => Ok(Priority::NORMAL),
             "low" => Ok(Priority::LOW),
             _ => Ok(Priority::new(s.parse().map_err(|e| {
-                anyhow!("parsing the string {s:?} as Priority: {e}")
+                anyhow!("parsing the string {s:?} as Priority: {e:#}")
             })?)?),
         }
     }

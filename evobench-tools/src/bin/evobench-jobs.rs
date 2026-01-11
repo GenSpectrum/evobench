@@ -508,7 +508,7 @@ fn run_queues(
                 let head_commit: GitHash = head_commit_str.parse().map_err(|e| {
                     anyhow!(
                         "parsing commit id from HEAD from polling working dir: \
-                         {head_commit_str:?}: {e}"
+                         {head_commit_str:?}: {e:#}"
                     )
                 })?;
                 let lock = versioned_dataset_dir
@@ -1281,7 +1281,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                         ) {
                             Err(e) => {
                                 // XX use `forking_loop`?
-                                _ = writeln!(&mut stderr(), "error during run_queues {e}");
+                                _ = writeln!(&mut stderr(), "error during run_queues {e:#}");
                             }
                             Ok(RunResult::OnceResult(_)) => {
                                 unreachable!("daemon does not return for after one")
@@ -1624,7 +1624,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                             Ok(s) => s,
                             Err(e) => match e {
                                 std::env::VarError::NotPresent => "less".into(),
-                                _ => bail!("can't decode PAGER env var: {e}"),
+                                _ => bail!("can't decode PAGER env var: {e:#}"),
                             },
                         };
 

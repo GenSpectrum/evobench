@@ -546,7 +546,7 @@ impl ValOrRefTarget for JobTemplateListsField {
 
 impl DefaultConfigPath for RunConfigOpts {
     fn default_config_file_name_without_suffix() -> Result<Option<ProperFilename>> {
-        Ok(Some("evobench-jobs".parse().map_err(|e| anyhow!("{e}"))?))
+        Ok(Some("evobench-jobs".parse().map_err(|e| anyhow!("{e:#}"))?))
     }
 }
 
