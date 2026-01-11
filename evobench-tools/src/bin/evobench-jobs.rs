@@ -1,5 +1,8 @@
 use anyhow::{Context, Result, anyhow, bail};
-use chj_unix_util::polling_signals::PollingSignals;
+use chj_unix_util::{
+    daemon::{Daemon, DaemonMode, DaemonOpts, DaemonStateReader, ExecutionResult},
+    polling_signals::PollingSignals,
+};
 use chrono::{DateTime, Local};
 use clap::Parser;
 use itertools::Itertools;
@@ -69,7 +72,6 @@ use evobench_tools::{
     utillib::{
         arc::CloneArc,
         logging::{LogLevelOpt, set_log_level},
-        re_exec::re_exec_with_existing_args_and_env,
         unix::ToExitCode,
     },
     warn,
@@ -240,17 +242,6 @@ enum SubCommand {
     },
 }
 
-#[derive(Debug, Clone, Copy, clap::Subcommand)]
-pub enum DaemonizationAction {
-    Start,
-    /// XX by signal (forcefully) or some file (gracefully)?
-    Stop,
-    /// XX thankfully *can* just set the exit flag for one process,
-    /// start a new one, will take over once the other is done, thanks
-    /// to the locks
-    Restart,
-}
-
 #[derive(Debug, Clone, clap::Subcommand)]
 pub enum RunMode {
     /// Run the single jobs that is first due.
@@ -261,10 +252,13 @@ pub enum RunMode {
     },
     /// Run forever, until terminated
     Daemon {
+        #[clap(flatten)]
+        opts: DaemonOpts,
+
         /// Whether to background or stop the backgrounded daemon; if
         /// not given, runs in the foreground.
         #[clap(subcommand)]
-        action: Option<DaemonizationAction>,
+        action: DaemonMode,
 
         /// Check if the evobench-jobs binary is changed (older or
         /// newer modification time), and if so, re-execute it with
@@ -437,8 +431,10 @@ fn open_working_directory_change_signals(
 }
 
 enum RunResult {
+    /// In one-job mode, indicates whether it ran any job
     OnceResult(bool),
-    NeedReExec(PathBuf),
+    /// In daemon mode
+    StopOrRestart,
 }
 
 /// Run through the queues forever unless `once` is true (in which
@@ -454,6 +450,7 @@ fn run_queues(
     global_app_state_dir: &GlobalAppStateDir,
     once: bool,
     restart_on_upgrades: bool,
+    mut daemon_state_reader: Option<DaemonStateReader>,
 ) -> Result<RunResult> {
     let opt_binary_and_mtime = if restart_on_upgrades {
         let path = std::env::current_exe()?;
@@ -572,6 +569,12 @@ fn run_queues(
         // XX have something better than polling?
         thread::sleep(Duration::from_secs(1));
 
+        if let Some(daemon_state_reader) = daemon_state_reader.as_mut() {
+            if daemon_state_reader.want_exit() {
+                return Ok(RunResult::StopOrRestart);
+            }
+        }
+
         // Has our binary been updated?
         if let Some((binary, mtime)) = &opt_binary_and_mtime {
             if let Ok(metadata) = binary.metadata() {
@@ -584,7 +587,7 @@ fn run_queues(
                             SystemTimeWithDisplay(*mtime),
                             SystemTimeWithDisplay(new_mtime)
                         );
-                        return Ok(RunResult::NeedReExec(binary.to_owned()));
+                        return Ok(RunResult::StopOrRestart);
                     }
                 }
             }
@@ -680,7 +683,7 @@ fn daemon_is_running(conf: &RunConfig, global_app_state_dir: &GlobalAppStateDir)
 
 const TARGET_NAME_WIDTH: usize = 14;
 
-fn run() -> Result<Option<PathBuf>> {
+fn run() -> Result<Option<ExecutionResult>> {
     let Opts {
         log_level,
         config,
@@ -730,6 +733,7 @@ fn run() -> Result<Option<PathBuf>> {
 
         SubCommand::ConfigSave { output_path } => {
             save_config_file(&output_path, &*config_with_reload.config_file)?;
+            Ok(None)
         }
 
         SubCommand::ListAll {
@@ -798,6 +802,7 @@ fn run() -> Result<Option<PathBuf>> {
                 table.write_data_row(values, None)?;
             }
             drop(table.finish()?);
+            Ok(None)
         }
 
         SubCommand::List {
@@ -1067,6 +1072,7 @@ fn run() -> Result<Option<PathBuf>> {
                 out,
             )?;
             println!("{thin_bar}");
+            Ok(None)
         }
 
         SubCommand::InsertLocal {
@@ -1100,6 +1106,7 @@ fn run() -> Result<Option<PathBuf>> {
                 quiet_opt,
                 &queues,
             )?;
+            Ok(None)
         }
 
         SubCommand::Insert {
@@ -1118,6 +1125,7 @@ fn run() -> Result<Option<PathBuf>> {
                 quiet_opt,
                 &queues,
             )?;
+            Ok(None)
         }
 
         SubCommand::InsertFile {
@@ -1156,6 +1164,7 @@ fn run() -> Result<Option<PathBuf>> {
                 &queues,
             )?;
             println!("Inserted {n} jobs.");
+            Ok(None)
         }
 
         SubCommand::Poll {
@@ -1212,6 +1221,7 @@ fn run() -> Result<Option<PathBuf>> {
                         println!("inserted {n}/{n_original} jobs (for {num_commits} commits)");
                     }
                 }
+                Ok(None)
             } else {
                 bail!(
                     "inserted {n}/{n_original} jobs (for {num_commits} commits), \
@@ -1238,22 +1248,26 @@ fn run() -> Result<Option<PathBuf>> {
                         &global_app_state_dir,
                         true,
                         false,
+                        None,
                     )? {
                         RunResult::OnceResult(ran) => {
                             if false_if_none {
                                 exit(if ran { 0 } else { 1 })
+                            } else {
+                                Ok(None)
                             }
                         }
-                        RunResult::NeedReExec(_) => unreachable!(),
+                        RunResult::StopOrRestart => unreachable!("only daemon mode issues this"),
                     }
                 }
                 RunMode::Daemon {
+                    opts,
                     action,
                     restart_on_upgrades,
                 } => {
-                    if let Some(action) = action {
-                        todo!("daemonization {action:?}")
-                    } else {
+                    let state_dir = conf.daemon_state_dir(&global_app_state_dir)?.into();
+                    let log_dir = conf.daemon_log_dir(&global_app_state_dir)?.into();
+                    let run = |daemon_state_reader: DaemonStateReader| -> () {
                         match run_queues(
                             config,
                             config_with_reload,
@@ -1263,13 +1277,28 @@ fn run() -> Result<Option<PathBuf>> {
                             &global_app_state_dir,
                             false,
                             restart_on_upgrades,
-                        )? {
-                            RunResult::OnceResult(_) => unreachable!(),
-                            RunResult::NeedReExec(executable_path) => {
-                                return Ok(Some(executable_path));
+                            Some(daemon_state_reader),
+                        ) {
+                            Err(e) => {
+                                // XX use `forking_loop`?
+                                _ = writeln!(&mut stderr(), "error during run_queues {e}");
                             }
+                            Ok(RunResult::OnceResult(_)) => {
+                                unreachable!("daemon does not return for after one")
+                            }
+                            Ok(RunResult::StopOrRestart) => (),
                         }
-                    }
+                    };
+
+                    let daemon = Daemon {
+                        opts,
+                        state_dir,
+                        log_dir,
+                        run,
+                    };
+
+                    let r = daemon.execute(action, false)?;
+                    Ok(Some(r))
                 }
             }
         }
@@ -1429,6 +1458,7 @@ fn run() -> Result<Option<PathBuf>> {
                     if let Some(table) = table {
                         let _ = table.finish()?;
                     }
+                    Ok(None)
                 }
                 WdSubCommand::Cleanup {
                     dry_run,
@@ -1479,6 +1509,7 @@ fn run() -> Result<Option<PathBuf>> {
                             }
                         }
                     }
+                    Ok(None)
                 }
                 WdSubCommand::Delete {
                     dry_run,
@@ -1553,6 +1584,7 @@ fn run() -> Result<Option<PathBuf>> {
                             }
                         }
                     }
+                    Ok(None)
                 }
                 WdSubCommand::Log { list, id } => {
                     let working_directory_path =
@@ -1601,6 +1633,7 @@ fn run() -> Result<Option<PathBuf>> {
                         return Err(cmd.exec())
                             .with_context(|| anyhow!("executing pager {pager:?}"));
                     }
+                    Ok(None)
                 }
                 WdSubCommand::Mark { ids } => {
                     for id in ids {
@@ -1608,6 +1641,7 @@ fn run() -> Result<Option<PathBuf>> {
                             warn!("there is no working directory for id {id}");
                         }
                     }
+                    Ok(None)
                 }
                 WdSubCommand::Unmark { ids } => {
                     for id in ids {
@@ -1615,6 +1649,7 @@ fn run() -> Result<Option<PathBuf>> {
                             warn!("there is no working directory for id {id}");
                         }
                     }
+                    Ok(None)
                 }
                 WdSubCommand::Recycle { ids } => {
                     for id in ids {
@@ -1628,6 +1663,7 @@ fn run() -> Result<Option<PathBuf>> {
                             warn!("there is no working directory for id {id}");
                         }
                     }
+                    Ok(None)
                 }
                 WdSubCommand::Enter {
                     mark,
@@ -1849,14 +1885,11 @@ fn run() -> Result<Option<PathBuf>> {
             }
         }
     }
-
-    Ok(None)
 }
 
 fn main() -> Result<()> {
-    if let Some(executable_path) = run()? {
-        Err(re_exec_with_existing_args_and_env(executable_path))?
-    } else {
-        Ok(())
+    if let Some(execution_result) = run()? {
+        execution_result.daemon_cleanup();
     }
+    Ok(())
 }

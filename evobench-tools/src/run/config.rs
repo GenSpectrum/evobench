@@ -477,6 +477,10 @@ pub struct RunConfigOpts {
     /// `~/.evobench-jobs/run_jobs_instance`.
     pub run_jobs_instance_basedir: Option<Arc<TildePath<PathBuf>>>,
 
+    /// The path to the directory where `evobench-jobs run daemon` writes logs to. By default,
+    /// `~/.evobench-jobs/run_jobs_instance/logs`.
+    pub daemon_log_dir: Option<Arc<TildePath<PathBuf>>>,
+
     pub working_directory_pool: Arc<WorkingDirectoryPoolOpts>,
 
     /// What command to run on the target project to execute a
@@ -550,6 +554,7 @@ impl DefaultConfigPath for RunConfigOpts {
 pub struct RunConfig {
     pub queues: Arc<QueuesConfig>,
     run_jobs_instance_basedir: Option<PathBuf>,
+    daemon_log_dir: Option<PathBuf>,
     pub working_directory_pool: Arc<WorkingDirectoryPoolOpts>,
     // targets: BTreeMap<ProperDirname, Arc<BenchmarkingTarget>>,
     pub job_template_lists: BTreeMap<KString, Arc<[JobTemplate]>>,
@@ -581,6 +586,18 @@ impl RunConfig {
         self.run_jobs_instance_basedir(global_app_state_dir)
             .map(|p| p.append("working_directory_change.signals"))
     }
+
+    pub fn daemon_state_dir(&self, global_app_state_dir: &GlobalAppStateDir) -> Result<PathBuf> {
+        self.run_jobs_instance_basedir(global_app_state_dir)
+    }
+
+    pub fn daemon_log_dir(&self, global_app_state_dir: &GlobalAppStateDir) -> Result<PathBuf> {
+        if let Some(daemon_log_dir) = &self.daemon_log_dir {
+            Ok(daemon_log_dir.into())
+        } else {
+            Ok(self.daemon_state_dir(global_app_state_dir)?.append("logs"))
+        }
+    }
 }
 
 impl RunConfigOpts {
@@ -589,6 +606,7 @@ impl RunConfigOpts {
         let RunConfigOpts {
             queues,
             run_jobs_instance_basedir,
+            daemon_log_dir,
             working_directory_pool,
             targets,
             job_template_lists,
@@ -656,6 +674,11 @@ impl RunConfigOpts {
         Ok(RunConfig {
             queues: queues.clone_arc(),
             run_jobs_instance_basedir: run_jobs_instance_basedir
+                .as_ref()
+                .map(|p| p.resolve())
+                .transpose()?
+                .map(|r| r.into()),
+            daemon_log_dir: daemon_log_dir
                 .as_ref()
                 .map(|p| p.resolve())
                 .transpose()?
