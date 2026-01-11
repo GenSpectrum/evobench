@@ -726,7 +726,12 @@ fn run() -> Result<Option<ExecutionResult>> {
         &|| global_app_state_dir.working_directory_pool_base(),
     )?);
 
-    let queues = RunQueues::open(conf.queues.clone_arc(), true, &global_app_state_dir)?;
+    let open_queues = |conf: &RunConfig, global_app_state_dir| {
+        RunQueues::open(conf.queues.clone_arc(), true, global_app_state_dir)
+    };
+    let mut queues = lazyresult! {
+        open_queues(conf, &global_app_state_dir)
+    };
 
     match subcommand {
         SubCommand::ConfigFormats => unreachable!("already dispatched above"),
@@ -1045,6 +1050,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                 (bar_of("-"), bar_of("="))
             };
 
+            let queues = queues.force()?;
             for (i, run_queue) in queues.pipeline().iter().enumerate() {
                 println!("{thin_bar}");
                 out = show_queue(&(i + 1).to_string(), run_queue, false, out)?;
@@ -1095,6 +1101,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                 run_parameters: RunParametersOpts { commit_id },
             };
 
+            let queues = queues.force()?;
             insert_jobs(
                 benchmarking_job_opts.complete_jobs(
                     Some(&conf.benchmarking_job_settings),
@@ -1114,6 +1121,7 @@ fn run() -> Result<Option<ExecutionResult>> {
             force_opt,
             quiet_opt,
         } => {
+            let queues = queues.force()?;
             insert_jobs(
                 benchmarking_job_opts.complete_jobs(
                     Some(&conf.benchmarking_job_settings),
@@ -1155,6 +1163,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                 benchmarking_jobs.push(job);
             }
 
+            let queues = queues.force()?;
             let n = insert_jobs(
                 benchmarking_jobs,
                 &global_app_state_dir,
@@ -1203,6 +1212,7 @@ fn run() -> Result<Option<ExecutionResult>> {
             }
 
             let n_original = benchmarking_jobs.len();
+            let queues = queues.force()?;
             let n = insert_jobs(
                 benchmarking_jobs,
                 &global_app_state_dir,
@@ -1233,12 +1243,24 @@ fn run() -> Result<Option<ExecutionResult>> {
         SubCommand::Run { mode } => {
             let _run_lock = get_run_lock(&conf, &global_app_state_dir)?;
 
-            let working_directory_pool =
-                open_working_directory_pool(conf, working_directory_base_dir.clone(), true)?
-                    .into_inner();
+            let open_working_directory_pool = |conf: &RunConfig,
+                                               working_directory_base_dir: &Arc<
+                WorkingDirectoryPoolBaseDir,
+            >|
+             -> Result<_> {
+                Ok(
+                    open_working_directory_pool(conf, working_directory_base_dir.clone(), true)?
+                        .into_inner(),
+                )
+            };
 
             match mode {
                 RunMode::One { false_if_none } => {
+                    let queues = queues.into_value()?;
+                    let working_directory_pool = open_working_directory_pool(
+                        &config_with_reload.run_config,
+                        &working_directory_base_dir,
+                    )?;
                     match run_queues(
                         config,
                         config_with_reload,
@@ -1268,17 +1290,26 @@ fn run() -> Result<Option<ExecutionResult>> {
                     let state_dir = conf.daemon_state_dir(&global_app_state_dir)?.into();
                     let log_dir = conf.daemon_log_dir(&global_app_state_dir)?.into();
                     let run = |daemon_state_reader: DaemonStateReader| -> () {
-                        match run_queues(
-                            config,
-                            config_with_reload,
-                            queues,
-                            working_directory_base_dir,
-                            working_directory_pool,
-                            &global_app_state_dir,
-                            false,
-                            restart_on_upgrades,
-                            Some(daemon_state_reader),
-                        ) {
+                        let r = (|| -> Result<RunResult> {
+                            let queues =
+                                open_queues(&config_with_reload.run_config, &global_app_state_dir)?;
+                            let working_directory_pool = open_working_directory_pool(
+                                &config_with_reload.run_config,
+                                &working_directory_base_dir,
+                            )?;
+                            run_queues(
+                                config,
+                                config_with_reload,
+                                queues,
+                                working_directory_base_dir,
+                                working_directory_pool,
+                                &global_app_state_dir,
+                                false,
+                                restart_on_upgrades,
+                                Some(daemon_state_reader),
+                            )
+                        })();
+                        match r {
                             Err(e) => {
                                 // XX use `forking_loop`?
                                 _ = writeln!(&mut stderr(), "error during run_queues {e:#}");
