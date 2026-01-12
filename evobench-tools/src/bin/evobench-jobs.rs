@@ -20,7 +20,7 @@ use std::{
     path::PathBuf,
     process::{Command, exit},
     str::FromStr,
-    sync::Arc,
+    sync::{Arc, atomic::Ordering},
     thread,
     time::{Duration, SystemTime},
 };
@@ -71,7 +71,7 @@ use evobench_tools::{
     terminal_table::{TerminalTable, TerminalTableOpts, TerminalTableTitle},
     utillib::{
         arc::CloneArc,
-        logging::{LogLevelOpt, set_log_level},
+        logging::{LOCAL_TIME, LogLevelOpt, set_log_level},
         unix::ToExitCode,
     },
     warn,
@@ -691,6 +691,9 @@ fn run() -> Result<Option<ExecutionResult>> {
     } = Opts::parse();
 
     set_log_level(log_level.try_into()?);
+    // Interactive use should get local time. (Daemon mode overwrites
+    // this.)
+    LOCAL_TIME.store(true, Ordering::SeqCst);
 
     // COPY-PASTE from List action in jobqueue.rs
     let get_filename = |entry: &Entry<_, _>| -> Result<String> {
@@ -786,7 +789,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                 stdout().lock(),
             )?;
             for (params, insertion_time) in flat_jobs {
-                let t = system_time_to_rfc3339(insertion_time);
+                let t = system_time_to_rfc3339(insertion_time, true);
                 let BenchmarkingJobParameters {
                     run_parameters,
                     command,
@@ -1289,8 +1292,15 @@ fn run() -> Result<Option<ExecutionResult>> {
                 } => {
                     let state_dir = conf.daemon_state_dir(&global_app_state_dir)?.into();
                     let log_dir = conf.daemon_log_dir(&global_app_state_dir)?.into();
+                    let local_time = opts.local_time;
                     let run = |daemon_state_reader: DaemonStateReader| -> () {
                         let r = (|| -> Result<RunResult> {
+                            // Use the requested time setting for
+                            // local time stamp generation, too (now
+                            // the default is UTC, which is expected
+                            // for a daemon).
+                            LOCAL_TIME.store(local_time, Ordering::SeqCst);
+
                             let queues =
                                 open_queues(&config_with_reload.run_config, &global_app_state_dir)?;
                             let working_directory_pool = open_working_directory_pool(
@@ -1472,7 +1482,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                                     status.to_string(),
                                     num_runs.to_string(),
                                     creation_timestamp.to_string(),
-                                    system_time_to_rfc3339(wd.last_use),
+                                    system_time_to_rfc3339(wd.last_use, true),
                                     if !no_commit {
                                         wd.commit()?.to_string()
                                     } else {

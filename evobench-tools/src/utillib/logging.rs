@@ -2,7 +2,7 @@
 
 use std::{
     io::{BufWriter, StderrLock, Write, stderr},
-    sync::atomic::{AtomicU8, Ordering},
+    sync::atomic::{AtomicBool, AtomicU8, Ordering},
     time::SystemTime,
 };
 
@@ -10,9 +10,17 @@ use anyhow::{Result, bail};
 
 use crate::serde::date_and_time::system_time_to_rfc3339;
 
+/// Whether to show time stamps in the local time zone (default: UTC).
+pub static LOCAL_TIME: AtomicBool = AtomicBool::new(false);
+
 pub fn write_time(file: &str, line: u32, column: u32) -> BufWriter<StderrLock<'static>> {
     let t = SystemTime::now();
-    let t_str = system_time_to_rfc3339(t); // Costs an allocation
+    // Costs an allocation. -- Ordering: probably nobody will be
+    // changing it across threads (and if so, ordering probably
+    // doesn't matter so much?), thus Relaxed should be fine. Feel
+    // free to use Ordering::SeqCst for stores to ensure the last
+    // store counts.
+    let t_str = system_time_to_rfc3339(t, LOCAL_TIME.load(Ordering::Relaxed));
     let mut lock = BufWriter::new(stderr().lock());
     _ = write!(&mut lock, "{t_str}\t{file}:{line}:{column}\t");
     lock

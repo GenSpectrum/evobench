@@ -5,7 +5,7 @@ use std::{fmt::Display, str::FromStr, time::SystemTime};
 
 use chrono::{
     DateTime, FixedOffset, Local, LocalResult, NaiveDate, NaiveDateTime, NaiveTime, TimeZone,
-    Timelike,
+    Timelike, Utc,
 };
 use serde::de::Visitor;
 
@@ -15,14 +15,19 @@ use serde::de::Visitor;
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DateTimeWithOffset(String);
 
-pub fn system_time_to_rfc3339(t: SystemTime) -> String {
-    let t: DateTime<Local> = DateTime::from(t);
-    t.to_rfc3339()
+pub fn system_time_to_rfc3339(t: SystemTime, local_time: bool) -> String {
+    if local_time {
+        let t: DateTime<Local> = DateTime::from(t);
+        t.to_rfc3339()
+    } else {
+        let t: DateTime<Utc> = DateTime::from(t);
+        t.to_rfc3339()
+    }
 }
 
 impl DateTimeWithOffset {
     pub fn now() -> Self {
-        Self(system_time_to_rfc3339(SystemTime::now()))
+        Self(system_time_to_rfc3339(SystemTime::now(), true))
     }
 
     pub fn into_string(self) -> String {

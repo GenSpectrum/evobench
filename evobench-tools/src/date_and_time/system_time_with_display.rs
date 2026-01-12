@@ -18,7 +18,7 @@ impl Deref for SystemTimeWithDisplay {
 
 impl Display for SystemTimeWithDisplay {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&system_time_to_rfc3339(self.0))
+        f.write_str(&system_time_to_rfc3339(self.0, true))
     }
 }
 
