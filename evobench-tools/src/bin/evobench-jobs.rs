@@ -263,7 +263,8 @@ pub enum RunMode {
 
         /// Whether to run in the foreground, or start or stop a
         /// daemon running in the background (or report the status
-        /// about it). Give `help` to see the options.
+        /// about it). Give `help` to see the options. evobench-jobs
+        /// defaults to the 'hard' actions.
         action: DaemonMode,
 
         /// Do not check if the evobench-jobs binary is changed. By
@@ -688,6 +689,8 @@ fn daemon_is_running(conf: &RunConfig, global_app_state_dir: &GlobalAppStateDir)
 }
 
 const TARGET_NAME_WIDTH: usize = 14;
+
+const DEFAULT_IS_HARD: bool = true;
 
 fn run() -> Result<Option<ExecutionResult>> {
     let Opts {
@@ -1351,7 +1354,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                         run,
                     };
 
-                    let r = daemon.execute(action, false)?;
+                    let r = daemon.execute(action, DEFAULT_IS_HARD)?;
                     Ok(Some(r))
                 }
             }
