@@ -261,9 +261,9 @@ pub enum RunMode {
         #[clap(short, long, default_value = "info")]
         log_level: LogLevel,
 
-        /// Whether to background or stop the backgrounded daemon; if
-        /// not given, runs in the foreground.
-        #[clap(subcommand)]
+        /// Whether to run in the foreground, or start or stop a
+        /// daemon running in the background (or report the status
+        /// about it). Give `help` to see the options.
         action: DaemonMode,
 
         /// Do not check if the evobench-jobs binary is changed. By
