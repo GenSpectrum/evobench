@@ -71,7 +71,7 @@ use evobench_tools::{
     terminal_table::{TerminalTable, TerminalTableOpts, TerminalTableTitle},
     utillib::{
         arc::CloneArc,
-        logging::{LOCAL_TIME, LogLevelOpt, set_log_level},
+        logging::{LOCAL_TIME, LogLevel, LogLevelOpt, set_log_level},
         unix::ToExitCode,
     },
     warn,
@@ -254,6 +254,12 @@ pub enum RunMode {
     Daemon {
         #[clap(flatten)]
         opts: DaemonOpts,
+
+        /// The logging level while running as daemon (overrides the
+        /// top-level logging options like --verbose, --debug,
+        /// --quiet)
+        #[clap(short, long, default_value = "info")]
+        log_level: LogLevel,
 
         /// Whether to background or stop the backgrounded daemon; if
         /// not given, runs in the foreground.
@@ -1287,6 +1293,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                 }
                 RunMode::Daemon {
                     opts,
+                    log_level,
                     action,
                     no_restart_on_upgrades,
                 } => {
@@ -1300,6 +1307,8 @@ fn run() -> Result<Option<ExecutionResult>> {
                             // the default is UTC, which is expected
                             // for a daemon).
                             LOCAL_TIME.store(local_time, Ordering::SeqCst);
+
+                            set_log_level(log_level);
 
                             let queues =
                                 open_queues(&config_with_reload.run_config, &global_app_state_dir)?;
