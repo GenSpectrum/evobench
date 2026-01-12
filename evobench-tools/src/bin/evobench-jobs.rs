@@ -1,6 +1,8 @@
 use anyhow::{Context, Result, anyhow, bail};
 use chj_unix_util::{
+    backoff::LoopWithBackoff,
     daemon::{Daemon, DaemonMode, DaemonOpts, DaemonStateReader, ExecutionResult, TimestampOpts},
+    forking_loop::forking_loop,
     polling_signals::PollingSignals,
 };
 use chrono::{DateTime, Local};
@@ -457,7 +459,7 @@ fn run_queues(
     global_app_state_dir: &GlobalAppStateDir,
     once: bool,
     restart_on_upgrades: bool,
-    mut daemon_state_reader: Option<DaemonStateReader>,
+    daemon_state_reader: Option<Arc<DaemonStateReader>>,
 ) -> Result<RunResult> {
     let opt_binary_and_mtime = if restart_on_upgrades {
         let path = std::env::current_exe()?;
@@ -576,7 +578,7 @@ fn run_queues(
         // XX have something better than polling?
         thread::sleep(Duration::from_secs(1));
 
-        if let Some(daemon_state_reader) = daemon_state_reader.as_mut() {
+        if let Some(daemon_state_reader) = daemon_state_reader.as_ref() {
             if daemon_state_reader.want_exit() {
                 return Ok(RunResult::StopOrRestart);
             }
@@ -1304,43 +1306,60 @@ fn run() -> Result<Option<ExecutionResult>> {
                     let log_dir = conf.daemon_log_dir(&global_app_state_dir)?.into();
                     let local_time = opts.local_time;
                     let run = |daemon_state_reader: DaemonStateReader| -> () {
-                        let r = (|| -> Result<RunResult> {
-                            // Use the requested time setting for
-                            // local time stamp generation, too (now
-                            // the default is UTC, which is expected
-                            // for a daemon).
-                            LOG_LOCAL_TIME.store(local_time, Ordering::SeqCst);
+                        // Use the requested time setting for
+                        // local time stamp generation, too (now
+                        // the default is UTC, which is expected
+                        // for a daemon).
+                        LOG_LOCAL_TIME.store(local_time, Ordering::SeqCst);
 
-                            set_log_level(log_level);
+                        set_log_level(log_level);
 
-                            let queues =
-                                open_queues(&config_with_reload.run_config, &global_app_state_dir)?;
-                            let working_directory_pool = open_working_directory_pool(
-                                &config_with_reload.run_config,
-                                &working_directory_base_dir,
-                            )?;
-                            run_queues(
-                                config,
-                                config_with_reload,
-                                queues,
-                                working_directory_base_dir,
-                                working_directory_pool,
-                                &global_app_state_dir,
-                                false,
-                                !no_restart_on_upgrades,
-                                Some(daemon_state_reader),
-                            )
-                        })();
-                        match r {
-                            Err(e) => {
-                                // XX use `forking_loop`?
-                                _ = writeln!(&mut stderr(), "error during run_queues {e:#}");
-                            }
-                            Ok(RunResult::OnceResult(_)) => {
-                                unreachable!("daemon does not return for after one")
-                            }
-                            Ok(RunResult::StopOrRestart) => (),
-                        }
+                        let daemon_state_reader = Arc::new(daemon_state_reader);
+
+                        forking_loop(
+                            LoopWithBackoff {
+                                min_sleep_seconds: 10.,
+                                ..Default::default()
+                            },
+                            || -> Result<()> {
+                                let r = (|| -> Result<RunResult> {
+                                    let queues = open_queues(
+                                        &config_with_reload.run_config,
+                                        &global_app_state_dir,
+                                    )?;
+                                    let working_directory_pool = open_working_directory_pool(
+                                        &config_with_reload.run_config,
+                                        &working_directory_base_dir,
+                                    )?;
+                                    run_queues(
+                                        config,
+                                        config_with_reload,
+                                        queues,
+                                        working_directory_base_dir,
+                                        working_directory_pool,
+                                        &global_app_state_dir,
+                                        false,
+                                        !no_restart_on_upgrades,
+                                        Some(daemon_state_reader.clone_arc()),
+                                    )
+                                })();
+                                // (`forking_loop` could print, too, do that instead?)
+                                match r {
+                                    Err(e) => {
+                                        _ = writeln!(
+                                            &mut stderr(),
+                                            "error during run_queues {e:#}"
+                                        );
+                                    }
+                                    Ok(RunResult::OnceResult(_)) => {
+                                        unreachable!("daemon does not return for after one")
+                                    }
+                                    Ok(RunResult::StopOrRestart) => (),
+                                }
+                                Ok(())
+                            },
+                            || daemon_state_reader.want_exit(),
+                        )
                     };
 
                     let daemon = Daemon {
