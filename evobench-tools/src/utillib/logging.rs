@@ -102,6 +102,8 @@ pub enum LogLevel {
 }
 
 impl LogLevel {
+    pub const MAX: LogLevel = LogLevel::Debug;
+
     // Not public api, only for sorting or comparisons!
     fn level(self) -> u8 {
         self as u8
@@ -122,7 +124,7 @@ impl LogLevel {
 
 #[test]
 fn t_levels() {
-    for i in 0..=2 {
+    for i in 0..=LogLevel::MAX.level() {
         _ = LogLevel::from_level(i);
     }
 }
