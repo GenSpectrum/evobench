@@ -162,7 +162,7 @@ impl Ord for LogLevel {
 pub static LOGLEVEL: AtomicU8 = AtomicU8::new(1);
 
 pub fn set_log_level(val: LogLevel) {
-    LOGLEVEL.store(val.level(), Ordering::Relaxed);
+    LOGLEVEL.store(val.level(), Ordering::SeqCst);
 }
 
 #[inline]
