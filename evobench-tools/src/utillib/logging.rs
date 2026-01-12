@@ -88,7 +88,7 @@ impl TryFrom<LogLevelOpt> for LogLevel {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogLevel {
     /// Do not log anything
     Quiet,
@@ -125,8 +125,10 @@ impl LogLevel {
 #[test]
 fn t_levels() {
     for i in 0..=LogLevel::MAX.level() {
-        _ = LogLevel::from_level(i);
+        let lvl = LogLevel::from_level(i).expect("valid");
+        assert_eq!(lvl.level(), i);
     }
+    assert_eq!(LogLevel::from_level(LogLevel::MAX.level() + 1), None);
 }
 
 impl PartialOrd for LogLevel {
