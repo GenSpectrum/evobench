@@ -12,7 +12,7 @@ use strum_macros::{EnumString, ToString};
 use crate::serde::date_and_time::system_time_to_rfc3339;
 
 /// Whether to show time stamps in the local time zone (default: UTC).
-pub static LOCAL_TIME: AtomicBool = AtomicBool::new(false);
+pub static LOG_LOCAL_TIME: AtomicBool = AtomicBool::new(false);
 
 pub fn write_time(file: &str, line: u32, column: u32) -> BufWriter<StderrLock<'static>> {
     let t = SystemTime::now();
@@ -21,7 +21,7 @@ pub fn write_time(file: &str, line: u32, column: u32) -> BufWriter<StderrLock<'s
     // doesn't matter so much?), thus Relaxed should be fine. Feel
     // free to use Ordering::SeqCst for stores to ensure the last
     // store counts.
-    let t_str = system_time_to_rfc3339(t, LOCAL_TIME.load(Ordering::Relaxed));
+    let t_str = system_time_to_rfc3339(t, LOG_LOCAL_TIME.load(Ordering::Relaxed));
     let mut lock = BufWriter::new(stderr().lock());
     _ = write!(&mut lock, "{t_str}\t{file}:{line}:{column}\t");
     lock
@@ -159,15 +159,15 @@ impl Ord for LogLevel {
     }
 }
 
-pub static LOGLEVEL: AtomicU8 = AtomicU8::new(1);
+pub static LOG_LEVEL: AtomicU8 = AtomicU8::new(1);
 
 pub fn set_log_level(val: LogLevel) {
-    LOGLEVEL.store(val.level(), Ordering::SeqCst);
+    LOG_LEVEL.store(val.level(), Ordering::SeqCst);
 }
 
 #[inline]
 pub fn log_level() -> LogLevel {
-    let level = LOGLEVEL.load(Ordering::Relaxed);
+    let level = LOG_LEVEL.load(Ordering::Relaxed);
     LogLevel::from_level(level).expect("no possibility to store invalid u8")
 }
 

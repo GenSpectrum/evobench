@@ -71,7 +71,7 @@ use evobench_tools::{
     terminal_table::{TerminalTable, TerminalTableOpts, TerminalTableTitle},
     utillib::{
         arc::CloneArc,
-        logging::{LOCAL_TIME, LogLevel, LogLevelOpt, set_log_level},
+        logging::{LOG_LOCAL_TIME, LogLevel, LogLevelOpt, set_log_level},
         unix::ToExitCode,
     },
     warn,
@@ -699,7 +699,7 @@ fn run() -> Result<Option<ExecutionResult>> {
     set_log_level(log_level.try_into()?);
     // Interactive use should get local time. (Daemon mode overwrites
     // this.)
-    LOCAL_TIME.store(true, Ordering::SeqCst);
+    LOG_LOCAL_TIME.store(true, Ordering::SeqCst);
 
     // COPY-PASTE from List action in jobqueue.rs
     let get_filename = |entry: &Entry<_, _>| -> Result<String> {
@@ -1306,7 +1306,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                             // local time stamp generation, too (now
                             // the default is UTC, which is expected
                             // for a daemon).
-                            LOCAL_TIME.store(local_time, Ordering::SeqCst);
+                            LOG_LOCAL_TIME.store(local_time, Ordering::SeqCst);
 
                             set_log_level(log_level);
 
