@@ -2,12 +2,14 @@
 
 use std::{
     io::{BufWriter, StderrLock, Write, stderr},
+    str::FromStr,
     sync::atomic::{AtomicBool, AtomicU8, Ordering},
     time::SystemTime,
 };
 
 use anyhow::{Result, bail};
-use strum_macros::{EnumString, ToString};
+use strum::VariantNames;
+use strum_macros::{EnumVariantNames, ToString};
 
 use crate::serde::date_and_time::system_time_to_rfc3339;
 
@@ -89,7 +91,7 @@ impl TryFrom<LogLevelOpt> for LogLevel {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumString, ToString)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ToString, EnumVariantNames)]
 #[strum(serialize_all = "snake_case")]
 pub enum LogLevel {
     /// Do not log anything
@@ -106,7 +108,9 @@ pub enum LogLevel {
 impl LogLevel {
     pub const MAX: LogLevel = LogLevel::Debug;
 
-    // Not public api, only for sorting or comparisons!
+    // Not public api, only for sorting or comparisons! / level
+    // setting API.
+
     fn level(self) -> u8 {
         self as u8
     }
@@ -131,6 +135,34 @@ impl LogLevel {
     }
 }
 
+// Sigh, strum_macros::EnumString is useless as it does not show the
+// variants in its error message. (Clap 4 has its own macro instead?)
+impl FromStr for LogLevel {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        {
+            // Reminder
+            match LogLevel::Quiet {
+                LogLevel::Quiet => (),
+                LogLevel::Warn => (),
+                LogLevel::Info => (),
+                LogLevel::Debug => (),
+            }
+        }
+        match s {
+            "quiet" => Ok(LogLevel::Quiet),
+            "warn" => Ok(LogLevel::Warn),
+            "info" => Ok(LogLevel::Info),
+            "debug" => Ok(LogLevel::Debug),
+            _ => bail!(
+                "invalid log level name {s:?}, valid are: {}",
+                LogLevel::VARIANTS.join(", ")
+            ),
+        }
+    }
+}
+
 #[test]
 fn t_levels() -> Result<()> {
     use std::str::FromStr;
@@ -138,6 +170,8 @@ fn t_levels() -> Result<()> {
     for i in 0..=LogLevel::MAX.level() {
         let lvl = LogLevel::from_level(i).expect("valid");
         assert_eq!(lvl.level(), i);
+        let s = lvl.to_string();
+        assert_eq!(LogLevel::from_str(&s).unwrap(), lvl);
     }
     assert_eq!(LogLevel::from_level(LogLevel::MAX.level() + 1), None);
     let lvl = LogLevel::from_str("info")?;
