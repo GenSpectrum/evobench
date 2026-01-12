@@ -260,11 +260,11 @@ pub enum RunMode {
         #[clap(subcommand)]
         action: DaemonMode,
 
-        /// Check if the evobench-jobs binary is changed (older or
-        /// newer modification time), and if so, re-execute it with
-        /// the original arguments.
+        /// Do not check if the evobench-jobs binary is changed. By
+        /// default, if the daemon sees that the binary got a changed
+        /// modification time it restarts itself.
         #[clap(long)]
-        restart_on_upgrades: bool,
+        no_restart_on_upgrades: bool,
     },
 }
 
@@ -1288,7 +1288,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                 RunMode::Daemon {
                     opts,
                     action,
-                    restart_on_upgrades,
+                    no_restart_on_upgrades,
                 } => {
                     let state_dir = conf.daemon_state_dir(&global_app_state_dir)?.into();
                     let log_dir = conf.daemon_log_dir(&global_app_state_dir)?.into();
@@ -1315,7 +1315,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                                 working_directory_pool,
                                 &global_app_state_dir,
                                 false,
-                                restart_on_upgrades,
+                                !no_restart_on_upgrades,
                                 Some(daemon_state_reader),
                             )
                         })();
