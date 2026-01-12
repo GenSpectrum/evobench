@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, anyhow, bail};
 use chj_unix_util::{
-    daemon::{Daemon, DaemonMode, DaemonOpts, DaemonStateReader, ExecutionResult},
+    daemon::{Daemon, DaemonMode, DaemonOpts, DaemonStateReader, ExecutionResult, TimestampOpts},
     polling_signals::PollingSignals,
 };
 use chrono::{DateTime, Local};
@@ -1333,6 +1333,10 @@ fn run() -> Result<Option<ExecutionResult>> {
 
                     let daemon = Daemon {
                         opts,
+                        timestamp_opts: TimestampOpts {
+                            use_rfc3339: true,
+                            mark_added_timestamps: true,
+                        },
                         state_dir,
                         log_dir,
                         run,
