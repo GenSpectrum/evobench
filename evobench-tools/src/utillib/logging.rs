@@ -7,6 +7,7 @@ use std::{
 };
 
 use anyhow::{Result, bail};
+use strum_macros::{EnumString, ToString};
 
 use crate::serde::date_and_time::system_time_to_rfc3339;
 
@@ -88,7 +89,8 @@ impl TryFrom<LogLevelOpt> for LogLevel {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumString, ToString)]
+#[strum(serialize_all = "snake_case")]
 pub enum LogLevel {
     /// Do not log anything
     Quiet,
@@ -110,25 +112,39 @@ impl LogLevel {
     }
 
     fn from_level(level: u8) -> Option<Self> {
-        let slf = match level {
+        {
+            // Reminder
+            match LogLevel::Quiet {
+                LogLevel::Quiet => (),
+                LogLevel::Warn => (),
+                LogLevel::Info => (),
+                LogLevel::Debug => (),
+            }
+        }
+        match level {
             0 => Some(LogLevel::Quiet),
             1 => Some(LogLevel::Warn),
             2 => Some(LogLevel::Info),
             3 => Some(LogLevel::Debug),
             _ => None,
-        }?;
-        assert_eq!(slf.level(), level);
-        Some(slf)
+        }
     }
 }
 
 #[test]
-fn t_levels() {
+fn t_levels() -> Result<()> {
+    use std::str::FromStr;
+
     for i in 0..=LogLevel::MAX.level() {
         let lvl = LogLevel::from_level(i).expect("valid");
         assert_eq!(lvl.level(), i);
     }
     assert_eq!(LogLevel::from_level(LogLevel::MAX.level() + 1), None);
+    let lvl = LogLevel::from_str("info")?;
+    assert_eq!(lvl.level(), 2);
+    assert!(LogLevel::from_str("Info").is_err());
+    assert_eq!(lvl.to_string(), "info");
+    Ok(())
 }
 
 impl PartialOrd for LogLevel {
