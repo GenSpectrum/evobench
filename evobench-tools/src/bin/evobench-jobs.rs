@@ -270,8 +270,8 @@ pub enum RunMode {
         action: DaemonMode,
 
         /// Do not check if the evobench-jobs binary is changed. By
-        /// default, if the daemon sees that the binary got a changed
-        /// modification time it restarts itself.
+        /// default, the daemon restarts itself when it sees that the
+        /// binary had its modification time changed.
         #[clap(long)]
         no_restart_on_upgrades: bool,
     },
