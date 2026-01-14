@@ -412,9 +412,15 @@ pub fn git_log_commits(
     c.current_dir(in_directory);
 
     c.stdout(Stdio::piped());
+    // stderr, too, but it's the case by default, anyway!
     let output = c
         .output()
         .with_context(|| anyhow!("in directory {in_directory:?}"))?;
+    if !output.status.success() {
+        // And I have such code already (in run-git, right?)
+        let err = String::from_utf8_lossy(&output.stderr);
+        bail!("failure in git directory {in_directory:?}: {err}",)
+    }
     output
         .stdout
         .split(|b| *b == b'\n')
