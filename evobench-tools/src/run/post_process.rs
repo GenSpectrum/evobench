@@ -149,15 +149,17 @@ impl RunDir {
             // Doing this *before* possibly renaming the file via
             // `evaluating_benchmark_file_succeeded`, as a way to ensure
             // that no invalid files end up in the results pool!
-            evobench_eval(&vec![
-                "single".into(),
-                evobench_log_path.into(),
-                // "--show-thread-number".into(), -- Disabled due to now
-                // having too many short-lived threads in SILO. TODO:
-                // make configurable?
-                "--excel".into(),
-                self.append_str("single.xlsx")?.into(),
-            ])?;
+
+            {
+                let mut args = vec!["single".into(), evobench_log_path.into()];
+                if run_config.eval_settings.show_thread_number {
+                    args.push("--show-thread-number".into());
+                }
+                args.push("--excel".into());
+                args.push(self.append_str("single.xlsx")?.into());
+
+                evobench_eval(&args)?;
+            }
 
             // It's a bit inefficient to read the $EVOBENCH_LOG twice, but
             // currently can't change the options (--show-thread-number)

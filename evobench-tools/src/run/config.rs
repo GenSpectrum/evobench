@@ -463,6 +463,19 @@ impl JobTemplateOpts {
     }
 }
 
+/// Settings for calling `evobench-eval`
+#[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EvalSettings {
+    /// Pass the --show-thread-number option to evobench-eval
+    /// ("Include the internally-allocated thread number in call
+    /// path strings in the output"). Only use if the application
+    /// has a limited number of threads (i.e. uses fixed thread
+    /// pools); if it allocates new threads all the time then this
+    /// will blow up the resulting Excel files.
+    pub show_thread_number: bool,
+}
+
 /// Direct representation of the evobench-jobs config file
 // For why `Arc` is used, see `docs/hacking.md`
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -508,6 +521,9 @@ pub struct RunConfigOpts {
 
     /// Each job receives a copy of these settings after expansion
     pub benchmarking_job_settings: Arc<BenchmarkingJobSettingsOpts>,
+
+    /// Settings for calling `evobench-eval`
+    pub eval_settings: Arc<EvalSettings>,
 
     /// Information on the remote repository of the target project
     pub remote_repository: RemoteRepositoryOpts,
@@ -560,6 +576,7 @@ pub struct RunConfig {
     pub job_template_lists: BTreeMap<KString, Arc<[JobTemplate]>>,
     pub job_templates_for_insert: Arc<[JobTemplate]>,
     pub benchmarking_job_settings: Arc<BenchmarkingJobSettingsOpts>,
+    pub eval_settings: Arc<EvalSettings>,
     pub remote_repository: RemoteRepository,
     pub output_base_dir: Arc<Path>,
     pub versioned_datasets_base_dir: Option<Arc<Path>>,
@@ -612,6 +629,7 @@ impl RunConfigOpts {
             job_template_lists,
             job_templates_for_insert,
             benchmarking_job_settings,
+            eval_settings,
             remote_repository,
             output_base_dir,
             versioned_datasets_base_dir,
@@ -687,6 +705,7 @@ impl RunConfigOpts {
             job_template_lists,
             job_templates_for_insert,
             benchmarking_job_settings: benchmarking_job_settings.clone_arc(),
+            eval_settings: eval_settings.clone_arc(),
             remote_repository,
             output_base_dir: output_base_dir.resolve()?.into(),
             targets,
