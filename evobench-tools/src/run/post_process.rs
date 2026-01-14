@@ -49,7 +49,7 @@ pub fn compress_file_as(
 }
 
 // XX here, *too*, do capture for consistency? XX: could do "nice" scheduling here.
-pub fn evobench_evaluator(args: &[OsString]) -> Result<()> {
+pub fn evobench_eval(args: &[OsString]) -> Result<()> {
     let prog = "evobench-eval";
     let mut c = Command::new(prog);
     c.args(args);
@@ -87,7 +87,7 @@ fn generate_summary(
         }
     }
 
-    evobench_evaluator(&args)?;
+    evobench_eval(&args)?;
 
     Ok(())
 }
@@ -149,7 +149,7 @@ impl RunDir {
             // Doing this *before* possibly renaming the file via
             // `evaluating_benchmark_file_succeeded`, as a way to ensure
             // that no invalid files end up in the results pool!
-            evobench_evaluator(&vec![
+            evobench_eval(&vec![
                 "single".into(),
                 evobench_log_path.into(),
                 // "--show-thread-number".into(), -- Disabled due to now
@@ -163,7 +163,7 @@ impl RunDir {
             // currently can't change the options (--show-thread-number)
             // without a separate run. (Will be low cost once caching is
             // done.)
-            evobench_evaluator(&vec![
+            evobench_eval(&vec![
                 "single".into(),
                 evobench_log_path.into(),
                 "--flame".into(),
