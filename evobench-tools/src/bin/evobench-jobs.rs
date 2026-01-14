@@ -1,7 +1,10 @@
 use anyhow::{Context, Result, anyhow, bail};
 use chj_unix_util::{
     backoff::LoopWithBackoff,
-    daemon::{Daemon, DaemonMode, DaemonOpts, DaemonStateReader, ExecutionResult, TimestampOpts},
+    daemon::{
+        Daemon, DaemonMode, DaemonOpts, DaemonStateReader, ExecutionResult, TimestampMode,
+        TimestampOpts,
+    },
     forking_loop::forking_loop,
     polling_signals::PollingSignals,
 };
@@ -1366,7 +1369,9 @@ fn run() -> Result<Option<ExecutionResult>> {
                         opts,
                         timestamp_opts: TimestampOpts {
                             use_rfc3339: true,
-                            mark_added_timestamps: true,
+                            mode: TimestampMode::Automatic {
+                                mark_added_timestamps: true,
+                            },
                         },
                         state_dir,
                         log_dir,
