@@ -1,11 +1,9 @@
 use anyhow::{Context, Result, anyhow, bail};
 use chj_unix_util::{
-    backoff::LoopWithBackoff,
     daemon::{
         Daemon, DaemonMode, DaemonOpts, DaemonStateReader, ExecutionResult, TimestampMode,
         TimestampOpts,
     },
-    forking_loop::forking_loop,
     polling_signals::PollingSignals,
 };
 use chrono::{DateTime, Local};
@@ -255,7 +253,8 @@ pub enum RunMode {
         #[clap(long)]
         false_if_none: bool,
     },
-    /// Run forever, until terminated
+    /// Run forever, until terminated (note: evobench-jobs uses
+    /// --restart-on-failures by default)
     Daemon {
         #[clap(flatten)]
         opts: DaemonOpts,
@@ -1319,54 +1318,40 @@ fn run() -> Result<Option<ExecutionResult>> {
 
                         let daemon_state_reader = Arc::new(daemon_state_reader);
 
-                        forking_loop(
-                            LoopWithBackoff {
-                                min_sleep_seconds: 10.,
-                                ..Default::default()
-                            },
-                            || -> Result<()> {
-                                let r = (|| -> Result<RunResult> {
-                                    let queues = open_queues(
-                                        &config_with_reload.run_config,
-                                        &global_app_state_dir,
-                                    )?;
-                                    let working_directory_pool = open_working_directory_pool(
-                                        &config_with_reload.run_config,
-                                        &working_directory_base_dir,
-                                    )?;
-                                    run_queues(
-                                        config,
-                                        config_with_reload,
-                                        queues,
-                                        working_directory_base_dir,
-                                        working_directory_pool,
-                                        &global_app_state_dir,
-                                        false,
-                                        !no_restart_on_upgrades,
-                                        Some(daemon_state_reader.clone_arc()),
-                                    )
-                                })();
-                                // (`forking_loop` could print, too, do that instead?)
-                                match r {
-                                    Err(e) => {
-                                        _ = writeln!(
-                                            &mut stderr(),
-                                            "error during run_queues {e:#}"
-                                        );
-                                    }
-                                    Ok(RunResult::OnceResult(_)) => {
-                                        unreachable!("daemon does not return for after one")
-                                    }
-                                    Ok(RunResult::StopOrRestart) => (),
-                                }
-                                Ok(())
-                            },
-                            || daemon_state_reader.want_exit(),
-                        )
+                        let r = (|| -> Result<RunResult> {
+                            let queues =
+                                open_queues(&config_with_reload.run_config, &global_app_state_dir)?;
+                            let working_directory_pool = open_working_directory_pool(
+                                &config_with_reload.run_config,
+                                &working_directory_base_dir,
+                            )?;
+                            run_queues(
+                                config,
+                                config_with_reload,
+                                queues,
+                                working_directory_base_dir,
+                                working_directory_pool,
+                                &global_app_state_dir,
+                                false,
+                                !no_restart_on_upgrades,
+                                Some(daemon_state_reader.clone_arc()),
+                            )
+                        })();
+                        match r {
+                            Err(e) => {
+                                _ = writeln!(&mut stderr(), "error during run_queues {e:#}");
+                            }
+                            Ok(RunResult::OnceResult(_)) => {
+                                unreachable!("daemon does not return after one")
+                            }
+                            Ok(RunResult::StopOrRestart) => (),
+                        }
                     };
 
                     let daemon = Daemon {
                         opts,
+                        restart_on_failures_default: true,
+                        restart_opts: None,
                         timestamp_opts: TimestampOpts {
                             use_rfc3339: true,
                             mode: TimestampMode::Automatic {
