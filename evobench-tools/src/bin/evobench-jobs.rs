@@ -249,7 +249,7 @@ enum SubCommand {
 
 #[derive(Debug, Clone, clap::Subcommand)]
 pub enum RunMode {
-    /// Run the single jobs that is first due.
+    /// Run the single job that is first due.
     One {
         /// Exit with code 1 if there is no runnable job
         #[clap(long)]
@@ -272,7 +272,7 @@ pub enum RunMode {
         /// defaults to the 'hard' actions.
         action: DaemonMode,
 
-        /// Do not check if the evobench-jobs binary is changed. By
+        /// Do not check if the evobench-jobs binary has changed. By
         /// default, the daemon restarts itself when it sees that the
         /// binary had its modification time changed.
         #[clap(long)]
