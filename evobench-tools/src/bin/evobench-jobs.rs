@@ -479,6 +479,8 @@ fn run_queues(
         None
     };
 
+    let _run_lock = get_run_lock(&config_with_reload.run_config, &global_app_state_dir)?;
+
     let mut run_context = RunContext::default();
     let mut last_config_reload_error = None;
     let versioned_dataset_dir = VersionedDatasetDir::new();
@@ -1257,8 +1259,6 @@ fn run() -> Result<Option<ExecutionResult>> {
         }
 
         SubCommand::Run { mode } => {
-            let _run_lock = get_run_lock(&conf, &global_app_state_dir)?;
-
             let open_working_directory_pool = |conf: &RunConfig,
                                                working_directory_base_dir: &Arc<
                 WorkingDirectoryPoolBaseDir,
