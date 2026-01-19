@@ -9,8 +9,7 @@ use std::{
 };
 
 use anyhow::{Result, bail};
-use cj_path_util::unix::polyfill::add_extension;
-use run_git::path_util::AppendToPath;
+use cj_path_util::{path_util::AppendToPath, unix::polyfill::add_extension};
 
 use crate::{
     ctx, info,

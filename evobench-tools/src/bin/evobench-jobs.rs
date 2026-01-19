@@ -7,10 +7,11 @@ use chj_unix_util::{
     polling_signals::PollingSignals,
 };
 use chrono::{DateTime, Local};
+use cj_path_util::path_util::AppendToPath;
 use clap::Parser;
 use itertools::Itertools;
 use lazy_static::lazy_static;
-use run_git::{git::GitWorkingDir, path_util::AppendToPath};
+use run_git::git::GitWorkingDir;
 use yansi::{Color, Style};
 
 use std::{

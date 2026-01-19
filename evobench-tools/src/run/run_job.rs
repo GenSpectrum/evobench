@@ -11,11 +11,10 @@ use std::{
 
 use anyhow::{Result, bail};
 use chrono::{DateTime, Local};
-use cj_path_util::path_util::rename_tmp_path;
+use cj_path_util::path_util::{AppendToPath, rename_tmp_path};
 use itertools::Itertools;
 use nix::{unistd::getpid, unistd::getuid};
 use regex::Regex;
-use run_git::path_util::AppendToPath;
 
 use crate::{
     config_file::ron_to_string_pretty,

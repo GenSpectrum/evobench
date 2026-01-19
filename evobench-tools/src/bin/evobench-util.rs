@@ -1,6 +1,7 @@
 use std::{ffi::OsString, path::PathBuf};
 
 use anyhow::{Result, bail};
+use cj_path_util::path_util::AppendToPath;
 use clap::Parser;
 
 use evobench_tools::{
@@ -19,7 +20,6 @@ use evobench_tools::{
     util::grep_diff::GrepDiffRegion,
     utillib::logging::{LogLevelOpt, set_log_level},
 };
-use run_git::path_util::AppendToPath;
 
 #[derive(clap::Parser, Debug)]
 #[clap(next_line_help = true)]

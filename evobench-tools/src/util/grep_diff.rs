@@ -2,9 +2,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Result, anyhow, bail};
 use chrono::{DateTime, FixedOffset};
+use cj_path_util::path_util::AppendToPath;
 use itertools::Itertools;
 use regex::Regex;
-use run_git::path_util::AppendToPath;
 
 use crate::{
     ctx,

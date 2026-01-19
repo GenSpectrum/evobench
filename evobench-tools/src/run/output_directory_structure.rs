@@ -8,8 +8,8 @@ use std::{
 };
 
 use anyhow::{Result, anyhow, bail};
+use cj_path_util::path_util::AppendToPath;
 use kstring::KString;
-use run_git::path_util::AppendToPath;
 
 use crate::{
     ctx,

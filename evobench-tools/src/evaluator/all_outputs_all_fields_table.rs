@@ -6,7 +6,8 @@ use std::{
 };
 
 use anyhow::{Result, anyhow, bail};
-use run_git::path_util::{AppendToPath, add_extension};
+use cj_path_util::path_util::AppendToPath;
+use run_git::path_util::add_extension;
 
 use crate::{
     config_file::ron_to_file_pretty,

@@ -1,7 +1,7 @@
 use std::{fs::create_dir_all, path::PathBuf};
 
 use anyhow::Result;
-use run_git::path_util::AppendToPath;
+use cj_path_util::path_util::AppendToPath;
 
 use crate::{ctx, utillib::home::home_dir};
 

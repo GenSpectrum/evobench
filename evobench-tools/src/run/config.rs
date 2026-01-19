@@ -9,8 +9,8 @@ use std::{
 
 use anyhow::{Context, Result, anyhow, bail};
 use chrono::{DateTime, Local};
+use cj_path_util::path_util::AppendToPath;
 use kstring::KString;
-use run_git::path_util::AppendToPath;
 
 use crate::{
     config_file::{ConfigFile, DefaultConfigPath, ron_to_string_pretty},

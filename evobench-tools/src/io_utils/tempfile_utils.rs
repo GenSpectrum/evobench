@@ -7,11 +7,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use cj_path_util::path_util::AppendToPath;
 use nix::{
     errno::Errno,
     unistd::{Gid, Uid, chown, getpid, gettid},
 };
-use run_git::path_util::AppendToPath;
 
 use crate::info;
 
