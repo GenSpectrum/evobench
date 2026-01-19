@@ -205,6 +205,8 @@ fn main() -> Result<()> {
 
     set_log_level(log_level.try_into()?);
 
+    let config = config.map(Into::into);
+
     match subcommand {
         SubCommand::GrepDiff {
             regex_start,
@@ -219,7 +221,7 @@ fn main() -> Result<()> {
         }
 
         SubCommand::PostProcessSingle { run_dir, no_stats } => {
-            let run_config_with_reload = RunConfigWithReload::load(config.as_ref(), |msg| {
+            let run_config_with_reload = RunConfigWithReload::load(config, |msg| {
                 bail!("can't load config: {msg}")
             })?;
             let run_config = &run_config_with_reload.run_config;
@@ -235,7 +237,7 @@ fn main() -> Result<()> {
             no_single_stats,
             no_summary_stats,
         } => {
-            let run_config_with_reload = RunConfigWithReload::load(config.as_ref(), |msg| {
+            let run_config_with_reload = RunConfigWithReload::load(config, |msg| {
                 bail!("can't load config: {msg}")
             })?;
             let run_config = &run_config_with_reload.run_config;

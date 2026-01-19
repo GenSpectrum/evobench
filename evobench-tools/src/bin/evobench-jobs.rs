@@ -21,7 +21,7 @@ use std::{
     fmt::Display,
     io::{BufWriter, IsTerminal, Write, stderr, stdout},
     os::unix::{ffi::OsStrExt, process::CommandExt},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Command, exit},
     str::FromStr,
     sync::{Arc, atomic::Ordering},
@@ -454,7 +454,6 @@ enum RunResult {
 /// changes; it also returns in non-once mode if the binary changes
 /// and true was given for `restart_on_upgrades`.
 fn run_queues(
-    config_path: Option<PathBuf>,
     mut config_with_reload: RunConfigWithReload,
     mut queues: RunQueues,
     working_directory_base_dir: Arc<WorkingDirectoryPoolBaseDir>,
@@ -616,7 +615,7 @@ fn run_queues(
                     .into_inner();
         }
 
-        match config_with_reload.perhaps_reload_config(config_path.as_ref()) {
+        match config_with_reload.perhaps_reload_config() {
             Ok(Some(new_config_with_reload)) => {
                 last_config_reload_error = None;
                 // XX only if changed
@@ -711,6 +710,8 @@ fn run() -> Result<Option<ExecutionResult>> {
     // this.)
     LOG_LOCAL_TIME.store(true, Ordering::SeqCst);
 
+    let config: Option<Arc<Path>> = config.map(Into::into);
+
     // COPY-PASTE from List action in jobqueue.rs
     let get_filename = |entry: &Entry<_, _>| -> Result<String> {
         let file_name = entry.file_name();
@@ -734,7 +735,7 @@ fn run() -> Result<Option<ExecutionResult>> {
     }
 
     let config_with_reload =
-        RunConfigWithReload::load(config.as_ref(), |msg| bail!("need a config file, {msg}"))?;
+        RunConfigWithReload::load(config, |msg| bail!("need a config file, {msg}"))?;
 
     let conf = &config_with_reload.run_config;
 
@@ -1279,7 +1280,6 @@ fn run() -> Result<Option<ExecutionResult>> {
                         &working_directory_base_dir,
                     )?;
                     match run_queues(
-                        config,
                         config_with_reload,
                         queues,
                         working_directory_base_dir,
@@ -1327,7 +1327,6 @@ fn run() -> Result<Option<ExecutionResult>> {
                                 &working_directory_base_dir,
                             )?;
                             run_queues(
-                                config,
                                 config_with_reload,
                                 queues,
                                 working_directory_base_dir,

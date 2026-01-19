@@ -59,9 +59,11 @@ fn main() -> Result<()> {
 
     set_log_level(log_level.try_into()?);
 
+    let config = config.map(Into::into);
+
     match subcommand {
         SubCommand::Run => {
-            let run_config_with_reload = RunConfigWithReload::load(config.as_ref(), |msg| {
+            let run_config_with_reload = RunConfigWithReload::load(config, |msg| {
                 bail!("can't load config: {msg}")
             })?;
             let run_config = &run_config_with_reload.run_config;

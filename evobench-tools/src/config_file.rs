@@ -3,11 +3,11 @@
 //! TODO: integrate `serde_path_to_error` crate
 
 use std::{
-    borrow::Borrow,
-    borrow::Cow,
+    borrow::{Borrow, Cow},
     fmt::Display,
     ops::Deref,
     path::{Path, PathBuf},
+    sync::Arc,
     time::SystemTime,
 };
 
@@ -21,6 +21,7 @@ use crate::{
     json5_from_str::{Json5FromStrError, json5_from_str},
     serde::proper_filename::ProperFilename,
     utillib::{
+        arc::CloneArc,
         home::{HomeError, home_dir},
         slice_or_box::SliceOrBox,
     },
@@ -229,7 +230,7 @@ pub trait DefaultConfigPath: DeserializeOwned {
 }
 
 struct PathAndTrack {
-    path: PathBuf,
+    path: Arc<Path>,
     mtime: SystemTime,
 }
 
@@ -255,10 +256,7 @@ impl<T: DeserializeOwned + DefaultConfigPath> ConfigFile<T> {
     /// instance. Currently only checks the file that it was loaded
     /// from for changes; if this config was a default from `or_else`,
     /// no check is done at all.  XX error concept how exactly?
-    pub fn perhaps_reload_config<P: AsRef<Path>>(
-        &self,
-        provided_path: Option<P>,
-    ) -> Result<Option<Self>> {
+    pub fn perhaps_reload_config(&self) -> Result<Option<Self>> {
         if let Some(PathAndTrack { path, mtime }) = self.path_and_track.as_ref() {
             match std::fs::metadata(path) {
                 Ok(s) => match s.modified() {
@@ -266,8 +264,9 @@ impl<T: DeserializeOwned + DefaultConfigPath> ConfigFile<T> {
                         if m == *mtime {
                             Ok(None)
                         } else {
-                            let val =
-                                Self::load_config(provided_path, |_| bail!("config missing"))?;
+                            let val = Self::load_config(Some(path.clone_arc()), |_| {
+                                bail!("config missing")
+                            })?;
                             Ok(Some(val))
                         }
                     }
@@ -287,38 +286,34 @@ impl<T: DeserializeOwned + DefaultConfigPath> ConfigFile<T> {
     /// otherwise `or_else` is called with a message mentioning what
     /// was tried; it can issue an error or generate a default config
     /// value.
-    pub fn load_config<P: AsRef<Path>>(
-        path: Option<P>,
+    pub fn load_config(
+        path: Option<Arc<Path>>,
         or_else: impl FnOnce(String) -> Result<T>,
     ) -> Result<Self> {
-        let load_config = |path: &Path, backend: ConfigBackend| {
-            let config = backend.load_config_file(path)?;
-            let mtime = std::fs::metadata(path)?.modified()?;
+        let load_config = |path: Arc<Path>, backend: ConfigBackend| {
+            let config = backend.load_config_file(&path)?;
+            let mtime = std::fs::metadata(&path)?.modified()?;
             Ok(Self {
                 config,
-                path_and_track: Some(PathAndTrack {
-                    path: path.to_owned(),
-                    mtime,
-                }),
+                path_and_track: Some(PathAndTrack { path, mtime }),
             })
         };
 
         if let Some(path) = path {
-            let path = path.as_ref();
-            let backend = backend_from_path(path)?;
+            let backend = backend_from_path(&path)?;
             load_config(path, backend)
         } else {
             if let Some(file_name) = T::default_config_file_name_without_suffix()? {
                 let mut default_paths_tried = Vec::new();
                 for config_dir in T::default_config_dirs().iter() {
                     let path = config_dir.append_file_name(&file_name)?;
-                    let path_and_backends: Vec<_> = FILE_EXTENSIONS
+                    let path_and_backends: Vec<(Arc<Path>, &ConfigBackend)> = FILE_EXTENSIONS
                         .into_iter()
                         .map(|(extension, backend)| {
                             let path = add_extension(&path, extension)
                                 .ok_or_else(|| anyhow!("path is missing a file name: {path:?}"))?;
                             if path.exists() {
-                                Ok(Some((path, backend)))
+                                Ok(Some((path.into(), backend)))
                             } else {
                                 default_paths_tried.push(path);
                                 Ok(None)
@@ -331,7 +326,7 @@ impl<T: DeserializeOwned + DefaultConfigPath> ConfigFile<T> {
                         1 => {
                             let (path, backend) = &path_and_backends[0];
                             debug!("found config at {path:?}");
-                            return load_config(&path, **backend);
+                            return load_config(path.clone_arc(), **backend);
                         }
                         _ => {
                             let paths = path_and_backends
