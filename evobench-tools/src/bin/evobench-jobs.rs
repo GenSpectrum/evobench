@@ -1235,7 +1235,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                 } => {
                     let local_time = opts.logging_opts.local_time;
 
-                    let run = |daemon_check_exit: CheckExit| -> () {
+                    let run = |daemon_check_exit: CheckExit| -> Result<()> {
                         // Use the requested time setting for
                         // local time stamp generation, too (now
                         // the default is UTC, which is expected
@@ -1244,12 +1244,8 @@ fn run() -> Result<Option<ExecutionResult>> {
 
                         set_log_level(log_level);
 
-                        match try_run_poll(Some(daemon_check_exit)) {
-                            Ok(_) => (),
-                            Err(e) => {
-                                _ = writeln!(&mut stderr(), "error during polling {e:#}");
-                            }
-                        }
+                        try_run_poll(Some(daemon_check_exit))?;
+                        Ok(())
                     };
 
                     let config_file = run_config_bundle.config_file.clone_arc();
@@ -1327,7 +1323,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                     let paths = conf.run_jobs_daemon.clone();
                     let local_time = opts.logging_opts.local_time;
                     let config_file = run_config_bundle.config_file.clone_arc();
-                    let run = |daemon_check_exit: CheckExit| -> () {
+                    let run = |daemon_check_exit: CheckExit| -> Result<()> {
                         // Use the requested time setting for
                         // local time stamp generation, too (now
                         // the default is UTC, which is expected
@@ -1336,30 +1332,20 @@ fn run() -> Result<Option<ExecutionResult>> {
 
                         set_log_level(log_level);
 
-                        let r = (|| -> Result<RunResult> {
-                            let queues = open_queues(&run_config_bundle)?;
-                            let working_directory_pool = open_working_directory_pool(
-                                &run_config_bundle.run_config,
-                                &working_directory_base_dir,
-                            )?;
-                            run_queues(
-                                run_config_bundle,
-                                queues,
-                                working_directory_base_dir,
-                                working_directory_pool,
-                                false,
-                                Some(daemon_check_exit.clone()),
-                            )
-                        })();
-                        match r {
-                            Err(e) => {
-                                _ = writeln!(&mut stderr(), "error during run_queues {e:#}");
-                            }
-                            Ok(RunResult::OnceResult(_)) => {
-                                unreachable!("daemon does not return after one")
-                            }
-                            Ok(RunResult::StopOrRestart) => (),
-                        }
+                        let queues = open_queues(&run_config_bundle)?;
+                        let working_directory_pool = open_working_directory_pool(
+                            &run_config_bundle.run_config,
+                            &working_directory_base_dir,
+                        )?;
+                        run_queues(
+                            run_config_bundle,
+                            queues,
+                            working_directory_base_dir,
+                            working_directory_pool,
+                            false,
+                            Some(daemon_check_exit.clone()),
+                        )?;
+                        Ok(())
                     };
 
                     let other_restart_checks = restart_for_executable_change_opts
