@@ -1,8 +1,12 @@
 use anyhow::{Context, Result, anyhow, bail};
 use chj_unix_util::{
     daemon::{
-        Daemon, DaemonMode, DaemonOpts, DaemonStateReader, ExecutionResult, TimestampMode,
+        Daemon, DaemonCheckExit, DaemonMode, DaemonOpts, ExecutionResult, TimestampMode,
         TimestampOpts,
+        warrants_restart::{
+            RestartForConfigChangeOpts, RestartForExecutableChangeOpts,
+            RestartForExecutableOrConfigChange,
+        },
     },
     polling_signals::PollingSignals,
 };
@@ -31,10 +35,8 @@ use std::{
 
 use evobench_tools::{
     ask::ask_yn,
-    config_file::{self, backend_from_path, ron_to_string_pretty, save_config_file},
-    ctx,
-    date_and_time::system_time_with_display::SystemTimeWithDisplay,
-    debug,
+    config_file::{self, ConfigFile, backend_from_path, ron_to_string_pretty, save_config_file},
+    ctx, debug,
     get_terminal_width::get_terminal_width,
     git::GitHash,
     info,
@@ -49,7 +51,7 @@ use evobench_tools::{
             BenchmarkingJobSettingsOpts,
         },
         command_log_file::CommandLogFile,
-        config::{BenchmarkingCommand, RunConfig, RunConfigWithReload},
+        config::{BenchmarkingCommand, RunConfig, RunConfigOpts, RunConfigWithReload},
         dataset_dir_env_var::dataset_dir_for,
         env_vars::assert_evobench_env_var,
         global_app_state_dir::GlobalAppStateDir,
@@ -80,6 +82,9 @@ use evobench_tools::{
     },
     warn,
 };
+
+const DEFAULT_RESTART_ON_UPGRADES: bool = true;
+const DEFAULT_RESTART_ON_CONFIG_CHANGE: bool = true;
 
 lazy_static! {
     static ref UNICODE_IS_FINE: bool = (|| -> Option<bool> {
@@ -228,6 +233,9 @@ enum SubCommand {
         /// other) names do not resolve.
         #[clap(long)]
         no_fail: bool,
+
+        #[clap(subcommand)]
+        mode: RunMode,
     },
 
     /// Run the existing jobs; this takes a lock or stops with an
@@ -250,7 +258,8 @@ enum SubCommand {
 pub enum RunMode {
     /// Run the single job that is first due.
     One {
-        /// Exit with code 1 if there is no runnable job
+        /// Exit with code 1 if there is no runnable job / there were
+        /// no jobs to insert.
         #[clap(long)]
         false_if_none: bool,
     },
@@ -259,6 +268,10 @@ pub enum RunMode {
     Daemon {
         #[clap(flatten)]
         opts: DaemonOpts,
+        #[clap(flatten)]
+        restart_for_executable_change_opts: RestartForExecutableChangeOpts,
+        #[clap(flatten)]
+        restart_for_config_change_opts: RestartForConfigChangeOpts,
 
         /// The logging level while running as daemon (overrides the
         /// top-level logging options like --verbose, --debug,
@@ -271,12 +284,6 @@ pub enum RunMode {
         /// about it). Give `help` to see the options. evobench-jobs
         /// defaults to the 'hard' actions.
         action: DaemonMode,
-
-        /// Do not check if the evobench-jobs binary has changed. By
-        /// default, the daemon restarts itself when it sees that the
-        /// binary had its modification time changed.
-        #[clap(long)]
-        no_restart_on_upgrades: bool,
     },
 }
 
@@ -434,11 +441,8 @@ fn open_working_directory_pool(
     )
 }
 
-fn open_working_directory_change_signals(
-    conf: &RunConfig,
-    global_app_state_dir: &GlobalAppStateDir,
-) -> Result<PollingSignals> {
-    let signals_path = conf.working_directory_change_signals_path(global_app_state_dir)?;
+fn open_working_directory_change_signals(conf: &RunConfig) -> Result<PollingSignals> {
+    let signals_path = conf.working_directory_change_signals_path();
     PollingSignals::open(&signals_path, 0).map_err(ctx!("opening signals path {signals_path:?}"))
 }
 
@@ -449,40 +453,24 @@ enum RunResult {
     StopOrRestart,
 }
 
+type CheckExit<'t> =
+    DaemonCheckExit<'t, RestartForExecutableOrConfigChange<Arc<ConfigFile<RunConfigOpts>>>>;
+
 /// Run through the queues forever unless `once` is true (in which
 /// case it returns whether a job was run), but pick up config
 /// changes; it also returns in non-once mode if the binary changes
 /// and true was given for `restart_on_upgrades`.
-fn run_queues(
-    mut config_with_reload: RunConfigWithReload,
-    mut queues: RunQueues,
+fn run_queues<'ce>(
+    config_with_reload: RunConfigWithReload,
+    queues: RunQueues,
     working_directory_base_dir: Arc<WorkingDirectoryPoolBaseDir>,
     mut working_directory_pool: WorkingDirectoryPool,
-    global_app_state_dir: &GlobalAppStateDir,
     once: bool,
-    restart_on_upgrades: bool,
-    daemon_state_reader: Option<Arc<DaemonStateReader>>,
+    daemon_check_exit: Option<CheckExit<'ce>>,
 ) -> Result<RunResult> {
-    let opt_binary_and_mtime = if restart_on_upgrades {
-        let path = std::env::current_exe()?;
-        match path.metadata() {
-            Ok(m) => {
-                if let Ok(mtime) = m.modified() {
-                    Some((path, mtime))
-                } else {
-                    None
-                }
-            }
-            Err(_) => None,
-        }
-    } else {
-        None
-    };
-
-    let _run_lock = get_run_lock(&config_with_reload.run_config, &global_app_state_dir)?;
+    let _run_lock = get_run_lock(&config_with_reload.run_config)?;
 
     let mut run_context = RunContext::default();
-    let mut last_config_reload_error = None;
     let versioned_dataset_dir = VersionedDatasetDir::new();
 
     // Test-run
@@ -551,10 +539,8 @@ fn run_queues(
         working_directory_pool.working_directory_cleanup(token)?;
     }
 
-    let mut working_directory_change_signals = open_working_directory_change_signals(
-        &config_with_reload.run_config,
-        global_app_state_dir,
-    )?;
+    let mut working_directory_change_signals =
+        open_working_directory_change_signals(&config_with_reload.run_config)?;
 
     loop {
         // XX handle errors without exiting? Or do that above
@@ -582,27 +568,9 @@ fn run_queues(
         // XX have something better than polling?
         thread::sleep(Duration::from_secs(1));
 
-        if let Some(daemon_state_reader) = daemon_state_reader.as_ref() {
-            if daemon_state_reader.want_exit() {
+        if let Some(daemon_check_exit) = daemon_check_exit.as_ref() {
+            if daemon_check_exit.want_exit() {
                 return Ok(RunResult::StopOrRestart);
-            }
-        }
-
-        // Has our binary been updated?
-        if let Some((binary, mtime)) = &opt_binary_and_mtime {
-            if let Ok(metadata) = binary.metadata() {
-                if let Ok(new_mtime) = metadata.modified() {
-                    // if new_mtime > *mtime {  ? or allow downgrades, too:
-                    if new_mtime != *mtime {
-                        info!(
-                            "this binary at {binary:?} has updated, \
-                             from {} to {}, going to re-exec",
-                            SystemTimeWithDisplay(*mtime),
-                            SystemTimeWithDisplay(new_mtime)
-                        );
-                        return Ok(RunResult::StopOrRestart);
-                    }
-                }
             }
         }
 
@@ -613,38 +581,6 @@ fn run_queues(
             working_directory_pool =
                 open_working_directory_pool(conf, working_directory_base_dir.clone_arc(), true)?
                     .into_inner();
-        }
-
-        match config_with_reload.perhaps_reload_config() {
-            Ok(Some(new_config_with_reload)) => {
-                last_config_reload_error = None;
-                // XX only if changed
-                info!("reloaded configuration, re-initializing");
-                drop(queues);
-                drop(working_directory_pool);
-                config_with_reload = new_config_with_reload;
-                let conf = &config_with_reload.run_config;
-                // XX handle errors without exiting? Or do that above
-                queues = RunQueues::open(conf.queues.clone_arc(), true, &global_app_state_dir)?;
-                working_directory_pool = open_working_directory_pool(
-                    conf,
-                    working_directory_base_dir.clone_arc(),
-                    true,
-                )?
-                .into_inner();
-            }
-            Ok(None) => {
-                last_config_reload_error = None;
-            }
-            Err(e) => {
-                let e_str = format!("{e:#?}");
-                if let Some(last_e_str) = &last_config_reload_error {
-                    if *last_e_str != e_str {
-                        info!("note: attempting to reload configuration yielded error: {e_str}");
-                        last_config_reload_error = Some(e_str);
-                    }
-                }
-            }
         }
     }
 }
@@ -658,13 +594,8 @@ enum GetRunLockError {
 }
 
 // omg the error handling.
-fn get_run_lock(
-    conf: &RunConfig,
-    global_app_state_dir: &GlobalAppStateDir,
-) -> Result<StandaloneExclusiveFileLock, GetRunLockError> {
-    let run_lock_path = conf
-        .run_jobs_instance_basedir(global_app_state_dir)
-        .map_err(GetRunLockError::Generic)?;
+fn get_run_lock(conf: &RunConfig) -> Result<StandaloneExclusiveFileLock, GetRunLockError> {
+    let run_lock_path = &conf.run_jobs_daemon.state_dir;
 
     match StandaloneExclusiveFileLock::try_lock_path(run_lock_path, || {
         "getting the global lock for running jobs".into()
@@ -684,8 +615,8 @@ fn get_run_lock(
 /// Checks via temporary flock. XX should use shared for this, oh
 /// my. Already have such code in flock module, too! Make properly
 /// usable.
-fn daemon_is_running(conf: &RunConfig, global_app_state_dir: &GlobalAppStateDir) -> Result<bool> {
-    match get_run_lock(&conf, &global_app_state_dir) {
+fn daemon_is_running(conf: &RunConfig) -> Result<bool> {
+    match get_run_lock(conf) {
         Ok(_) => Ok(false),
         Err(e) => match &e {
             GetRunLockError::AlreadyLocked(_) => Ok(true),
@@ -734,37 +665,46 @@ fn run() -> Result<Option<ExecutionResult>> {
         _ => (),
     }
 
-    let config_with_reload =
-        RunConfigWithReload::load(config, |msg| bail!("need a config file, {msg}"))?;
+    let config_with_reload = RunConfigWithReload::load(
+        config,
+        |msg| bail!("need a config file, {msg}"),
+        GlobalAppStateDir::new()?,
+    )?;
 
     let conf = &config_with_reload.run_config;
 
-    let global_app_state_dir = GlobalAppStateDir::new()?;
-
     let working_directory_base_dir = Arc::new(WorkingDirectoryPoolBaseDir::new(
         &conf.working_directory_pool,
-        &|| global_app_state_dir.working_directory_pool_base(),
+        &|| {
+            config_with_reload
+                .global_app_state_dir
+                .working_directory_pool_base()
+        },
     )?);
 
-    let open_queues = |conf: &RunConfig, global_app_state_dir| {
-        RunQueues::open(conf.queues.clone_arc(), true, global_app_state_dir)
+    let open_queues = |config_with_reload: &RunConfigWithReload| {
+        RunQueues::open(
+            config_with_reload.run_config.queues.clone_arc(),
+            true,
+            &config_with_reload.global_app_state_dir,
+        )
     };
     let mut queues = lazyresult! {
-        open_queues(conf, &global_app_state_dir)
+        open_queues(&config_with_reload)
     };
 
     match subcommand {
         SubCommand::ConfigFormats => unreachable!("already dispatched above"),
 
         SubCommand::ConfigSave { output_path } => {
-            save_config_file(&output_path, &*config_with_reload.config_file)?;
+            save_config_file(&output_path, &**config_with_reload.config_file)?;
             Ok(None)
         }
 
         SubCommand::ListAll {
             terminal_table_opts,
         } => {
-            let already_inserted = open_already_inserted(&global_app_state_dir)?;
+            let already_inserted = open_already_inserted(&config_with_reload.global_app_state_dir)?;
 
             let mut flat_jobs: Vec<(BenchmarkingJobParameters, SystemTime)> = Vec::new();
             for job in already_inserted
@@ -1127,7 +1067,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                     Some(&conf.benchmarking_job_settings),
                     &conf.job_templates_for_insert,
                 )?,
-                &global_app_state_dir,
+                &config_with_reload.global_app_state_dir,
                 &conf.remote_repository.url,
                 force_opt,
                 quiet_opt,
@@ -1147,7 +1087,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                     Some(&conf.benchmarking_job_settings),
                     &conf.job_templates_for_insert,
                 )?,
-                &global_app_state_dir,
+                &config_with_reload.global_app_state_dir,
                 &conf.remote_repository.url,
                 force_opt,
                 quiet_opt,
@@ -1186,7 +1126,7 @@ fn run() -> Result<Option<ExecutionResult>> {
             let queues = queues.force()?;
             let n = insert_jobs(
                 benchmarking_jobs,
-                &global_app_state_dir,
+                &config_with_reload.global_app_state_dir,
                 &conf.remote_repository.url,
                 force_opt,
                 quiet_opt,
@@ -1200,63 +1140,143 @@ fn run() -> Result<Option<ExecutionResult>> {
             force,
             quiet,
             no_fail,
+            mode,
         } => {
-            let (commits, non_resolving) = {
-                let mut polling_pool = PollingPool::open(
-                    &conf.remote_repository.url,
-                    &global_app_state_dir.working_directory_for_polling_pool_base()?,
-                )?;
+            // Returns whether at least 1 job was inserted
+            let mut try_run_poll = |daemon_check_exit: Option<CheckExit>| -> Result<bool> {
+                loop {
+                    let (commits, non_resolving) = {
+                        let mut polling_pool = PollingPool::open(
+                            &conf.remote_repository.url,
+                            &config_with_reload
+                                .global_app_state_dir
+                                .working_directory_for_polling_pool_base()?,
+                        )?;
 
-                let working_directory_id = polling_pool.updated_working_dir()?;
-                polling_pool.resolve_branch_names(
-                    working_directory_id,
-                    &conf.remote_repository.remote_branch_names_for_poll,
-                )?
-            };
-            let num_commits = commits.len();
+                        let working_directory_id = polling_pool.updated_working_dir()?;
+                        polling_pool.resolve_branch_names(
+                            working_directory_id,
+                            &conf.remote_repository.remote_branch_names_for_poll,
+                        )?
+                    };
+                    let num_commits = commits.len();
 
-            let mut benchmarking_jobs = Vec::new();
-            for (branch_name, commit_id, job_templates) in commits {
-                let opts = BenchmarkingJobOpts {
-                    reason: BenchmarkingJobReasonOpt {
-                        reason: branch_name.as_str().to_owned().into(),
-                    },
-                    benchmarking_job_settings: (*conf.benchmarking_job_settings).clone(),
-                    run_parameters: RunParametersOpts { commit_id },
-                };
-                benchmarking_jobs.append(&mut opts.complete_jobs(
-                    // already using conf.benchmarking_job_settings from above
-                    None,
-                    &job_templates,
-                )?);
-            }
-
-            let n_original = benchmarking_jobs.len();
-            let queues = queues.force()?;
-            let n = insert_jobs(
-                benchmarking_jobs,
-                &global_app_state_dir,
-                &conf.remote_repository.url,
-                ForceOpt { force },
-                // Must use quiet so that it can try to insert *all*
-                // given jobs (XX: should it continue even with
-                // errors, for the other code places?)
-                QuietOpt { quiet: true },
-                &queues,
-            )?;
-
-            if non_resolving.is_empty() || no_fail {
-                if !quiet {
-                    if n > 0 {
-                        println!("inserted {n}/{n_original} jobs (for {num_commits} commits)");
+                    let mut benchmarking_jobs = Vec::new();
+                    for (branch_name, commit_id, job_templates) in commits {
+                        let opts = BenchmarkingJobOpts {
+                            reason: BenchmarkingJobReasonOpt {
+                                reason: branch_name.as_str().to_owned().into(),
+                            },
+                            benchmarking_job_settings: (*conf.benchmarking_job_settings).clone(),
+                            run_parameters: RunParametersOpts { commit_id },
+                        };
+                        benchmarking_jobs.append(&mut opts.complete_jobs(
+                            // already using conf.benchmarking_job_settings from above
+                            None,
+                            &job_templates,
+                        )?);
                     }
+
+                    let n_original = benchmarking_jobs.len();
+                    let queues = queues.force()?;
+                    let n = insert_jobs(
+                        benchmarking_jobs,
+                        &config_with_reload.global_app_state_dir,
+                        &conf.remote_repository.url,
+                        ForceOpt { force },
+                        // Must use quiet so that it can try to insert *all*
+                        // given jobs (XX: should it continue even with
+                        // errors, for the other code places?)
+                        QuietOpt { quiet: true },
+                        &queues,
+                    )?;
+
+                    if non_resolving.is_empty() || no_fail {
+                        if !quiet {
+                            if n > 0 {
+                                println!(
+                                    "inserted {n}/{n_original} jobs (for {num_commits} commits)"
+                                );
+                            }
+                        }
+                    } else {
+                        bail!(
+                            "inserted {n}/{n_original} jobs (for {num_commits} commits), \
+                             but the following names did not resolve: {non_resolving:?}"
+                        )
+                    }
+
+                    if let Some(daemon_check_exit) = &daemon_check_exit {
+                        if daemon_check_exit.want_exit() {
+                            return Ok(n >= 1);
+                        }
+                    } else {
+                        return Ok(n >= 1);
+                    }
+
+                    std::thread::sleep(Duration::from_secs(15));
                 }
-                Ok(None)
-            } else {
-                bail!(
-                    "inserted {n}/{n_original} jobs (for {num_commits} commits), \
-                     but the following names did not resolve: {non_resolving:?}"
-                )
+            };
+
+            match mode {
+                RunMode::One { false_if_none } => {
+                    let did_insert = try_run_poll(None)?;
+                    if false_if_none && !did_insert {
+                        exit(1);
+                    }
+                    Ok(None)
+                }
+                RunMode::Daemon {
+                    opts,
+                    restart_for_executable_change_opts,
+                    restart_for_config_change_opts,
+                    log_level,
+                    action,
+                } => {
+                    let local_time = opts.local_time;
+
+                    let run = |daemon_check_exit: CheckExit| -> () {
+                        // Use the requested time setting for
+                        // local time stamp generation, too (now
+                        // the default is UTC, which is expected
+                        // for a daemon).
+                        LOG_LOCAL_TIME.store(local_time, Ordering::SeqCst);
+
+                        set_log_level(log_level);
+
+                        match try_run_poll(Some(daemon_check_exit)) {
+                            Ok(_) => (),
+                            Err(e) => {
+                                _ = writeln!(&mut stderr(), "error during polling {e:#}");
+                            }
+                        }
+                    };
+
+                    let config_file = config_with_reload.config_file.clone_arc();
+                    let other_restart_checks = restart_for_executable_change_opts
+                        .to_restarter(DEFAULT_RESTART_ON_UPGRADES)?
+                        .and_config_change_opts(
+                            restart_for_config_change_opts,
+                            DEFAULT_RESTART_ON_CONFIG_CHANGE,
+                            config_file,
+                        );
+                    let daemon = Daemon {
+                        opts,
+                        restart_on_failures_default: true,
+                        restart_opts: None,
+                        timestamp_opts: TimestampOpts {
+                            use_rfc3339: true,
+                            mode: TimestampMode::Automatic {
+                                mark_added_timestamps: true,
+                            },
+                        },
+                        paths: conf.polling_daemon.clone(),
+                        other_restart_checks,
+                        run,
+                    };
+                    let r = daemon.execute(action, DEFAULT_IS_HARD)?;
+                    Ok(Some(r))
+                }
             }
         }
 
@@ -1284,9 +1304,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                         queues,
                         working_directory_base_dir,
                         working_directory_pool,
-                        &global_app_state_dir,
                         true,
-                        false,
                         None,
                     )? {
                         RunResult::OnceResult(ran) => {
@@ -1301,14 +1319,15 @@ fn run() -> Result<Option<ExecutionResult>> {
                 }
                 RunMode::Daemon {
                     opts,
+                    restart_for_executable_change_opts,
+                    restart_for_config_change_opts,
                     log_level,
                     action,
-                    no_restart_on_upgrades,
                 } => {
-                    let state_dir = conf.daemon_state_dir(&global_app_state_dir)?.into();
-                    let log_dir = conf.daemon_log_dir(&global_app_state_dir)?.into();
+                    let paths = conf.run_jobs_daemon.clone();
                     let local_time = opts.local_time;
-                    let run = |daemon_state_reader: DaemonStateReader| -> () {
+                    let config_file = config_with_reload.config_file.clone_arc();
+                    let run = |daemon_check_exit: CheckExit| -> () {
                         // Use the requested time setting for
                         // local time stamp generation, too (now
                         // the default is UTC, which is expected
@@ -1317,11 +1336,8 @@ fn run() -> Result<Option<ExecutionResult>> {
 
                         set_log_level(log_level);
 
-                        let daemon_state_reader = Arc::new(daemon_state_reader);
-
                         let r = (|| -> Result<RunResult> {
-                            let queues =
-                                open_queues(&config_with_reload.run_config, &global_app_state_dir)?;
+                            let queues = open_queues(&config_with_reload)?;
                             let working_directory_pool = open_working_directory_pool(
                                 &config_with_reload.run_config,
                                 &working_directory_base_dir,
@@ -1331,10 +1347,8 @@ fn run() -> Result<Option<ExecutionResult>> {
                                 queues,
                                 working_directory_base_dir,
                                 working_directory_pool,
-                                &global_app_state_dir,
                                 false,
-                                !no_restart_on_upgrades,
-                                Some(daemon_state_reader.clone_arc()),
+                                Some(daemon_check_exit.clone()),
                             )
                         })();
                         match r {
@@ -1348,6 +1362,14 @@ fn run() -> Result<Option<ExecutionResult>> {
                         }
                     };
 
+                    let other_restart_checks = restart_for_executable_change_opts
+                        .to_restarter(DEFAULT_RESTART_ON_UPGRADES)?
+                        .and_config_change_opts(
+                            restart_for_config_change_opts,
+                            DEFAULT_RESTART_ON_CONFIG_CHANGE,
+                            config_file,
+                        );
+
                     let daemon = Daemon {
                         opts,
                         restart_on_failures_default: true,
@@ -1358,8 +1380,8 @@ fn run() -> Result<Option<ExecutionResult>> {
                                 mark_added_timestamps: true,
                             },
                         },
-                        state_dir,
-                        log_dir,
+                        paths,
+                        other_restart_checks,
                         run,
                     };
 
@@ -1428,9 +1450,8 @@ fn run() -> Result<Option<ExecutionResult>> {
                 }
             };
 
-            let mut working_directory_change_signals = lazyresult!(
-                open_working_directory_change_signals(conf, &global_app_state_dir)
-            );
+            let mut working_directory_change_signals =
+                lazyresult!(open_working_directory_change_signals(conf));
 
             match subcommand {
                 WdSubCommand::List {
@@ -1605,7 +1626,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                                     Status::Examination => false,
                                 };
                                 if status_is_in_use {
-                                    if daemon_is_running(conf, &global_app_state_dir)? {
+                                    if daemon_is_running(conf)? {
                                         bail!(
                                             "working directory {id} is in use and \
                                              the daemon is running"

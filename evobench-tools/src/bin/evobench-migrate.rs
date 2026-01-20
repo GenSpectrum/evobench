@@ -63,16 +63,20 @@ fn main() -> Result<()> {
 
     match subcommand {
         SubCommand::Run => {
-            let run_config_with_reload = RunConfigWithReload::load(config, |msg| {
-                bail!("can't load config: {msg}")
-            })?;
+            let run_config_with_reload = RunConfigWithReload::load(
+                config,
+                |msg| bail!("can't load config: {msg}"),
+                GlobalAppStateDir::new()?,
+            )?;
             let run_config = &run_config_with_reload.run_config;
-            let global_app_state_dir = GlobalAppStateDir::new()?;
 
             info!("migrating the queues");
             {
-                let queues =
-                    RunQueues::open(run_config.queues.clone_arc(), true, &global_app_state_dir)?;
+                let queues = RunQueues::open(
+                    run_config.queues.clone_arc(),
+                    true,
+                    &run_config_with_reload.global_app_state_dir,
+                )?;
                 for queue in queues.all_queues() {
                     info!("migrating queue {:?}", queue.file_name.as_str());
                     let n = migrate_queue(queue)?;
@@ -81,7 +85,8 @@ fn main() -> Result<()> {
             }
 
             info!("migrating the already_inserted table");
-            let already_inserted = open_already_inserted(&global_app_state_dir)?;
+            let already_inserted =
+                open_already_inserted(&run_config_with_reload.global_app_state_dir)?;
             let n = migrate_already_inserted(&already_inserted)?;
             info!("migrated {n} items in the already_inserted table");
         }

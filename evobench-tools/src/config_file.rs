@@ -1,10 +1,11 @@
-//! Simple generic config file loader.
+//! Generic config file loader that supports reloading.
 
 //! TODO: integrate `serde_path_to_error` crate
 
 use std::{
     borrow::{Borrow, Cow},
     fmt::Display,
+    io::stderr,
     ops::Deref,
     path::{Path, PathBuf},
     sync::Arc,
@@ -12,6 +13,7 @@ use std::{
 };
 
 use anyhow::{Result, anyhow, bail};
+use chj_unix_util::daemon::warrants_restart::WarrantsRestart;
 use cj_path_util::{path_util::AppendToPath, unix::polyfill::add_extension};
 use serde::{Serialize, de::DeserializeOwned};
 
@@ -352,6 +354,21 @@ impl<T: DeserializeOwned + DefaultConfigPath> ConfigFile<T> {
                     config,
                     path_and_track: None,
                 })
+            }
+        }
+    }
+}
+
+impl<T: DeserializeOwned + DefaultConfigPath> WarrantsRestart for ConfigFile<T> {
+    fn warrants_restart(&self) -> bool {
+        match self.perhaps_reload_config() {
+            Ok(Some(_)) => true,
+            Ok(None) => false,
+            Err(e) => {
+                use std::io::Write;
+
+                _ = write!(&mut stderr(), "could not reload config file: {e:#}");
+                false
             }
         }
     }

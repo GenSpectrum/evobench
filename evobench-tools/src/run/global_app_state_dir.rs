@@ -27,20 +27,10 @@ impl GlobalAppStateDir {
         Ok(Self { base_dir })
     }
 
-    fn subdir(&self, dir_name: &str) -> Result<PathBuf> {
+    pub fn subdir(&self, dir_name: &str) -> Result<PathBuf> {
         let dir = (&self.base_dir).append(dir_name);
         create_dir_all(&dir).map_err(ctx!("creating dir {dir:?}"))?;
         Ok(dir)
-    }
-
-    /// Directory used for:
-    ///
-    ///  * ensuring via flock on the directory that only one runner
-    ///    instance is running,
-    ///  * holding additional files specific for
-    ///    that instance, e.g. `PollingSignals` files
-    pub fn default_run_jobs_instance_basedir(&self) -> Result<PathBuf> {
-        self.subdir("run_jobs_instance")
     }
 
     pub fn run_queues_basedir(&self) -> Result<PathBuf> {

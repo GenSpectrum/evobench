@@ -8,6 +8,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow, bail};
+use chj_unix_util::daemon::DaemonPaths;
 use chrono::{DateTime, Local};
 use cj_path_util::path_util::AppendToPath;
 use kstring::KString;
@@ -476,6 +477,38 @@ pub struct EvalSettings {
     pub show_thread_number: bool,
 }
 
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "DaemonPaths")]
+pub struct DaemonPathsOpts {
+    /// Where the lock/pid files should be written to (is created if missing).
+    pub state_dir: Option<TildePath<PathBuf>>,
+    /// Where the log files should be written to (is created if missing).
+    pub log_dir: Option<TildePath<PathBuf>>,
+}
+
+impl DaemonPathsOpts {
+    fn check(
+        &self,
+        global_app_state_dir: &GlobalAppStateDir,
+        default_state_subdir: &str,
+    ) -> Result<DaemonPaths> {
+        let DaemonPathsOpts { state_dir, log_dir } = self;
+
+        let state_dir: Arc<Path> = if let Some(path) = state_dir {
+            path.resolve()?.into()
+        } else {
+            global_app_state_dir.subdir(default_state_subdir)?.into()
+        };
+        let log_dir = if let Some(path) = log_dir {
+            path.resolve()?.into()
+        } else {
+            (&state_dir).append("logs").into()
+        };
+        Ok(DaemonPaths { state_dir, log_dir })
+    }
+}
+
 /// Direct representation of the evobench-jobs config file
 // For why `Arc` is used, see `docs/hacking.md`
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -483,16 +516,6 @@ pub struct EvalSettings {
 #[serde(rename = "RunConfig")]
 pub struct RunConfigOpts {
     pub queues: Arc<QueuesConfig>,
-
-    /// The path to the directory that job runners (`evobench-jobs run
-    /// ...`) lock (with error when taken), and for additional files
-    /// specific for that instance. By default,
-    /// `~/.evobench-jobs/run_jobs_instance`.
-    pub run_jobs_instance_basedir: Option<Arc<TildePath<PathBuf>>>,
-
-    /// The path to the directory where `evobench-jobs run daemon` writes logs to. By default,
-    /// `~/.evobench-jobs/run_jobs_instance/logs`.
-    pub daemon_log_dir: Option<Arc<TildePath<PathBuf>>>,
 
     pub working_directory_pool: Arc<WorkingDirectoryPoolOpts>,
 
@@ -533,6 +556,16 @@ pub struct RunConfigOpts {
     /// directory.
     pub output_base_dir: Arc<TildePath<PathBuf>>,
 
+    /// The paths for the `evobench-jobs run daemon`. The defaults are
+    /// `~/.evobench-jobs/run_jobs_daemon` for the `state_dir` and
+    /// the `logs` subdir below that for `logs_dir`.  The paths
+    /// support `~/` notation.
+    run_jobs_daemon: DaemonPathsOpts,
+
+    /// The same as above for the `evobench-jobs poll daemon`, just
+    /// with the `polling_daemon` subdir as the default.
+    polling_daemon: DaemonPathsOpts,
+
     /// Optional directory holding directories whose name is taken
     /// from the (optional, depending on the configuration) `DATASET`
     /// custom variable (hacky to mis-use a custom variable for
@@ -569,8 +602,8 @@ impl DefaultConfigPath for RunConfigOpts {
 /// Checked, produced from `RunConfigOpts`, for docs see there.
 pub struct RunConfig {
     pub queues: Arc<QueuesConfig>,
-    run_jobs_instance_basedir: Option<PathBuf>,
-    daemon_log_dir: Option<PathBuf>,
+    pub run_jobs_daemon: DaemonPaths,
+    pub polling_daemon: DaemonPaths,
     pub working_directory_pool: Arc<WorkingDirectoryPoolOpts>,
     // targets: BTreeMap<ProperDirname, Arc<BenchmarkingTarget>>,
     pub job_template_lists: BTreeMap<KString, Arc<[JobTemplate]>>,
@@ -585,45 +618,16 @@ pub struct RunConfig {
 }
 
 impl RunConfig {
-    pub fn run_jobs_instance_basedir(
-        &self,
-        global_app_state_dir: &GlobalAppStateDir,
-    ) -> Result<PathBuf> {
-        if let Some(path) = &self.run_jobs_instance_basedir {
-            Ok(path.into())
-        } else {
-            global_app_state_dir.default_run_jobs_instance_basedir()
-        }
-    }
-
-    pub fn working_directory_change_signals_path(
-        &self,
-        global_app_state_dir: &GlobalAppStateDir,
-    ) -> Result<PathBuf> {
-        self.run_jobs_instance_basedir(global_app_state_dir)
-            .map(|p| p.append("working_directory_change.signals"))
-    }
-
-    pub fn daemon_state_dir(&self, global_app_state_dir: &GlobalAppStateDir) -> Result<PathBuf> {
-        self.run_jobs_instance_basedir(global_app_state_dir)
-    }
-
-    pub fn daemon_log_dir(&self, global_app_state_dir: &GlobalAppStateDir) -> Result<PathBuf> {
-        if let Some(daemon_log_dir) = &self.daemon_log_dir {
-            Ok(daemon_log_dir.into())
-        } else {
-            Ok(self.daemon_state_dir(global_app_state_dir)?.append("logs"))
-        }
+    pub fn working_directory_change_signals_path(&self) -> PathBuf {
+        (&self.run_jobs_daemon.state_dir).append("working_directory_change.signals")
     }
 }
 
 impl RunConfigOpts {
     /// Don't take ownership since RunConfigWithReload can't give it
-    pub fn check(&self) -> Result<RunConfig> {
+    pub fn check(&self, global_app_state_dir: &GlobalAppStateDir) -> Result<RunConfig> {
         let RunConfigOpts {
             queues,
-            run_jobs_instance_basedir,
-            daemon_log_dir,
             working_directory_pool,
             targets,
             job_template_lists,
@@ -632,6 +636,8 @@ impl RunConfigOpts {
             eval_settings,
             remote_repository,
             output_base_dir,
+            run_jobs_daemon,
+            polling_daemon,
             versioned_datasets_base_dir,
             commit_tags_regex,
         } = self;
@@ -691,16 +697,6 @@ impl RunConfigOpts {
 
         Ok(RunConfig {
             queues: queues.clone_arc(),
-            run_jobs_instance_basedir: run_jobs_instance_basedir
-                .as_ref()
-                .map(|p| p.resolve())
-                .transpose()?
-                .map(|r| r.into()),
-            daemon_log_dir: daemon_log_dir
-                .as_ref()
-                .map(|p| p.resolve())
-                .transpose()?
-                .map(|r| r.into()),
             working_directory_pool: working_directory_pool.clone_arc(),
             job_template_lists,
             job_templates_for_insert,
@@ -715,37 +711,44 @@ impl RunConfigOpts {
                 .transpose()?
                 .map(Arc::<Path>::from),
             commit_tags_regex,
+            run_jobs_daemon: run_jobs_daemon.check(global_app_state_dir, "run_jobs_daemon")?,
+            polling_daemon: polling_daemon.check(global_app_state_dir, "polling_daemon")?,
         })
     }
 }
 
 pub struct RunConfigWithReload {
-    pub config_file: ConfigFile<RunConfigOpts>,
+    pub config_file: Arc<ConfigFile<RunConfigOpts>>,
     pub run_config: RunConfig,
+    pub global_app_state_dir: Arc<GlobalAppStateDir>,
 }
 
 impl RunConfigWithReload {
     pub fn load(
         provided_path: Option<Arc<Path>>,
         or_else: impl FnOnce(&str) -> Result<RunConfigOpts>,
+        global_app_state_dir: GlobalAppStateDir,
     ) -> Result<Self> {
         let config_file = ConfigFile::<RunConfigOpts>::load_config(provided_path, or_else)?;
-        let run_config = config_file.check()?;
+        let run_config = config_file.check(&global_app_state_dir)?;
         Ok(Self {
-            config_file,
+            config_file: config_file.into(),
             run_config,
+            global_app_state_dir: global_app_state_dir.into(),
         })
     }
 
-    pub fn perhaps_reload_config(&self) -> Result<Option<Self>> {
-        if let Some(config_file) = self.config_file.perhaps_reload_config()? {
-            let run_config = config_file.check()?;
-            Ok(Some(Self {
-                config_file,
-                run_config,
-            }))
-        } else {
-            Ok(None)
-        }
-    }
+    // XX obsolete now that we just restart on config change
+    // pub fn perhaps_reload_config(&self) -> Result<Option<Self>> {
+    //     if let Some(config_file) = self.config_file.perhaps_reload_config()? {
+    //         let run_config = config_file.check(&self.global_app_state_dir)?;
+    //         Ok(Some(Self {
+    //             config_file: config_file.into(),
+    //             run_config,
+    //             global_app_state_dir: self.global_app_state_dir.clone_arc(),
+    //         }))
+    //     } else {
+    //         Ok(None)
+    //     }
+    // }
 }
