@@ -461,21 +461,21 @@ type CheckExit<'t> =
 /// changes; it also returns in non-once mode if the binary changes
 /// and true was given for `restart_on_upgrades`.
 fn run_queues<'ce>(
-    config_with_reload: RunConfigBundle,
+    run_config_bundle: RunConfigBundle,
     queues: RunQueues,
     working_directory_base_dir: Arc<WorkingDirectoryPoolBaseDir>,
     mut working_directory_pool: WorkingDirectoryPool,
     once: bool,
     daemon_check_exit: Option<CheckExit<'ce>>,
 ) -> Result<RunResult> {
-    let _run_lock = get_run_lock(&config_with_reload.run_config)?;
+    let _run_lock = get_run_lock(&run_config_bundle.run_config)?;
 
     let mut run_context = RunContext::default();
     let versioned_dataset_dir = VersionedDatasetDir::new();
 
     // Test-run
     if let Some(versioned_dataset_base_dir) =
-        &config_with_reload.run_config.versioned_datasets_base_dir
+        &run_config_bundle.run_config.versioned_datasets_base_dir
     {
         debug!("Test-running versioned dataset search");
 
@@ -540,12 +540,12 @@ fn run_queues<'ce>(
     }
 
     let mut working_directory_change_signals =
-        open_working_directory_change_signals(&config_with_reload.run_config)?;
+        open_working_directory_change_signals(&run_config_bundle.run_config)?;
 
     loop {
         // XX handle errors without exiting? Or do that above
 
-        let run_config = &config_with_reload.run_config;
+        let run_config = &run_config_bundle.run_config;
         let output_base_dir = &run_config.output_base_dir;
 
         let queues_data = queues.data()?;
@@ -577,7 +577,7 @@ fn run_queues<'ce>(
         // Do we need to re-initialize the working directory pool?
         if working_directory_change_signals.get_number_of_signals() > 0 {
             info!("the working directory pool was updated outside the app, reload it");
-            let conf = &config_with_reload.run_config;
+            let conf = &run_config_bundle.run_config;
             working_directory_pool =
                 open_working_directory_pool(conf, working_directory_base_dir.clone_arc(), true)?
                     .into_inner();
@@ -665,46 +665,46 @@ fn run() -> Result<Option<ExecutionResult>> {
         _ => (),
     }
 
-    let config_with_reload = RunConfigBundle::load(
+    let run_config_bundle = RunConfigBundle::load(
         config,
         |msg| bail!("need a config file, {msg}"),
         GlobalAppStateDir::new()?,
     )?;
 
-    let conf = &config_with_reload.run_config;
+    let conf = &run_config_bundle.run_config;
 
     let working_directory_base_dir = Arc::new(WorkingDirectoryPoolBaseDir::new(
         &conf.working_directory_pool,
         &|| {
-            config_with_reload
+            run_config_bundle
                 .global_app_state_dir
                 .working_directory_pool_base()
         },
     )?);
 
-    let open_queues = |config_with_reload: &RunConfigBundle| {
+    let open_queues = |run_config_bundle: &RunConfigBundle| {
         RunQueues::open(
-            config_with_reload.run_config.queues.clone_arc(),
+            run_config_bundle.run_config.queues.clone_arc(),
             true,
-            &config_with_reload.global_app_state_dir,
+            &run_config_bundle.global_app_state_dir,
         )
     };
     let mut queues = lazyresult! {
-        open_queues(&config_with_reload)
+        open_queues(&run_config_bundle)
     };
 
     match subcommand {
         SubCommand::ConfigFormats => unreachable!("already dispatched above"),
 
         SubCommand::ConfigSave { output_path } => {
-            save_config_file(&output_path, &**config_with_reload.config_file)?;
+            save_config_file(&output_path, &**run_config_bundle.config_file)?;
             Ok(None)
         }
 
         SubCommand::ListAll {
             terminal_table_opts,
         } => {
-            let already_inserted = open_already_inserted(&config_with_reload.global_app_state_dir)?;
+            let already_inserted = open_already_inserted(&run_config_bundle.global_app_state_dir)?;
 
             let mut flat_jobs: Vec<(BenchmarkingJobParameters, SystemTime)> = Vec::new();
             for job in already_inserted
@@ -1067,7 +1067,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                     Some(&conf.benchmarking_job_settings),
                     &conf.job_templates_for_insert,
                 )?,
-                &config_with_reload.global_app_state_dir,
+                &run_config_bundle.global_app_state_dir,
                 &conf.remote_repository.url,
                 force_opt,
                 quiet_opt,
@@ -1087,7 +1087,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                     Some(&conf.benchmarking_job_settings),
                     &conf.job_templates_for_insert,
                 )?,
-                &config_with_reload.global_app_state_dir,
+                &run_config_bundle.global_app_state_dir,
                 &conf.remote_repository.url,
                 force_opt,
                 quiet_opt,
@@ -1126,7 +1126,7 @@ fn run() -> Result<Option<ExecutionResult>> {
             let queues = queues.force()?;
             let n = insert_jobs(
                 benchmarking_jobs,
-                &config_with_reload.global_app_state_dir,
+                &run_config_bundle.global_app_state_dir,
                 &conf.remote_repository.url,
                 force_opt,
                 quiet_opt,
@@ -1148,7 +1148,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                     let (commits, non_resolving) = {
                         let mut polling_pool = PollingPool::open(
                             &conf.remote_repository.url,
-                            &config_with_reload
+                            &run_config_bundle
                                 .global_app_state_dir
                                 .working_directory_for_polling_pool_base()?,
                         )?;
@@ -1181,7 +1181,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                     let queues = queues.force()?;
                     let n = insert_jobs(
                         benchmarking_jobs,
-                        &config_with_reload.global_app_state_dir,
+                        &run_config_bundle.global_app_state_dir,
                         &conf.remote_repository.url,
                         ForceOpt { force },
                         // Must use quiet so that it can try to insert *all*
@@ -1252,7 +1252,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                         }
                     };
 
-                    let config_file = config_with_reload.config_file.clone_arc();
+                    let config_file = run_config_bundle.config_file.clone_arc();
                     let other_restart_checks = restart_for_executable_change_opts
                         .to_restarter(DEFAULT_RESTART_ON_UPGRADES)?
                         .and_config_change_opts(
@@ -1296,11 +1296,11 @@ fn run() -> Result<Option<ExecutionResult>> {
                 RunMode::One { false_if_none } => {
                     let queues = queues.into_value()?;
                     let working_directory_pool = open_working_directory_pool(
-                        &config_with_reload.run_config,
+                        &run_config_bundle.run_config,
                         &working_directory_base_dir,
                     )?;
                     match run_queues(
-                        config_with_reload,
+                        run_config_bundle,
                         queues,
                         working_directory_base_dir,
                         working_directory_pool,
@@ -1326,7 +1326,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                 } => {
                     let paths = conf.run_jobs_daemon.clone();
                     let local_time = opts.local_time;
-                    let config_file = config_with_reload.config_file.clone_arc();
+                    let config_file = run_config_bundle.config_file.clone_arc();
                     let run = |daemon_check_exit: CheckExit| -> () {
                         // Use the requested time setting for
                         // local time stamp generation, too (now
@@ -1337,13 +1337,13 @@ fn run() -> Result<Option<ExecutionResult>> {
                         set_log_level(log_level);
 
                         let r = (|| -> Result<RunResult> {
-                            let queues = open_queues(&config_with_reload)?;
+                            let queues = open_queues(&run_config_bundle)?;
                             let working_directory_pool = open_working_directory_pool(
-                                &config_with_reload.run_config,
+                                &run_config_bundle.run_config,
                                 &working_directory_base_dir,
                             )?;
                             run_queues(
-                                config_with_reload,
+                                run_config_bundle,
                                 queues,
                                 working_directory_base_dir,
                                 working_directory_pool,

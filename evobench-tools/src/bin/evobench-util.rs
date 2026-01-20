@@ -221,12 +221,12 @@ fn main() -> Result<()> {
         }
 
         SubCommand::PostProcessSingle { run_dir, no_stats } => {
-            let run_config_with_reload = RunConfigBundle::load(
+            let run_config_bundle = RunConfigBundle::load(
                 config,
                 |msg| bail!("can't load config: {msg}"),
                 GlobalAppStateDir::new()?,
             )?;
-            let run_config = &run_config_with_reload.run_config;
+            let run_config = &run_config_bundle.run_config;
 
             let run_dir = RunDir::try_from(run_dir)?;
 
@@ -239,12 +239,12 @@ fn main() -> Result<()> {
             no_single_stats,
             no_summary_stats,
         } => {
-            let run_config_with_reload = RunConfigBundle::load(
+            let run_config_bundle = RunConfigBundle::load(
                 config,
                 |msg| bail!("can't load config: {msg}"),
                 GlobalAppStateDir::new()?,
             )?;
-            let run_config = &run_config_with_reload.run_config;
+            let run_config = &run_config_bundle.run_config;
 
             let key_dir = KeyDir::try_from(key_dir)?;
 
