@@ -83,6 +83,9 @@ use evobench_tools::{
     warn,
 };
 
+type CheckExit<'t> =
+    DaemonCheckExit<'t, RestartForExecutableOrConfigChange<Arc<ConfigFile<RunConfigOpts>>>>;
+
 const DEFAULT_RESTART_ON_UPGRADES: bool = true;
 const DEFAULT_RESTART_ON_CONFIG_CHANGE: bool = true;
 
@@ -452,9 +455,6 @@ enum RunResult {
     /// In daemon mode
     StopOrRestart,
 }
-
-type CheckExit<'t> =
-    DaemonCheckExit<'t, RestartForExecutableOrConfigChange<Arc<ConfigFile<RunConfigOpts>>>>;
 
 /// Run through the queues forever unless `once` is true (in which
 /// case it returns whether a job was run), but pick up config
