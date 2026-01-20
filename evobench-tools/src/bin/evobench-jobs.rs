@@ -51,7 +51,7 @@ use evobench_tools::{
             BenchmarkingJobSettingsOpts,
         },
         command_log_file::CommandLogFile,
-        config::{BenchmarkingCommand, RunConfig, RunConfigOpts, RunConfigWithReload},
+        config::{BenchmarkingCommand, RunConfig, RunConfigBundle, RunConfigOpts},
         dataset_dir_env_var::dataset_dir_for,
         env_vars::assert_evobench_env_var,
         global_app_state_dir::GlobalAppStateDir,
@@ -461,7 +461,7 @@ type CheckExit<'t> =
 /// changes; it also returns in non-once mode if the binary changes
 /// and true was given for `restart_on_upgrades`.
 fn run_queues<'ce>(
-    config_with_reload: RunConfigWithReload,
+    config_with_reload: RunConfigBundle,
     queues: RunQueues,
     working_directory_base_dir: Arc<WorkingDirectoryPoolBaseDir>,
     mut working_directory_pool: WorkingDirectoryPool,
@@ -665,7 +665,7 @@ fn run() -> Result<Option<ExecutionResult>> {
         _ => (),
     }
 
-    let config_with_reload = RunConfigWithReload::load(
+    let config_with_reload = RunConfigBundle::load(
         config,
         |msg| bail!("need a config file, {msg}"),
         GlobalAppStateDir::new()?,
@@ -682,7 +682,7 @@ fn run() -> Result<Option<ExecutionResult>> {
         },
     )?);
 
-    let open_queues = |config_with_reload: &RunConfigWithReload| {
+    let open_queues = |config_with_reload: &RunConfigBundle| {
         RunQueues::open(
             config_with_reload.run_config.queues.clone_arc(),
             true,

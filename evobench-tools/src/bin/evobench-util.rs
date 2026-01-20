@@ -10,7 +10,7 @@ use evobench_tools::{
     git::GitHash,
     info,
     run::{
-        config::{RunConfig, RunConfigWithReload},
+        config::{RunConfig, RunConfigBundle},
         global_app_state_dir::GlobalAppStateDir,
         output_directory_structure::{KeyDir, RunDir},
         post_process::compress_file_as,
@@ -221,7 +221,7 @@ fn main() -> Result<()> {
         }
 
         SubCommand::PostProcessSingle { run_dir, no_stats } => {
-            let run_config_with_reload = RunConfigWithReload::load(
+            let run_config_with_reload = RunConfigBundle::load(
                 config,
                 |msg| bail!("can't load config: {msg}"),
                 GlobalAppStateDir::new()?,
@@ -239,7 +239,7 @@ fn main() -> Result<()> {
             no_single_stats,
             no_summary_stats,
         } => {
-            let run_config_with_reload = RunConfigWithReload::load(
+            let run_config_with_reload = RunConfigBundle::load(
                 config,
                 |msg| bail!("can't load config: {msg}"),
                 GlobalAppStateDir::new()?,

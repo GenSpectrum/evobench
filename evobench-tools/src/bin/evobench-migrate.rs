@@ -7,7 +7,7 @@ use evobench_tools::{
     get_terminal_width::get_terminal_width,
     info,
     run::{
-        config::RunConfigWithReload,
+        config::RunConfigBundle,
         global_app_state_dir::GlobalAppStateDir,
         insert_jobs::open_already_inserted,
         migrate::{migrate_already_inserted, migrate_queue},
@@ -63,7 +63,7 @@ fn main() -> Result<()> {
 
     match subcommand {
         SubCommand::Run => {
-            let run_config_with_reload = RunConfigWithReload::load(
+            let run_config_with_reload = RunConfigBundle::load(
                 config,
                 |msg| bail!("can't load config: {msg}"),
                 GlobalAppStateDir::new()?,

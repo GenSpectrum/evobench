@@ -717,13 +717,17 @@ impl RunConfigOpts {
     }
 }
 
-pub struct RunConfigWithReload {
+/// Keep the original ConfigFile around so that we can check whether
+/// it needs reloading (in `Daemon`, passed to daemon run procedures
+/// via `DaemonCheckExit`). Also, need the `GlobalAppStateDir` for
+/// further path operations, too.
+pub struct RunConfigBundle {
     pub config_file: Arc<ConfigFile<RunConfigOpts>>,
     pub run_config: RunConfig,
     pub global_app_state_dir: Arc<GlobalAppStateDir>,
 }
 
-impl RunConfigWithReload {
+impl RunConfigBundle {
     pub fn load(
         provided_path: Option<Arc<Path>>,
         or_else: impl FnOnce(&str) -> Result<RunConfigOpts>,
@@ -737,18 +741,4 @@ impl RunConfigWithReload {
             global_app_state_dir: global_app_state_dir.into(),
         })
     }
-
-    // XX obsolete now that we just restart on config change
-    // pub fn perhaps_reload_config(&self) -> Result<Option<Self>> {
-    //     if let Some(config_file) = self.config_file.perhaps_reload_config()? {
-    //         let run_config = config_file.check(&self.global_app_state_dir)?;
-    //         Ok(Some(Self {
-    //             config_file: config_file.into(),
-    //             run_config,
-    //             global_app_state_dir: self.global_app_state_dir.clone_arc(),
-    //         }))
-    //     } else {
-    //         Ok(None)
-    //     }
-    // }
 }
