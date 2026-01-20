@@ -1,13 +1,13 @@
 use anyhow::{Context, Result, anyhow, bail};
 use chj_unix_util::{
     daemon::{
-        Daemon, DaemonCheckExit, DaemonMode, DaemonOpts, ExecutionResult, TimestampMode,
-        TimestampOpts,
+        Daemon, DaemonCheckExit, DaemonMode, DaemonOpts, ExecutionResult,
         warrants_restart::{
             RestartForConfigChangeOpts, RestartForExecutableChangeOpts,
             RestartForExecutableOrConfigChange,
         },
     },
+    logging::{TimestampMode, TimestampOpts},
     polling_signals::PollingSignals,
 };
 use chrono::{DateTime, Local};
@@ -1233,7 +1233,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                     log_level,
                     action,
                 } => {
-                    let local_time = opts.local_time;
+                    let local_time = opts.logging_opts.local_time;
 
                     let run = |daemon_check_exit: CheckExit| -> () {
                         // Use the requested time setting for
@@ -1325,7 +1325,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                     action,
                 } => {
                     let paths = conf.run_jobs_daemon.clone();
-                    let local_time = opts.local_time;
+                    let local_time = opts.logging_opts.local_time;
                     let config_file = run_config_bundle.config_file.clone_arc();
                     let run = |daemon_check_exit: CheckExit| -> () {
                         // Use the requested time setting for
