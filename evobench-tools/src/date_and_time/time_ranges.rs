@@ -18,8 +18,8 @@ impl FromStr for LocalNaiveTimeRange {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let parts: Vec<&str> = s.split('-').collect();
-        match parts.as_slice() {
-            &[from, to] => {
+        match *parts.as_slice() {
+            [from, to] => {
                 let from = from.trim();
                 let to = to.trim();
                 let from = from
@@ -28,7 +28,7 @@ impl FromStr for LocalNaiveTimeRange {
                 let to = to.parse().map_err(|e| anyhow!("to time {to:?}: {e:#}"))?;
                 Ok(LocalNaiveTimeRange { from, to })
             }
-            &[_] => {
+            [_] => {
                 bail!("expecting exactly one '-', none given")
             }
             _ => {

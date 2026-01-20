@@ -55,7 +55,7 @@ pub fn ron_to_file_pretty<V: serde::Serialize>(
 }
 
 pub fn parse_ron<V: DeserializeOwned>(s: &str) -> Result<V> {
-    ron::from_str(&s)
+    ron::from_str(s)
         .map_err(|error| {
             let ron::error::SpannedError {
                 code,
@@ -68,7 +68,7 @@ pub fn parse_ron<V: DeserializeOwned>(s: &str) -> Result<V> {
 
 pub fn load_ron_file<V: DeserializeOwned>(path: impl AsRef<Path>) -> Result<V> {
     let path = path.as_ref();
-    let s = std::fs::read_to_string(&path).map_err(ctx!("loading file from {path:?}"))?;
+    let s = std::fs::read_to_string(path).map_err(ctx!("loading file from {path:?}"))?;
     parse_ron(&s).map_err(ctx!("reading file from {path:?}"))
 }
 
@@ -97,8 +97,7 @@ impl ConfigBackend {
     }
 
     pub fn load_config_file<T: DeserializeOwned>(self, path: &Path) -> Result<T> {
-        let s =
-            std::fs::read_to_string(&path).map_err(ctx!("loading config file from {path:?}"))?;
+        let s = std::fs::read_to_string(path).map_err(ctx!("loading config file from {path:?}"))?;
         match self {
             ConfigBackend::Ron => parse_ron(&s).map_err(ctx!("reading config file from {path:?}")),
             ConfigBackend::Json5 => {
@@ -288,7 +287,7 @@ impl<T: DeserializeOwned + DefaultConfigPath> ConfigFile<T> {
     /// value.
     pub fn load_config(
         path: Option<Arc<Path>>,
-        or_else: impl FnOnce(String) -> Result<T>,
+        or_else: impl FnOnce(&str) -> Result<T>,
     ) -> Result<Self> {
         let load_config = |path: Arc<Path>, backend: ConfigBackend| {
             let config = backend.load_config_file(&path)?;
@@ -308,7 +307,7 @@ impl<T: DeserializeOwned + DefaultConfigPath> ConfigFile<T> {
                 for config_dir in T::default_config_dirs().iter() {
                     let path = config_dir.append_file_name(&file_name)?;
                     let path_and_backends: Vec<(Arc<Path>, &ConfigBackend)> = FILE_EXTENSIONS
-                        .into_iter()
+                        .iter()
                         .map(|(extension, backend)| {
                             let path = add_extension(&path, extension)
                                 .ok_or_else(|| anyhow!("path is missing a file name: {path:?}"))?;
@@ -339,16 +338,16 @@ impl<T: DeserializeOwned + DefaultConfigPath> ConfigFile<T> {
                         }
                     }
                 }
-                let config = or_else(format!("tried the default paths: {default_paths_tried:?}"))?;
+                let config = or_else(&format!("tried the default paths: {default_paths_tried:?}"))?;
                 Ok(Self {
                     config,
                     path_and_track: None,
                 })
             } else {
-                let config = or_else(format!(
+                let config = or_else(
                     "no path was given and there is no default \
-                     config location for this type"
-                ))?;
+                     config location for this type",
+                )?;
                 Ok(Self {
                     config,
                     path_and_track: None,

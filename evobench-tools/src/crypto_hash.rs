@@ -14,5 +14,5 @@ pub fn crypto_hash<T: Serialize>(val: &T) -> String {
     let s = serde_json::to_string(val).expect("can't fail we hope?");
     let mut hasher = sha2::Sha256::new();
     hasher.update(&s);
-    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&hasher.finalize())
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hasher.finalize())
 }

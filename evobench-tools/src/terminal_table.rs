@@ -245,7 +245,7 @@ impl<'v, 's, O: Write + IsTerminal> TerminalTable<'v, 's, O> {
 
             is_first = false;
         }
-        out.write_all(&[b'\n'])?;
+        out.write_all(b"\n")?;
         Ok(())
     }
 

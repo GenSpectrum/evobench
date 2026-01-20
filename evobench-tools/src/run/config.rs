@@ -727,7 +727,7 @@ pub struct RunConfigWithReload {
 impl RunConfigWithReload {
     pub fn load(
         provided_path: Option<Arc<Path>>,
-        or_else: impl FnOnce(String) -> Result<RunConfigOpts>,
+        or_else: impl FnOnce(&str) -> Result<RunConfigOpts>,
     ) -> Result<Self> {
         let config_file = ConfigFile::<RunConfigOpts>::load_config(provided_path, or_else)?;
         let run_config = config_file.check()?;

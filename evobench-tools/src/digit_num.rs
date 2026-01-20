@@ -151,6 +151,13 @@ impl<const PRECISION: usize> TryFrom<&DigitNum<PRECISION>> for u64 {
     }
 }
 
+// Do we really want this, or silence Clippy instead?
+impl<const PRECISION: usize> Default for DigitNum<PRECISION> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -650,7 +650,7 @@ impl<'run_queues> RunQueuesData<'run_queues> {
             rqdwn.run_queue_with_next().run_job(
                 &item,
                 &mut JobRunnerWithJob {
-                    job_runner: job_runner,
+                    job_runner,
                     job_data: JobRunnerJobData {
                         job,
                         run_queues_data: self,

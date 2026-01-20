@@ -19,6 +19,13 @@ impl<'t, T> List<'t, T> {
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        match self {
+            List::Pair(_, _) => false,
+            List::Null => true,
+        }
+    }
+
     pub fn first(&self) -> Option<&T> {
         match self {
             List::Pair(v, _) => Some(v),
@@ -47,14 +54,9 @@ impl<'t, T> List<'t, T> {
     pub fn as_ref_vec(&self) -> Vec<&T> {
         let mut vs = Vec::new();
         let mut r = self;
-        loop {
-            match r {
-                List::Pair(v, r2) => {
-                    vs.push(v);
-                    r = r2;
-                }
-                List::Null => break,
-            }
+        while let List::Pair(v, r2) = r {
+            vs.push(v);
+            r = r2;
         }
         vs
     }
@@ -65,14 +67,9 @@ impl<'t, T> List<'t, T> {
     {
         let mut vs: Vec<T> = Vec::new();
         let mut r = self;
-        loop {
-            match r {
-                List::Pair(v, r2) => {
-                    vs.push(v.clone());
-                    r = r2;
-                }
-                List::Null => break,
-            }
+        while let List::Pair(v, r2) = r {
+            vs.push(v.clone());
+            r = r2;
         }
         vs
     }
