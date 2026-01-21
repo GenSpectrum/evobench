@@ -1410,17 +1410,29 @@ fn run() -> Result<Option<ExecutionResult>> {
                 Generic(anyhow::Error),
             }
 
+            enum Marked {
+                OldStatus(Status),
+                Unchanged,
+            }
+
             // When giving a status that can be used by the daemon
             // (Recycle action), working_directory_change_signals has
-            // to be passed in.
+            // to be passed in. Returns None if the working directory
+            // does not exist.
             let mut do_mark = |wanted_status: Status,
-                               id,
+                               ignore_if_already_wanted_status: bool,
+                               id: WorkingDirectoryId,
                                working_directory_change_signals: Option<&mut PollingSignals>|
-             -> Result<Option<Status>, DoMarkError> {
+             -> Result<Option<Marked>, DoMarkError> {
                 let mut guard = working_directory_pool
                     .lock_mut("evobench-jobs SubCommand::Wd do_mark")
                     .map_err(DoMarkError::Generic)?;
                 if let Some(mut wd) = guard.get_working_directory_mut(id) {
+                    if ignore_if_already_wanted_status
+                        && wd.working_directory_status.status == wanted_status
+                    {
+                        return Ok(Some(Marked::Unchanged));
+                    }
                     let original_status = check_original_status(&*wd, "error/examination")
                         .map_err(ctx!("refusing working directory {id}"))
                         .map_err(DoMarkError::Check)?;
@@ -1430,7 +1442,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                     {
                         working_directory_change_signals.send_signal();
                     }
-                    Ok(Some(original_status))
+                    Ok(Some(Marked::OldStatus(original_status)))
                 } else {
                     Ok(None)
                 }
@@ -1712,7 +1724,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                 }
                 WdSubCommand::Mark { ids } => {
                     for id in ids {
-                        if do_mark(Status::Examination, id, None)?.is_none() {
+                        if do_mark(Status::Examination, true, id, None)?.is_none() {
                             warn!("there is no working directory for id {id}");
                         }
                     }
@@ -1720,7 +1732,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                 }
                 WdSubCommand::Unmark { ids } => {
                     for id in ids {
-                        if do_mark(Status::Error, id, None)?.is_none() {
+                        if do_mark(Status::Error, true, id, None)?.is_none() {
                             warn!("there is no working directory for id {id}");
                         }
                     }
@@ -1730,6 +1742,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                     for id in ids {
                         if do_mark(
                             Status::CheckedOut,
+                            true,
                             id,
                             Some(working_directory_change_signals.force_mut()?),
                         )?
@@ -1757,10 +1770,13 @@ fn run() -> Result<Option<ExecutionResult>> {
                     // unacceptable status, enter anyway if `force` is
                     // given, but don't restore it then
                     let original_status: Option<Status> =
-                        match do_mark(Status::Examination, id, None) {
+                        match do_mark(Status::Examination, false, id, None) {
                             Ok(status) => {
                                 if let Some(status) = status {
-                                    Some(status)
+                                    match status {
+                                        Marked::OldStatus(status) => Some(status),
+                                        Marked::Unchanged => unreachable!("we gave it false"),
+                                    }
                                 } else {
                                     Err(no_exist())?
                                 }
