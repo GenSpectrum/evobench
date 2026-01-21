@@ -65,6 +65,9 @@ pub fn bench_tmp_dir() -> Result<PathBuf> {
     match std::env::consts::OS {
         "linux" => {
             let tmp: PathBuf = format!("/dev/shm/{user}").into();
+
+            dbg!((&tmp, tmp.exists()));
+
             match std::fs::create_dir(&tmp) {
                 Ok(()) => Ok(tmp),
                 Err(e) => match e.kind() {
@@ -192,12 +195,14 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             custom_parameters,
         } = run_parameters.deref();
 
+        let bench_tmp_dir = &bench_tmp_dir()?;
+        dbg!((&bench_tmp_dir, bench_tmp_dir.exists()));
+
         // File for evobench library output
         let evobench_log;
         // File for other output, for optional use by target application
         let bench_output_log;
         {
-            let bench_tmp_dir = &bench_tmp_dir()?;
             let pid = getpid();
             evobench_log = TemporaryFile::from(bench_tmp_dir.append(format!("evobench-{pid}.log")));
             bench_output_log =
@@ -311,6 +316,8 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                         .write_str(&serde_yml::to_string(&benchmarking_job_parameters)?)?;
                     command_output_file.write_str("\n")?;
 
+                    dbg!((&bench_tmp_dir, bench_tmp_dir.exists()));
+
                     let status = {
                         let mut other_files: Vec<Box<dyn Write + Send + 'static>> = vec![];
                         // Is it evil to use log_level() for this and not a
@@ -330,12 +337,17 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                         )?
                     };
 
+                    dbg!((&bench_tmp_dir, bench_tmp_dir.exists()));
+
                     if status.success() {
                         info!("running {cmd_in_dir} succeeded");
 
                         Ok(Some((target_name, command_output_file.into_path())))
                     } else {
                         info!("running {cmd_in_dir} failed.");
+
+                        dbg!((&bench_tmp_dir, bench_tmp_dir.exists()));
+
                         let last_part = command_output_file.last_part(3000)?;
                         if log_level() < LogLevel::Info {
                             let mut err = stderr().lock();
