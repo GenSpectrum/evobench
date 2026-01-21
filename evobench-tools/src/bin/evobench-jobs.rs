@@ -305,9 +305,9 @@ enum WdSubCommand {
         #[clap(long)]
         error: bool,
 
-        /// Sort the list by the `last_used` timestamp
+        /// Sort the list by the id (numerically). Default: sort by the `last_used` timestamp
         #[clap(short, long)]
-        sort_used: bool,
+        numeric_sort: bool,
 
         /// Only show the ID of the working directories
         #[clap(short, long)]
@@ -1444,9 +1444,9 @@ fn run() -> Result<Option<ExecutionResult>> {
                     terminal_table_opts,
                     active,
                     error,
-                    sort_used,
                     id_only,
                     no_commit,
+                    numeric_sort,
                 } => {
                     let widths = &[3 + 2, Status::MAX_STR_LEN + 2, 8 + 2, 35 + 2, 35 + 2];
                     let titles = &[
@@ -1484,7 +1484,9 @@ fn run() -> Result<Option<ExecutionResult>> {
                     let all_ids: Vec<_> = {
                         let mut all_entries: Vec<_> =
                             working_directory_pool.all_entries().collect();
-                        if sort_used {
+                        if numeric_sort {
+                            // Leave as is, it's already sorted
+                        } else {
                             all_entries.sort_by(|a, b| a.1.last_use.cmp(&b.1.last_use))
                         }
                         all_entries.iter().map(|(id, _)| *id).collect()
