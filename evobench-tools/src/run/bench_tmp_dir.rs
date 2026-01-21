@@ -1,9 +1,41 @@
-use std::{os::unix::fs::MetadataExt, path::PathBuf};
+use std::{
+    fs::File,
+    ops::Deref,
+    os::unix::fs::MetadataExt,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Duration,
+};
 
 use anyhow::{Result, bail};
+use cj_path_util::path_util::AppendToPath;
 use nix::unistd::getuid;
+use rand::Rng;
 
-use crate::{ctx, utillib::user::get_username};
+use crate::{ctx, info, utillib::user::get_username};
+
+/// The path to a temporary directory, and [on Linux (because of
+/// systems using systemd--Debian from trixie onwards will delete
+/// it),] a thread that keeps updating its mtime to prevent
+/// deletion. Implements AsRef<Path> and Deref<Target = Path>.
+#[derive(Debug, PartialEq, Eq)]
+pub struct BenchTmpDir {
+    path: Arc<Path>,
+}
+
+impl AsRef<Path> for BenchTmpDir {
+    fn as_ref(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Deref for BenchTmpDir {
+    type Target = Path;
+
+    fn deref(&self) -> &Self::Target {
+        &self.path
+    }
+}
 
 /// Returns the path to a temporary directory, creating it if
 /// necessary and checking ownership if it already exists. The
@@ -11,43 +43,70 @@ use crate::{ctx, utillib::user::get_username};
 /// evobench-jobs instances--which is OK both because we only do 1 run
 /// at the same time (and take a lock to ensure that), but also
 /// because we're now currently actually also adding the pid to the
-/// file paths inside.
-pub fn bench_tmp_dir() -> Result<PathBuf> {
+/// file paths inside. It is wrapped since it comes with a daemon that
+/// keeps updating the directory mtime to prevent deletion by tmp
+/// cleaners.
+pub fn bench_tmp_dir() -> Result<BenchTmpDir> {
     // XX use src/installation/binaries_repo.rs from xmlhub-indexer
     // instead once that's separated?
     let user = get_username()?;
     match std::env::consts::OS {
         "linux" => {
-            let tmp: PathBuf = format!("/dev/shm/{user}").into();
+            let path: PathBuf = format!("/dev/shm/{user}").into();
+            let path: Arc<Path> = path.into();
 
-            dbg!((&tmp, tmp.exists()));
+            dbg!((&path, path.exists()));
 
-            match std::fs::create_dir(&tmp) {
-                Ok(()) => Ok(tmp),
+            let start_daemon = || {
+                let path = path.clone();
+                let th = std::thread::Builder::new().name("tmp-keep-alive".into());
+                th.spawn(move || {
+                    let mut rnd = rand::thread_rng();
+                    while Arc::strong_count(&path) > 1 {
+                        // eprintln!("Helloworld");
+                        let n = rnd.gen_range(0..10000000);
+                        let path = path.append(format!(".{n}.tmp-keep-alive-dir"));
+                        if let Ok(_) = File::create_new(&path) {
+                            _ = std::fs::remove_file(&path);
+                        } else {
+                            info!("could not create touch file {path:?}");
+                        }
+                        std::thread::sleep(Duration::from_secs(1));
+                    }
+                })
+            };
+
+            match std::fs::create_dir(&path) {
+                Ok(()) => {
+                    start_daemon()?;
+                    Ok(BenchTmpDir { path })
+                }
                 Err(e) => match e.kind() {
                     std::io::ErrorKind::AlreadyExists => {
-                        let m = std::fs::metadata(&tmp)?;
+                        let m = std::fs::metadata(&path)?;
                         let dir_uid = m.uid();
                         let uid: u32 = getuid().into();
                         if dir_uid == uid {
-                            Ok(tmp)
+                            start_daemon()?;
+                            Ok(BenchTmpDir { path })
                         } else {
                             bail!(
-                                "bench_tmp_dir: directory {tmp:?} should be owned by \
+                                "bench_tmp_dir: directory {path:?} should be owned by \
                                  the user {user:?} which is set in the USER env var, \
                                  but the uid owning that directory is {dir_uid} whereas \
                                  the current process is running as {uid}"
                             )
                         }
                     }
-                    _ => Err(e).map_err(ctx!("create_dir {tmp:?}")),
+                    _ => Err(e).map_err(ctx!("create_dir {path:?}")),
                 },
             }
         }
         _ => {
-            let tmp: PathBuf = "./tmp".into();
-            std::fs::create_dir_all(&tmp).map_err(ctx!("create_dir_all {tmp:?}"))?;
-            Ok(tmp)
+            let path: PathBuf = "./tmp".into();
+            let path: Arc<Path> = path.into();
+            std::fs::create_dir_all(&path).map_err(ctx!("create_dir_all {path:?}"))?;
+            Ok(BenchTmpDir { path })
         }
     }
 }
