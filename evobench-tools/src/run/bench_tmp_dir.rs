@@ -37,6 +37,25 @@ impl Deref for BenchTmpDir {
     }
 }
 
+fn start_daemon(path: Arc<Path>) -> Result<()> {
+    let th = std::thread::Builder::new().name("tmp-keep-alive".into());
+    th.spawn(move || {
+        let mut rnd = rand::thread_rng();
+        while Arc::strong_count(&path) > 1 {
+            // eprintln!("Helloworld");
+            let n = rnd.gen_range(0..10000000);
+            let path = path.append(format!(".{n}.tmp-keep-alive-dir"));
+            if let Ok(_) = File::create_new(&path) {
+                _ = std::fs::remove_file(&path);
+            } else {
+                info!("could not create touch file {path:?}");
+            }
+            std::thread::sleep(Duration::from_secs(1));
+        }
+    })?;
+    Ok(())
+}
+
 /// Returns the path to a temporary directory, creating it if
 /// necessary and checking ownership if it already exists. The
 /// directory is not unique for all processes, but shared for all
@@ -57,28 +76,9 @@ pub fn bench_tmp_dir() -> Result<BenchTmpDir> {
 
             dbg!((&path, path.exists()));
 
-            let start_daemon = || {
-                let path = path.clone();
-                let th = std::thread::Builder::new().name("tmp-keep-alive".into());
-                th.spawn(move || {
-                    let mut rnd = rand::thread_rng();
-                    while Arc::strong_count(&path) > 1 {
-                        // eprintln!("Helloworld");
-                        let n = rnd.gen_range(0..10000000);
-                        let path = path.append(format!(".{n}.tmp-keep-alive-dir"));
-                        if let Ok(_) = File::create_new(&path) {
-                            _ = std::fs::remove_file(&path);
-                        } else {
-                            info!("could not create touch file {path:?}");
-                        }
-                        std::thread::sleep(Duration::from_secs(1));
-                    }
-                })
-            };
-
             match std::fs::create_dir(&path) {
                 Ok(()) => {
-                    start_daemon()?;
+                    start_daemon(path.clone())?;
                     Ok(BenchTmpDir { path })
                 }
                 Err(e) => match e.kind() {
@@ -87,7 +87,7 @@ pub fn bench_tmp_dir() -> Result<BenchTmpDir> {
                         let dir_uid = m.uid();
                         let uid: u32 = getuid().into();
                         if dir_uid == uid {
-                            start_daemon()?;
+                            start_daemon(path.clone())?;
                             Ok(BenchTmpDir { path })
                         } else {
                             bail!(
@@ -106,6 +106,7 @@ pub fn bench_tmp_dir() -> Result<BenchTmpDir> {
             let path: PathBuf = "./tmp".into();
             let path: Arc<Path> = path.into();
             std::fs::create_dir_all(&path).map_err(ctx!("create_dir_all {path:?}"))?;
+            start_daemon(path.clone())?;
             Ok(BenchTmpDir { path })
         }
     }
