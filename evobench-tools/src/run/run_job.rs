@@ -192,15 +192,17 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             custom_parameters,
         } = run_parameters.deref();
 
-        let bench_tmp_dir = bench_tmp_dir()?;
-
-        let pid = getpid();
         // File for evobench library output
-        let evobench_log =
-            TemporaryFile::from((&bench_tmp_dir).append(format!("evobench-{pid}.log")));
+        let evobench_log;
         // File for other output, for optional use by target application
-        let bench_output_log =
-            TemporaryFile::from((&bench_tmp_dir).append(format!("bench-output-{pid}.log")));
+        let bench_output_log;
+        {
+            let bench_tmp_dir = &bench_tmp_dir()?;
+            let pid = getpid();
+            evobench_log = TemporaryFile::from(bench_tmp_dir.append(format!("evobench-{pid}.log")));
+            bench_output_log =
+                TemporaryFile::from(bench_tmp_dir.append(format!("bench-output-{pid}.log")));
+        }
 
         // Remove any stale files from previous runs (we're not
         // removing all possible files (we leave files from other
