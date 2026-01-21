@@ -1,3 +1,4 @@
+pub mod bench_tmp_dir;
 pub mod benchmarking_job;
 pub mod command_log_file;
 pub mod config;
