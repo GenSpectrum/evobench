@@ -760,6 +760,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                     subdir: _,
                     command: _,
                     arguments: _,
+                    pre_exec_bash_code: _,
                 } = &*command;
 
                 let values: &[&dyn Display] =
@@ -1820,6 +1821,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                         subdir,
                         command,
                         arguments,
+                        pre_exec_bash_code,
                     } = &*command;
 
                     let fetched_tags = if no_fetch {
@@ -1870,7 +1872,15 @@ fn run() -> Result<Option<ExecutionResult>> {
                         })
                         .join("");
 
-                    let shell = std::env::var_os("SHELL").unwrap_or("bash".into());
+                    let shell = match std::env::var("SHELL") {
+                        Ok(s) => s,
+                        Err(e) => match e {
+                            env::VarError::NotPresent => "bash".into(),
+                            env::VarError::NotUnicode(os_string) => bail!(
+                                "the SHELL environment variable is not in unicode: {os_string:?}"
+                            ),
+                        },
+                    };
 
                     // -- Print explanations ----
 
@@ -1892,7 +1902,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                         "To rerun the benchmarking, please set `BENCH_OUTPUT_LOG` \
                          and optionally `EVOBENCH_LOG` to some suitable paths, \
                          then run:\n\n  {}\n",
-                        bash_string_from_program_path_and_args(command, arguments)?
+                        bash_string_from_program_path_and_args(command, arguments)
                     );
 
                     let actual_commit = working_directory.git_working_dir.get_head_commit_id()?;
@@ -1913,7 +1923,9 @@ fn run() -> Result<Option<ExecutionResult>> {
                     // Enter dir without any locking (other than dir
                     // being in Status::Examination now), OK?
 
-                    let mut cmd = Command::new(&shell);
+                    let mut cmd = pre_exec_bash_code
+                        .to_run_with_pre_exec(conf)
+                        .command::<&str>(&shell, []);
                     cmd.envs(vars);
                     cmd.current_dir(
                         working_directory

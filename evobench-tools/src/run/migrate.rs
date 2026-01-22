@@ -22,7 +22,7 @@ use crate::{
     },
     run::{
         benchmarking_job::{BenchmarkingJob, BenchmarkingJobPublic, BenchmarkingJobState},
-        config::BenchmarkingCommand,
+        config::{BenchmarkingCommand, PreExecLevel2},
         run_queue::RunQueue,
     },
     serde::{priority::Priority, proper_dirname::ProperDirname},
@@ -185,11 +185,14 @@ impl From<Arc<BenchmarkingCommand1>> for BenchmarkingCommand {
             arguments,
             log_extracts: _ignore,
         } = Arc::into_inner(value).expect("guaranteed 1 reference");
+        let command = command.to_string_lossy().to_string();
+        // ^ XX lossy. But have not been using any such paths.
         BenchmarkingCommand {
             target_name,
             subdir,
             command,
             arguments,
+            pre_exec_bash_code: PreExecLevel2::new(None),
         }
     }
 }

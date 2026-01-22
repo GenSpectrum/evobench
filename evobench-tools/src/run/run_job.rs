@@ -4,7 +4,6 @@ use std::{
     io::{Write, stderr},
     ops::Deref,
     path::{Path, PathBuf},
-    process::Command,
     sync::{Arc, Mutex},
 };
 
@@ -22,7 +21,6 @@ use crate::{
     git_tags::GitTags,
     info,
     io_utils::{
-        bash::bash_string_from_program_string_and_args,
         capture::{CaptureOptions, OutFile},
         temporary_file::TemporaryFile,
     },
@@ -218,7 +216,12 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                         subdir,
                         command,
                         arguments,
+                        pre_exec_bash_code,
                     } = command.deref();
+
+                    let mut command = pre_exec_bash_code
+                        .to_run_with_pre_exec(&self.job_runner.run_config)
+                        .command(command, arguments);
 
                     let dir = working_directory
                         .git_working_dir
@@ -226,13 +229,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                         .append(subdir);
 
                     // for debugging info only:
-                    let cmd_in_dir = {
-                        let cmd = bash_string_from_program_string_and_args(
-                            command.to_string_lossy(),
-                            arguments,
-                        );
-                        format!("command {cmd:?} in directory {dir:?}")
-                    };
+                    let cmd_in_dir = format!("command {command:?} in directory {dir:?}");
 
                     info!(
                         "running {cmd_in_dir}, EVOBENCH_LOG={:?}...",
@@ -241,14 +238,12 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
 
                     let check = assert_evobench_env_var;
 
-                    let mut command = Command::new(command);
                     command
                         .envs(custom_parameters.btree_map())
                         .env(check("EVOBENCH_LOG"), evobench_log.path())
                         .env(check("BENCH_OUTPUT_LOG"), bench_output_log.path())
                         .env(check("COMMIT_ID"), commit_id.to_string())
                         .env(check("COMMIT_TAGS"), commit_tags)
-                        .args(arguments)
                         .current_dir(&dir);
                     if let Some(dataset_dir) = &dataset_dir {
                         command.env(check("DATASET_DIR"), dataset_dir);

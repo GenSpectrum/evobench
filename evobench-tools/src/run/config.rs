@@ -20,6 +20,7 @@ use crate::{
     io_utils::{bash::bash_string_from_cmd, div::create_dir_if_not_exists},
     key::CustomParameters,
     run::env_vars::AllowableCustomEnvVar,
+    run_with_pre_exec::{BashSettings, BashSettingsLevel, RunWithPreExec, join_pre_exec_bash_code},
     serde::{
         allowed_env_var::AllowedEnvVar,
         date_and_time::LocalNaiveTime,
@@ -370,6 +371,43 @@ impl RemoteRepositoryOpts {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(from = "Option<Arc<str>>", into = "Option<Arc<str>>")]
+pub struct PreExecLevel2(Option<Arc<str>>);
+
+impl From<Option<Arc<str>>> for PreExecLevel2 {
+    fn from(value: Option<Arc<str>>) -> Self {
+        Self(value)
+    }
+}
+
+impl From<PreExecLevel2> for Option<Arc<str>> {
+    fn from(value: PreExecLevel2) -> Self {
+        value.0
+    }
+}
+
+impl PreExecLevel2 {
+    pub fn new(arg: Option<Arc<str>>) -> Self {
+        Self(arg)
+    }
+
+    pub fn to_run_with_pre_exec(&self, conf: &RunConfig) -> RunWithPreExec<'static> {
+        let code = join_pre_exec_bash_code(
+            conf.target_pre_exec_bash_code.as_deref().unwrap_or(""),
+            self.0.as_deref().unwrap_or(""),
+        );
+        RunWithPreExec {
+            pre_exec_bash_code: code.into(),
+            bash_settings: BashSettings {
+                level: BashSettingsLevel::SetMEUPipefail,
+                set_ifs: true,
+            },
+            bash_path: None,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 /// What command to run on the target project to execute a
@@ -387,10 +425,21 @@ pub struct BenchmarkingCommand {
     pub subdir: PathBuf,
 
     /// Name or path to the command to run, e.g. "make"
-    pub command: PathBuf,
+    pub command: String,
 
     /// Arguments to the command, e.g. "bench"
     pub arguments: Vec<String>,
+
+    /// Bash shell code to run before executing this target. E.g. to
+    /// source a Python virtual env or defining env variables. `set
+    /// -meuo pipefail` and `IFS=` are enabled. Execution flow must
+    /// leave at the end of the string. This is executed after code
+    /// declared via the global `target_pre_exec_bash_code` field, if
+    /// any. Note that this value (together with the other values in
+    /// BenchmarkingCommand) is copied into the job, and
+    /// `evobench-jobs wd enter` will use the copy from the time the
+    /// job was started, not the current value here!
+    pub pre_exec_bash_code: PreExecLevel2,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -519,6 +568,12 @@ pub struct RunConfigOpts {
 
     pub working_directory_pool: Arc<WorkingDirectoryPoolOpts>,
 
+    /// Bash shell code to run before executing any of the
+    /// targets. E.g. to source a Python virtual env or defining env
+    /// variables. `set -meuo pipefail` and `IFS=` are
+    /// enabled. Execution flow must leave at the end of the string.
+    pub target_pre_exec_bash_code: Option<Arc<str>>,
+
     /// What command to run on the target project to execute a
     /// benchmarking run; the env variables configured in
     /// CustomParameters are set when running this command.
@@ -605,6 +660,7 @@ pub struct RunConfig {
     pub run_jobs_daemon: DaemonPaths,
     pub polling_daemon: DaemonPaths,
     pub working_directory_pool: Arc<WorkingDirectoryPoolOpts>,
+    pub target_pre_exec_bash_code: Option<Arc<str>>,
     // targets: BTreeMap<ProperDirname, Arc<BenchmarkingTarget>>,
     pub job_template_lists: BTreeMap<KString, Arc<[JobTemplate]>>,
     pub job_templates_for_insert: Arc<[JobTemplate]>,
@@ -629,6 +685,7 @@ impl RunConfigOpts {
         let RunConfigOpts {
             queues,
             working_directory_pool,
+            target_pre_exec_bash_code,
             targets,
             job_template_lists,
             job_templates_for_insert,
@@ -698,6 +755,7 @@ impl RunConfigOpts {
         Ok(RunConfig {
             queues: queues.clone_arc(),
             working_directory_pool: working_directory_pool.clone_arc(),
+            target_pre_exec_bash_code: target_pre_exec_bash_code.clone(),
             job_template_lists,
             job_templates_for_insert,
             benchmarking_job_settings: benchmarking_job_settings.clone_arc(),

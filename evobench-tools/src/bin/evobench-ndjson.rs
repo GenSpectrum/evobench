@@ -11,7 +11,7 @@ use evobench_tools::{
     key::RunParameters,
     run::{
         benchmarking_job::{BenchmarkingJob, BenchmarkingJobPublic, BenchmarkingJobState},
-        config::BenchmarkingCommand,
+        config::{BenchmarkingCommand, PreExecLevel2},
         custom_parameter::{CustomParameterType, CustomParameterValue},
         env_vars::AllowableCustomEnvVar,
     },
@@ -370,11 +370,13 @@ impl QueriesOutput {
                                 .expect("hash"),
                                 custom_parameters: Arc::new(custom_parameters.into()),
                             }),
+                            // XX all hard-coded; what HACK is this?
                             command: Arc::new(BenchmarkingCommand {
                                 target_name: "api".parse().expect("ok"),
                                 subdir: "benchmarking".into(),
                                 command: "make".into(),
                                 arguments: vec!["api".into()],
+                                pre_exec_bash_code: PreExecLevel2::new(None),
                             }),
                         },
                         BenchmarkingJobState {
