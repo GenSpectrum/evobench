@@ -367,7 +367,7 @@ impl<T: DeserializeOwned + DefaultConfigPath> WarrantsRestart for ConfigFile<T> 
             Err(e) => {
                 use std::io::Write;
 
-                _ = write!(&mut stderr(), "could not reload config file: {e:#}");
+                _ = writeln!(&mut stderr(), "could not reload config file: {e:#}");
                 false
             }
         }
