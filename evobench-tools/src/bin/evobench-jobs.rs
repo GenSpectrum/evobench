@@ -9,6 +9,7 @@ use chj_unix_util::{
     },
     logging::{TimestampMode, TimestampOpts},
     polling_signals::PollingSignals,
+    timestamp_formatter::TimestampFormatter,
 };
 use chrono::{DateTime, Local};
 use cj_path_util::path_util::AppendToPath;
@@ -1251,7 +1252,13 @@ fn run() -> Result<Option<ExecutionResult>> {
 
                     let config_file = run_config_bundle.config_file.clone_arc();
                     let other_restart_checks = restart_for_executable_change_opts
-                        .to_restarter(DEFAULT_RESTART_ON_UPGRADES)?
+                        .to_restarter(
+                            DEFAULT_RESTART_ON_UPGRADES,
+                            TimestampFormatter {
+                                use_rfc3339: true,
+                                local_time,
+                            },
+                        )?
                         .and_config_change_opts(
                             restart_for_config_change_opts,
                             DEFAULT_RESTART_ON_CONFIG_CHANGE,
@@ -1350,7 +1357,13 @@ fn run() -> Result<Option<ExecutionResult>> {
                     };
 
                     let other_restart_checks = restart_for_executable_change_opts
-                        .to_restarter(DEFAULT_RESTART_ON_UPGRADES)?
+                        .to_restarter(
+                            DEFAULT_RESTART_ON_UPGRADES,
+                            TimestampFormatter {
+                                use_rfc3339: true,
+                                local_time,
+                            },
+                        )?
                         .and_config_change_opts(
                             restart_for_config_change_opts,
                             DEFAULT_RESTART_ON_CONFIG_CHANGE,
