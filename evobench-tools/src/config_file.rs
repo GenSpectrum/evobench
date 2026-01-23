@@ -4,6 +4,7 @@
 
 use std::{
     borrow::{Borrow, Cow},
+    cell::Cell,
     fmt::Display,
     io::stderr,
     ops::Deref,
@@ -232,7 +233,9 @@ pub trait DefaultConfigPath: DeserializeOwned {
 
 struct PathAndTrack {
     path: Arc<Path>,
-    mtime: SystemTime,
+    // A Cell since it is being mutated, including via
+    // `WarrantsRestart::warrants_restart`, thus not having &mut
+    mtime: Cell<SystemTime>,
 }
 
 /// Wrapper around a configuration type T that remembers where it was
@@ -256,17 +259,22 @@ impl<T: DeserializeOwned + DefaultConfigPath> ConfigFile<T> {
     /// if so, attempt to load it and if successful returns the new
     /// instance. Currently only checks the file that it was loaded
     /// from for changes; if this config was a default from `or_else`,
-    /// no check is done at all.  XX error concept how exactly?
+    /// no check is done at all. Only parse errors and the file
+    /// vanishing between checking its metadata and reading it are
+    /// reported, not stat errors. Only returns a new Self once:
+    /// updates the internal mtime and if the file doesn't change
+    /// again, no new parsing is done.
     pub fn perhaps_reload_config(&self) -> Result<Option<Self>> {
         if let Some(PathAndTrack { path, mtime }) = self.path_and_track.as_ref() {
             match std::fs::metadata(path) {
                 Ok(s) => match s.modified() {
                     Ok(m) => {
-                        if m == *mtime {
+                        if m == mtime.get() {
                             Ok(None)
                         } else {
+                            mtime.set(m);
                             let val = Self::load_config(Some(path.clone_arc()), |_| {
-                                bail!("config missing")
+                                bail!("config {path:?} missing")
                             })?;
                             Ok(Some(val))
                         }
@@ -293,7 +301,7 @@ impl<T: DeserializeOwned + DefaultConfigPath> ConfigFile<T> {
     ) -> Result<Self> {
         let load_config = |path: Arc<Path>, backend: ConfigBackend| {
             let config = backend.load_config_file(&path)?;
-            let mtime = std::fs::metadata(&path)?.modified()?;
+            let mtime = Cell::new(std::fs::metadata(&path)?.modified()?);
             Ok(Self {
                 config,
                 path_and_track: Some(PathAndTrack { path, mtime }),
@@ -366,7 +374,6 @@ impl<T: DeserializeOwned + DefaultConfigPath> WarrantsRestart for ConfigFile<T> 
             Ok(None) => false,
             Err(e) => {
                 use std::io::Write;
-
                 _ = writeln!(&mut stderr(), "could not reload config file: {e:#}");
                 false
             }
