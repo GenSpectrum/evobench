@@ -1519,8 +1519,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                     };
 
                     for id in all_ids {
-                        let mut lock =
-                            working_directory_pool.lock_mut("evobench-jobs WdSubCommand::List")?;
+                        let mut lock = working_directory_pool.lock_mut("evobench-jobs Wd::List")?;
                         let mut wd = lock
                             .get_working_directory_mut(id)
                             .expect("got it from all_entries");
@@ -1595,8 +1594,8 @@ fn run() -> Result<Option<ExecutionResult>> {
                     }
 
                     {
-                        let mut lock = working_directory_pool
-                            .lock_mut("evobench-jobs WdSubCommand::Cleanup")?;
+                        let mut lock =
+                            working_directory_pool.lock_mut("evobench-jobs Wd::Cleanup")?;
                         for id in cleanup_ids {
                             if dry_run {
                                 eprintln!("would delete working directory {id}");
@@ -1619,7 +1618,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                     ids,
                 } => {
                     let mut lock_mut =
-                        working_directory_pool.lock_mut("evobench-jobs WdSubCommand::Delete")?;
+                        working_directory_pool.lock_mut("evobench-jobs Wd::Delete")?;
                     let opt_current_wd_id = lock_mut
                         .locked_base_dir()
                         .read_current_working_directory()?;
@@ -1961,7 +1960,7 @@ fn run() -> Result<Option<ExecutionResult>> {
 
                                 if do_revert {
                                     let mut wd = working_directory_pool
-                                        .lock_mut("evobench-jobs WdSubCommand::Enter do_revert")?
+                                        .lock_mut("evobench-jobs Wd::Enter do_revert")?
                                         .into_get_working_directory_mut(id);
                                     let mut working_directory = wd.get().ok_or_else(|| {
                                         anyhow!("there is no working directory for id {id}")
