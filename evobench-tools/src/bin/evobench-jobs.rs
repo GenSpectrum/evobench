@@ -254,7 +254,7 @@ enum SubCommand {
         /// The subcommand to run. Use `--help` after the sub-command to
         /// get a list of the allowed options there.
         #[clap(subcommand)]
-        subcommand: WdSubCommand,
+        subcommand: Wd,
     },
 }
 
@@ -292,7 +292,7 @@ pub enum RunMode {
 }
 
 #[derive(Debug, clap::Subcommand)]
-enum WdSubCommand {
+enum Wd {
     /// List the working directories; by default, show all of them
     List {
         #[clap(flatten)]
@@ -1466,7 +1466,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                 lazyresult!(open_working_directory_change_signals(conf));
 
             match subcommand {
-                WdSubCommand::List {
+                Wd::List {
                     terminal_table_opts,
                     active,
                     error,
@@ -1561,7 +1561,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                     }
                     Ok(None)
                 }
-                WdSubCommand::Cleanup {
+                Wd::Cleanup {
                     dry_run,
                     verbose,
                     mode,
@@ -1612,7 +1612,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                     }
                     Ok(None)
                 }
-                WdSubCommand::Delete {
+                Wd::Delete {
                     dry_run,
                     force,
                     verbose,
@@ -1687,7 +1687,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                     }
                     Ok(None)
                 }
-                WdSubCommand::Log { list, id } => {
+                Wd::Log { list, id } => {
                     let working_directory_path =
                         if let Some(wd) = working_directory_pool.get_working_directory(id) {
                             wd.working_directory_path()
@@ -1736,7 +1736,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                     }
                     Ok(None)
                 }
-                WdSubCommand::Mark { ids } => {
+                Wd::Mark { ids } => {
                     for id in ids {
                         if do_mark(Status::Examination, true, id, None)?.is_none() {
                             warn!("there is no working directory for id {id}");
@@ -1744,7 +1744,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                     }
                     Ok(None)
                 }
-                WdSubCommand::Unmark { ids } => {
+                Wd::Unmark { ids } => {
                     for id in ids {
                         if do_mark(Status::Error, true, id, None)?.is_none() {
                             warn!("there is no working directory for id {id}");
@@ -1752,7 +1752,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                     }
                     Ok(None)
                 }
-                WdSubCommand::Recycle { ids } => {
+                Wd::Recycle { ids } => {
                     for id in ids {
                         if do_mark(
                             Status::CheckedOut,
@@ -1767,7 +1767,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                     }
                     Ok(None)
                 }
-                WdSubCommand::Enter {
+                Wd::Enter {
                     mark,
                     unmark,
                     force,
