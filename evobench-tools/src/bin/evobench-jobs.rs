@@ -333,7 +333,7 @@ enum Wd {
 
         /// Which of the working directories with errors to delete
         #[clap(subcommand)]
-        mode: WdSubCommandCleanupMode,
+        mode: WdCleanupMode,
     },
     /// *Immediately* delete working directories
     Delete {
@@ -421,7 +421,7 @@ enum Wd {
 }
 
 #[derive(Debug, clap::Subcommand)]
-enum WdSubCommandCleanupMode {
+enum WdCleanupMode {
     /// Delete all working directories with errors
     All,
     /// Delete those that were set aside at least the given number of
@@ -1567,8 +1567,8 @@ fn run() -> Result<Option<ExecutionResult>> {
                     mode,
                 } => {
                     let stale_days = match mode {
-                        WdSubCommandCleanupMode::All => 0.,
-                        WdSubCommandCleanupMode::StaleForDays { x } => x,
+                        WdCleanupMode::All => 0.,
+                        WdCleanupMode::StaleForDays { x } => x,
                     };
                     if stale_days < 0. {
                         bail!("number of days must be non-negative");
