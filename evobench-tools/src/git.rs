@@ -278,7 +278,7 @@ impl GitGraphData {
         &mut self,
         in_directory: impl AsRef<Path>,
         entry_reference: &str,
-    ) -> Result<GitReference> {
+    ) -> Result<GitEntrypoint> {
         let in_directory = in_directory.as_ref();
         // XX first check if entry_reference is already indexed? But
         // need name index, too, then. And should make directory part
@@ -287,7 +287,7 @@ impl GitGraphData {
         if commits.is_empty() {
             bail!("invalid Git reference {entry_reference:?} in Git dir {in_directory:?}")
         }
-        Ok(GitReference::from_commits(
+        Ok(GitEntrypoint::from_commits(
             KString::from_ref(entry_reference),
             commits.iter().rev(),
             self,
@@ -322,12 +322,12 @@ impl GitGraph {
 }
 
 #[derive(Debug)]
-pub struct GitReference {
+pub struct GitEntrypoint {
     pub name: KString,
     pub commit_id: Id<ToEnrichedCommit>,
 }
 
-impl GitReference {
+impl GitEntrypoint {
     /// `commits` must come in order of creation, i.e. parents must
     /// come before children, or this panics! Also panics if commits
     /// is empty!
@@ -370,7 +370,7 @@ impl GitReference {
                 entry_commit_id = Some(graph_lock.unchecked_push(commit)?);
             }
         }
-        Ok(GitReference {
+        Ok(GitEntrypoint {
             name: entry_reference,
             commit_id: entry_commit_id.expect("to be given non-empty commits iterator"),
         })
