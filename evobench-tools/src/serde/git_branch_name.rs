@@ -2,6 +2,11 @@ use std::{fmt::Display, str::FromStr};
 
 use serde::de::Visitor;
 
+use crate::{
+    git::GitHash,
+    serde::git_reference::{GitReferenceError, check_git_reference_string},
+};
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, serde::Serialize)]
 pub struct GitBranchName(String);
 
@@ -33,18 +38,22 @@ impl Display for GitBranchName {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum GitBranchNameError {
+    #[error("a Git branch name must not be a Git commit hash")]
+    IsGitHash,
+    #[error("a Git branch name must be a valid Git reference, but {0}")]
+    GitReferenceError(#[from] GitReferenceError),
+}
+
 impl FromStr for GitBranchName {
-    type Err = &'static str;
+    type Err = GitBranchNameError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s.is_empty() {
-            Err("a git branch name must be non-empty")?
+        check_git_reference_string(s)?;
+        if let Ok(_) = GitHash::from_str(s) {
+            return Err(GitBranchNameError::IsGitHash);
         }
-        if s.chars().any(|c| c.is_whitespace() || c == '/' || c == '.') {
-            // XX other characters, too
-            Err("a git branch name must not contain whitespace, '/', '.'")?
-        }
-        // Assume it's OK
         Ok(Self(s.into()))
     }
 }

@@ -29,18 +29,39 @@ impl Display for GitReference {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum GitReferenceError {
+    #[error("a git reference string must be non-empty")]
+    IsEmpty,
+    #[error(
+        "a git reference string must not contain whitespace, '/', '.'--\
+         given reference contains {0:?}"
+    )]
+    InvalidCharacter(char),
+}
+
+/// Returns Ok if `s` is a valid Git reference string
+pub fn check_git_reference_string(s: &str) -> Result<(), GitReferenceError> {
+    if s.is_empty() {
+        Err(GitReferenceError::IsEmpty)?
+    }
+    // XX other characters, too
+    if let Some(c) = s
+        .chars()
+        .filter(|c| c.is_whitespace() || *c == '/' || *c == '.')
+        .next()
+    {
+        Err(GitReferenceError::InvalidCharacter(c))?
+    }
+    // Assume it's OK
+    Ok(())
+}
+
 impl FromStr for GitReference {
-    type Err = &'static str;
+    type Err = GitReferenceError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s.is_empty() {
-            Err("a git reference string must be non-empty")?
-        }
-        if s.chars().any(|c| c.is_whitespace() || c == '/' || c == '.') {
-            // XX other characters, too
-            Err("a git reference string must not contain whitespace, '/', '.'")?
-        }
-        // Assume it's OK
+        check_git_reference_string(s)?;
         Ok(Self(s.into()))
     }
 }
