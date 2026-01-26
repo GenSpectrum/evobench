@@ -6,6 +6,8 @@ use std::{
 use anyhow::{Result, bail};
 use serde::de::Visitor;
 
+use crate::serde::git_reference::GitReference;
+
 fn decode_hex_digit(b: u8) -> Result<u8> {
     if b >= b'0' && b <= b'9' {
         Ok(b - b'0')
@@ -34,6 +36,14 @@ fn decode_hex<const N: usize>(input: &[u8], output: &mut [u8; N]) -> Result<()> 
 
 #[derive(Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct GitHash([u8; 20]);
+
+impl GitHash {
+    pub fn to_reference(&self) -> GitReference {
+        self.to_string()
+            .parse()
+            .expect("git hashes are always references")
+    }
+}
 
 impl Debug for GitHash {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
