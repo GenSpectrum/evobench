@@ -476,23 +476,27 @@ impl WorkingDirectory {
     /// Unconditionally run `git fetch --tags` in the working dir. Is
     /// called by `checkout` as needed. If `commit_id` is given, it is
     /// fetched explicitly
-    pub fn fetch(&self, commit_id: &GitHash) -> Result<FetchedTags> {
+    pub fn fetch(&self, commit_id: Option<&GitHash>) -> Result<FetchedTags> {
         let git_working_dir = &self.git_working_dir;
 
         // Fetching tags in case `dataset_dir_for_commit` is
         // used.
         let fetch_all_tags = true;
+
+        let tmp;
+        let references = if let Some(commit_id) = commit_id {
+            tmp = [commit_id.to_reference()];
+            tmp.as_slice()
+        } else {
+            &[]
+        };
+
         // Note: this does not update branches, right? But
         // branch names should never be used for anything, OK? XX
         // document?  or make the method fetch branches
-        git_working_dir.fetch_references(
-            REMOTE_NAME,
-            fetch_all_tags,
-            &[commit_id.to_reference()],
-            true,
-        )?;
+        git_working_dir.fetch_references(REMOTE_NAME, fetch_all_tags, references, true)?;
         info!(
-            "checkout({:?}, {commit_id}): ran fetch_references",
+            "checkout({:?}, {commit_id:?}): ran fetch_references",
             git_working_dir.working_dir_path_ref()
         );
 
@@ -546,7 +550,7 @@ impl<'guard> WorkingDirectoryWithPoolLockMut<'guard> {
                 bail!("consistency failure: dir on disk has different commit id from obj")
             }
             if fetch_tags_always {
-                ran_fetch = self.fetch(&commit)?;
+                ran_fetch = self.fetch(Some(&commit))?;
             } else {
                 ran_fetch = FetchedTags::No;
             }
@@ -556,7 +560,7 @@ impl<'guard> WorkingDirectoryWithPoolLockMut<'guard> {
             if (!fetch_tags_always) && git_working_dir.contains_reference(&commit_str)? {
                 ran_fetch = FetchedTags::No;
             } else {
-                ran_fetch = self.fetch(&commit)?;
+                ran_fetch = self.fetch(Some(&commit))?;
             }
 
             // First stash, merge --abort, cherry-pick --abort, and all

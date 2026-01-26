@@ -83,7 +83,7 @@ impl PollingPool {
                 // minimize contact with issues with remote server.
                 let git_working_dir = &working_directory.git_working_dir;
                 Ok(check_exists(git_working_dir, commit)? || {
-                    let _ = working_directory.fetch(commit)?;
+                    let _ = working_directory.fetch(Some(commit))?;
                     check_exists(git_working_dir, commit)?
                 })
             },
@@ -95,7 +95,7 @@ impl PollingPool {
         Ok(res)
     }
 
-    /// Get working dir, git remote update it, and return its id for
+    /// Get working dir, run git fetch, and return its id for
     /// subsequent work on it
     pub fn updated_working_dir(&mut self) -> Result<WorkingDirectoryId> {
         let working_directory_id = {
@@ -108,12 +108,7 @@ impl PollingPool {
             &DateTimeWithOffset::now(),
             |mut working_directory| {
                 let working_directory = working_directory.get().expect("still there");
-                let git_working_dir = &working_directory.git_working_dir;
-                // XX this code was a duplicate of the one for working
-                // dirs, right? But now there "remote fetch" is used,
-                // and should probably do the same here. Thus todo:
-                // abstract.
-                git_working_dir.git(&["remote", "update"], true)?;
+                _ = working_directory.fetch(None)?;
                 Ok(working_directory_id)
             },
             None,

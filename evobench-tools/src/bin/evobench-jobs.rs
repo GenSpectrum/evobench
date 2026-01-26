@@ -1841,7 +1841,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                         // were, just further in the past, OK?)
                         FetchedTags::Yes
                     } else {
-                        working_directory.fetch(commit_id)?
+                        working_directory.fetch(Some(commit_id))?
                     };
 
                     let commit_tags = get_commit_tags(
