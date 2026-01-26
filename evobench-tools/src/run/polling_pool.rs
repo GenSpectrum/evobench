@@ -83,7 +83,7 @@ impl PollingPool {
                 // minimize contact with issues with remote server.
                 let git_working_dir = &working_directory.git_working_dir;
                 Ok(check_exists(git_working_dir, commit)? || {
-                    git_working_dir.git(&["remote", "update"], true)?;
+                    let _ = working_directory.fetch(commit)?;
                     check_exists(git_working_dir, commit)?
                 })
             },
