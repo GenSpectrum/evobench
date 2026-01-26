@@ -17,6 +17,12 @@ impl AsRef<str> for GitReference {
     }
 }
 
+impl AsRef<GitReference> for GitReference {
+    fn as_ref(&self) -> &GitReference {
+        self
+    }
+}
+
 impl<'t> From<&'t GitReference> for &'t str {
     fn from(value: &'t GitReference) -> Self {
         value.as_str()
