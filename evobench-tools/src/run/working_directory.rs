@@ -477,15 +477,22 @@ impl WorkingDirectory {
     /// called by `checkout` as needed. If `commit_id` is given, it is
     /// fetched explicitly
     pub fn fetch(&self, commit_id: &GitHash) -> Result<FetchedTags> {
-        let commit_str = commit_id.to_string();
         let git_working_dir = &self.git_working_dir;
-        // Fetching --tags in case `dataset_dir_for_commit` is
-        // used. Note: this does not update branches, right? But
+
+        // Fetching tags in case `dataset_dir_for_commit` is
+        // used.
+        let fetch_all_tags = true;
+        // Note: this does not update branches, right? But
         // branch names should never be used for anything, OK? XX
-        // document?
-        git_working_dir.git(&["fetch", REMOTE_NAME, "--tags", &commit_str], true)?;
+        // document?  or make the method fetch branches
+        git_working_dir.fetch_references(
+            REMOTE_NAME,
+            fetch_all_tags,
+            &[commit_id.to_reference()],
+            true,
+        )?;
         info!(
-            "checkout({:?}, {commit_id}): ran git fetch origin --tags {commit_str}",
+            "checkout({:?}, {commit_id}): ran fetch_references",
             git_working_dir.working_dir_path_ref()
         );
 
