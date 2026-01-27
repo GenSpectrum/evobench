@@ -16,7 +16,6 @@ use cj_path_util::path_util::AppendToPath;
 use clap::Parser;
 use itertools::Itertools;
 use lazy_static::lazy_static;
-use run_git::git::GitWorkingDir;
 use yansi::{Color, Style};
 
 use std::{
@@ -28,7 +27,6 @@ use std::{
     os::unix::{ffi::OsStrExt, process::CommandExt},
     path::{Path, PathBuf},
     process::{Command, exit},
-    str::FromStr,
     sync::{Arc, atomic::Ordering},
     thread,
     time::{Duration, SystemTime},
@@ -36,7 +34,7 @@ use std::{
 
 use evobench_tools::{
     ask::ask_yn,
-    config_file::{self, ConfigFile, backend_from_path, ron_to_string_pretty, save_config_file},
+    config_file::{self, ConfigFile, ron_to_string_pretty, save_config_file},
     ctx, debug,
     get_terminal_width::get_terminal_width,
     git::GitHash,
@@ -47,10 +45,7 @@ use evobench_tools::{
     lazyresult,
     lockable_file::{LockStatus, StandaloneExclusiveFileLock, StandaloneFileLockError},
     run::{
-        benchmarking_job::{
-            BenchmarkingJob, BenchmarkingJobOpts, BenchmarkingJobReasonOpt,
-            BenchmarkingJobSettingsOpts,
-        },
+        benchmarking_job::{BenchmarkingJobOpts, BenchmarkingJobReasonOpt},
         command_log_file::CommandLogFile,
         config::{BenchmarkingCommand, RunConfig, RunConfigBundle, RunConfigOpts},
         dataset_dir_env_var::dataset_dir_for,
@@ -62,6 +57,7 @@ use evobench_tools::{
         run_job::{JobRunner, get_commit_tags},
         run_queue::RunQueue,
         run_queues::RunQueues,
+        sub_command::insert::Insert,
         versioned_dataset_dir::VersionedDatasetDir,
         working_directory::{FetchedTags, Status, WorkingDirectory, WorkingDirectoryStatus},
         working_directory_pool::{
@@ -69,12 +65,7 @@ use evobench_tools::{
             WorkingDirectoryPoolBaseDir,
         },
     },
-    serde::{
-        date_and_time::{DateTimeWithOffset, system_time_to_rfc3339},
-        git_branch_name::GitBranchName,
-        priority::Priority,
-    },
-    serde_util::serde_read_json,
+    serde::date_and_time::{DateTimeWithOffset, system_time_to_rfc3339},
     terminal_table::{TerminalTable, TerminalTableOpts, TerminalTableTitle},
     utillib::{
         arc::CloneArc,
@@ -154,66 +145,11 @@ enum SubCommand {
         all: bool,
     },
 
-    /// Insert a job into the benchmarking queue. The given reference
-    /// is resolved in a given working directory; if you have a commit
-    /// id, then you can use the `insert` subcommand instead.
-    InsertLocal {
-        /// A Git reference to the commit that should be benchmarked
-        /// (like `HEAD`, `master`, some commit id, etc.)
-        reference: GitBranchName,
-
-        /// The path to the Git working directory where `reference`
-        /// should be resolved in
-        #[clap(long, short, default_value = ".")]
-        dir: PathBuf,
-
-        #[clap(flatten)]
-        benchmarking_job_settings: BenchmarkingJobSettingsOpts,
-        #[clap(flatten)]
-        reason: BenchmarkingJobReasonOpt,
-        #[clap(flatten)]
-        force_opt: ForceOpt,
-        #[clap(flatten)]
-        quiet_opt: QuietOpt,
-    },
-
-    /// Insert a job into the benchmarking queue, giving the commit id
-    /// (hence, unlike the `insert-local` command, not requiring a
-    /// working directory)
+    /// Manually insert (a) new job(s)
     Insert {
-        #[clap(flatten)]
-        benchmarking_job_opts: BenchmarkingJobOpts,
-
-        #[clap(flatten)]
-        force_opt: ForceOpt,
-        #[clap(flatten)]
-        quiet_opt: QuietOpt,
-    },
-
-    /// (Re-)insert a job from a job file
-    InsertFile {
-        #[clap(flatten)]
-        benchmarking_job_settings_opts: BenchmarkingJobSettingsOpts,
-        #[clap(flatten)]
-        force_opt: ForceOpt,
-        #[clap(flatten)]
-        quiet_opt: QuietOpt,
-
-        /// The initial priority boost, overrides the boost given in
-        /// the file.
-        #[clap(long)]
-        initial_boost: Option<Priority>,
-
-        /// Override the reason given in the file.
-        #[clap(flatten)]
-        reason: BenchmarkingJobReasonOpt,
-
-        /// Path(s) to the JSON file(s) to insert. The format is the
-        /// one used in the `~/.evobench-jobs/queues/` directories,
-        /// except you can alternatively choose JSON5, RON, or one of
-        /// the other formats shown in `config-formats` if the file
-        /// has a corresponding file extension.
-        paths: Vec<PathBuf>,
+        /// Choice of how to specify the job parameters
+        #[clap(subcommand)]
+        insert: Insert,
     },
 
     /// Insert jobs for new commits on branch names configured in the
@@ -683,7 +619,7 @@ fn run() -> Result<Option<ExecutionResult>> {
         },
     )?);
 
-    let open_queues = |run_config_bundle: &RunConfigBundle| {
+    let open_queues = |run_config_bundle: &RunConfigBundle| -> Result<RunQueues> {
         RunQueues::open(
             run_config_bundle.run_config.queues.clone_arc(),
             true,
@@ -1043,98 +979,8 @@ fn run() -> Result<Option<ExecutionResult>> {
             Ok(None)
         }
 
-        SubCommand::InsertLocal {
-            reason,
-            reference,
-            dir,
-            benchmarking_job_settings,
-            force_opt,
-            quiet_opt,
-        } => {
-            let git_working_dir = GitWorkingDir::from(dir);
-            let commit_id_str = git_working_dir
-                .git_rev_parse(reference.as_str(), true)?
-                .ok_or_else(|| anyhow!("reference '{reference}' does not resolve to a commit"))?;
-            let commit_id = GitHash::from_str(&commit_id_str)?;
-
-            let benchmarking_job_opts = BenchmarkingJobOpts {
-                reason,
-                benchmarking_job_settings,
-                run_parameters: RunParametersOpts { commit_id },
-            };
-
-            let queues = queues.force()?;
-            insert_jobs(
-                benchmarking_job_opts.complete_jobs(
-                    Some(&conf.benchmarking_job_settings),
-                    &conf.job_templates_for_insert,
-                )?,
-                &run_config_bundle.global_app_state_dir,
-                &conf.remote_repository.url,
-                force_opt,
-                quiet_opt,
-                &queues,
-            )?;
-            Ok(None)
-        }
-
-        SubCommand::Insert {
-            benchmarking_job_opts,
-            force_opt,
-            quiet_opt,
-        } => {
-            let queues = queues.force()?;
-            insert_jobs(
-                benchmarking_job_opts.complete_jobs(
-                    Some(&conf.benchmarking_job_settings),
-                    &conf.job_templates_for_insert,
-                )?,
-                &run_config_bundle.global_app_state_dir,
-                &conf.remote_repository.url,
-                force_opt,
-                quiet_opt,
-                &queues,
-            )?;
-            Ok(None)
-        }
-
-        SubCommand::InsertFile {
-            benchmarking_job_settings_opts,
-            initial_boost,
-            reason,
-            force_opt,
-            quiet_opt,
-            paths,
-        } => {
-            let mut benchmarking_jobs = Vec::new();
-            for path in &paths {
-                let mut job: BenchmarkingJob = if let Ok(backend) = backend_from_path(&path) {
-                    backend.load_config_file(&path)?
-                } else {
-                    serde_read_json(&path)?
-                };
-
-                job.check_and_init(
-                    conf,
-                    true,
-                    &benchmarking_job_settings_opts,
-                    initial_boost,
-                    &reason,
-                )?;
-
-                benchmarking_jobs.push(job);
-            }
-
-            let queues = queues.force()?;
-            let n = insert_jobs(
-                benchmarking_jobs,
-                &run_config_bundle.global_app_state_dir,
-                &conf.remote_repository.url,
-                force_opt,
-                quiet_opt,
-                &queues,
-            )?;
-            println!("Inserted {n} jobs.");
+        SubCommand::Insert { insert } => {
+            insert.run(&run_config_bundle, &mut queues)?;
             Ok(None)
         }
 

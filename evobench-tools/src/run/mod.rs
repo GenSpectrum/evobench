@@ -16,6 +16,7 @@ pub mod run_job;
 pub mod run_queue;
 pub mod run_queues;
 pub mod stop_start_status;
+pub mod sub_command;
 pub mod versioned_dataset_dir;
 pub mod working_directory;
 pub mod working_directory_pool;
