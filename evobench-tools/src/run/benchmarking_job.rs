@@ -58,20 +58,17 @@ impl BenchmarkingJobSettingsOpts {
         } = self;
         let count = count
             .or_else(|| {
-                let fallback = fallback?;
-                fallback.count
+                fallback?.count
             })
             .unwrap_or(5);
         let error_budget = error_budget
             .or_else(|| {
-                let fallback = fallback?;
-                fallback.error_budget
+                fallback?.error_budget
             })
             .unwrap_or(3);
         let priority = priority
             .or_else(|| {
-                let fallback = fallback?;
-                fallback.priority
+                fallback?.priority
             })
             .unwrap_or(Priority::new(0.).expect("0 works"));
         BenchmarkingJobSettings {
