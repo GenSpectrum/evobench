@@ -12,7 +12,10 @@ use crate::{
     run::working_directory::{
         REMOTE_NAME, WorkingDirectoryAutoCleanOpts, WorkingDirectoryWithPoolMut,
     },
-    serde::{date_and_time::DateTimeWithOffset, git_branch_name::GitBranchName, git_url::GitUrl},
+    serde::{
+        date_and_time::DateTimeWithOffset, git_branch_name::GitBranchName,
+        git_reference::GitReference, git_url::GitUrl,
+    },
     utillib::arc::CloneArc,
 };
 
@@ -165,8 +168,8 @@ impl PollingPool {
             &DateTimeWithOffset::now(),
             |mut working_directory| {
                 let working_directory = working_directory.get().expect("still there");
-                let mut non_resolving = Vec::new();
                 let git_working_dir = &working_directory.git_working_dir;
+                let mut non_resolving = Vec::new();
                 let mut ids = Vec::new();
                 for (name, job_templates) in branch_names {
                     let ref_string = name.to_ref_string_in_remote(REMOTE_NAME);
@@ -179,6 +182,34 @@ impl PollingPool {
                 Ok((ids, non_resolving))
             },
             &format!("resolving branch names {}", branch_names.keys().join(", ")),
+        )
+    }
+
+    /// Runs git rev-parse on all references, returning None for those
+    /// that do not resolve.
+    pub fn resolve_references<R: AsRef<GitReference>>(
+        &mut self,
+        working_directory_id: WorkingDirectoryId,
+        references: impl IntoIterator<Item = R>,
+    ) -> Result<Vec<Option<GitHash>>> {
+        self.process_in_working_directory(
+            working_directory_id,
+            &DateTimeWithOffset::now(),
+            |mut working_directory| {
+                let working_directory = working_directory.get().expect("still there");
+                let git_working_dir = &working_directory.git_working_dir;
+
+                references
+                    .into_iter()
+                    .map(|reference| -> Result<Option<GitHash>> {
+                        let reference = reference.as_ref();
+                        Ok(git_working_dir
+                            .git_rev_parse(reference.as_str(), true)?
+                            .map(|s| GitHash::from_str(&s).expect("git always returns git hashes")))
+                    })
+                    .try_collect()
+            },
+            "resolving references",
         )
     }
 }
