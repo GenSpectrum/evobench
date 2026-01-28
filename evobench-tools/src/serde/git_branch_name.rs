@@ -4,7 +4,7 @@ use serde::de::Visitor;
 
 use crate::{
     git::GitHash,
-    serde::git_reference::{GitReferenceError, check_git_reference_string},
+    serde::git_reference::{GitReference, GitReferenceError, check_git_reference_string},
 };
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, serde::Serialize)]
@@ -17,6 +17,12 @@ impl GitBranchName {
 
     pub fn to_ref_string_in_remote(&self, remote_name: &str) -> String {
         format!("remotes/{remote_name}/{}", self.as_str())
+    }
+
+    pub fn to_reference(&self) -> GitReference {
+        self.to_string()
+            .parse()
+            .expect("already checked to satisfy check_git_reference_string")
     }
 }
 
