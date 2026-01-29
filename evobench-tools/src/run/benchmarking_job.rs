@@ -3,11 +3,15 @@ use std::sync::Arc;
 use anyhow::{Result, anyhow, bail};
 
 use crate::{
-    ctx,
-    key::{BenchmarkingJobParameters, CustomParameters, RunParameters, RunParametersOpts},
-    run::config::RunConfig,
+    fallback_to_default, fallback_to_option,
+    git::GitHash,
+    key::{BenchmarkingJobParameters, CustomParameters, RunParameters},
+    run::{
+        config::RunConfig,
+        sub_command::insert::{ForceInvalidOpt, InsertBenchmarkingJobOpts},
+    },
     serde::priority::{NonComparableNumber, Priority},
-    utillib::arc::CloneArc,
+    utillib::{arc::CloneArc, fallback::FallingBackTo},
 };
 
 use super::{
@@ -20,61 +24,60 @@ use super::{
 #[serde(rename = "BenchmarkingJobSettings")]
 pub struct BenchmarkingJobSettingsOpts {
     /// The number of times the job should be run in total (across all
-    /// queues). Default taken from config file or: 5
+    /// queues). Default (if not defined elsewhere): 5
     #[clap(short, long)]
     count: Option<u8>,
 
     /// How many times a job is allowed to fail before it is removed
-    /// from the pipeline. Default taken from config file or: 3
+    /// from the pipeline. Default (if not defined elsewhere): 3
     #[clap(short, long)]
     error_budget: Option<u8>,
-
-    /// The default priority for jobs (a floating point number, or the
-    /// names `normal` (alias for 0.), `high` (alias for 1.), and
-    /// `low` (alias for -1.)). Jobs with a higher priority value (in
-    /// the positive direction) are scheduled before other jobs. To
-    /// give negative numbers as priorities via the command line,
-    /// prefix them with a space to get them past the Clap command
-    /// line parser: " -2".  Default taken from config file or: 0
-    #[clap(short, long)]
-    priority: Option<Priority>,
 }
 
 pub struct BenchmarkingJobSettings {
     count: u8,
     error_budget: u8,
-    priority: Priority,
 }
 
-impl BenchmarkingJobSettingsOpts {
-    pub fn complete_with_options_from(
-        &self,
-        fallback: Option<&BenchmarkingJobSettingsOpts>,
-    ) -> BenchmarkingJobSettings {
+impl Default for BenchmarkingJobSettings {
+    fn default() -> Self {
+        Self {
+            count: 5,
+            error_budget: 3,
+        }
+    }
+}
+
+impl FallingBackTo for BenchmarkingJobSettingsOpts {
+    fn falling_back_to(
+        self,
+        fallback: &BenchmarkingJobSettingsOpts,
+    ) -> BenchmarkingJobSettingsOpts {
         let Self {
             count,
             error_budget,
-            priority,
         } = self;
-        let count = count
-            .or_else(|| {
-                fallback?.count
-            })
-            .unwrap_or(5);
-        let error_budget = error_budget
-            .or_else(|| {
-                fallback?.error_budget
-            })
-            .unwrap_or(3);
-        let priority = priority
-            .or_else(|| {
-                fallback?.priority
-            })
-            .unwrap_or(Priority::new(0.).expect("0 works"));
-        BenchmarkingJobSettings {
+        fallback_to_option!(fallback.count);
+        fallback_to_option!(fallback.error_budget);
+        BenchmarkingJobSettingsOpts {
             count,
             error_budget,
-            priority,
+        }
+    }
+}
+
+impl From<BenchmarkingJobSettingsOpts> for BenchmarkingJobSettings {
+    fn from(value: BenchmarkingJobSettingsOpts) -> Self {
+        let BenchmarkingJobSettingsOpts {
+            count,
+            error_budget,
+        } = value;
+        let default = BenchmarkingJobSettings::default();
+        fallback_to_default!(default.count);
+        fallback_to_default!(default.error_budget);
+        Self {
+            count,
+            error_budget,
         }
     }
 }
@@ -88,16 +91,19 @@ pub struct BenchmarkingJobReasonOpt {
     pub reason: Option<String>,
 }
 
-#[derive(Debug, PartialEq, Clone, clap::Args)]
+impl FallingBackTo for BenchmarkingJobReasonOpt {
+    fn falling_back_to(self, fallback: &Self) -> Self {
+        let Self { reason } = self;
+        fallback_to_option!(fallback.reason);
+        Self { reason }
+    }
+}
+
+#[derive(Debug)]
 pub struct BenchmarkingJobOpts {
-    #[clap(flatten)]
-    pub reason: BenchmarkingJobReasonOpt,
-
-    #[clap(flatten)]
-    pub benchmarking_job_settings: BenchmarkingJobSettingsOpts,
-
-    #[clap(flatten)]
-    pub run_parameters: RunParametersOpts,
+    /// Optional overrides for what values might come from elsewhere
+    pub insert_benchmarking_job_opts: InsertBenchmarkingJobOpts,
+    pub commit_id: GitHash,
 }
 
 /// Just the public constant parts of a BenchmarkingJob
@@ -122,9 +128,9 @@ pub struct BenchmarkingJobState {
 #[serde(deny_unknown_fields)]
 pub struct BenchmarkingJob {
     #[serde(flatten)]
-    pub benchmarking_job_public: BenchmarkingJobPublic,
+    pub public: BenchmarkingJobPublic,
     #[serde(flatten)]
-    pub benchmarking_job_state: BenchmarkingJobState,
+    pub state: BenchmarkingJobState,
     priority: Priority,
     current_boost: Priority,
 }
@@ -133,87 +139,116 @@ impl BenchmarkingJob {
     /// Constructor, since some fields are private (needed for
     /// migration code).
     pub fn new(
-        benchmarking_job_public: BenchmarkingJobPublic,
-        benchmarking_job_state: BenchmarkingJobState,
+        public: BenchmarkingJobPublic,
+        state: BenchmarkingJobState,
         priority: Priority,
         current_boost: Priority,
     ) -> Self {
         Self {
-            benchmarking_job_public,
-            benchmarking_job_state,
+            public,
+            state,
             priority,
             current_boost,
         }
     }
 
-    /// Check a manually created BenchmarkingJob for allowable values
-    /// and optionally overwrite parts with settings from the config.
+    /// Overwrite values in `self` with those from the given overrides
+    /// (and for values in `BenchmarkingJobSettings`, if not provided,
+    /// take those from the config). Delete
+    /// `last_working_directory`. Then check for allowable values
+    /// (custom variables) via settings from the config, unless
+    /// `force` was given.
     // (A little wasteful as it initializes a new CustomParameters
-    // that is being dropped again.)
+    // that is then dropped again.)
     pub fn check_and_init(
         &mut self,
         config: &RunConfig,
-        init: bool,
-        benchmarking_job_settings_opts: &BenchmarkingJobSettingsOpts,
-        initial_boost: Option<Priority>,
-        reason_opt: &BenchmarkingJobReasonOpt,
+        override_opts: &InsertBenchmarkingJobOpts,
+        override_commit: Option<&GitHash>,
+        force: &ForceInvalidOpt,
     ) -> Result<()> {
-        let Self {
-            benchmarking_job_public,
-            benchmarking_job_state,
-            priority,
-            current_boost,
-        } = self;
-
-        let BenchmarkingJobPublic {
-            reason,
-            run_parameters,
-            command,
-        } = benchmarking_job_public;
-
-        let target_name = &command.target_name;
-        let target = config
-            .targets
-            .get(target_name)
-            .ok_or_else(|| anyhow!("target {:?} not found in the config", target_name.as_str()))?;
-        let _ = CustomParameters::checked_from(
-            &run_parameters.custom_parameters.keyvals(),
-            &target.allowed_custom_parameters,
-        )?;
-
-        if *command != target.benchmarking_command {
-            // (XX could do multi error collection and report them all
-            // in one go)
-            bail!(
-                "command for target {:?} is expected to be {:?}, but is: {:?}",
-                target_name.as_str(),
-                target.benchmarking_command,
-                command
-            );
-        }
-
-        if init {
-            let benchmarking_job_settings = benchmarking_job_settings_opts
-                .complete_with_options_from(Some(&config.benchmarking_job_settings));
-
+        // Init: take the values from the overrides, falling back to
+        // the values from `self`. But can't use FallingBackTo as Self
+        // has no options anymore. Thus code up manually.
+        {
             let BenchmarkingJobState {
                 remaining_count,
                 remaining_error_budget,
                 last_working_directory,
-            } = benchmarking_job_state;
-
-            *remaining_count = benchmarking_job_settings.count;
-            *remaining_error_budget = benchmarking_job_settings.error_budget;
-            *priority = benchmarking_job_settings.priority;
-            if let Some(initial_boost) = initial_boost {
-                *current_boost = initial_boost;
-            }
-
-            if let Some(rsn) = &reason_opt.reason {
-                *reason = Some(rsn.into());
-            }
+            } = &mut self.state;
 
             *last_working_directory = None;
+
+            let InsertBenchmarkingJobOpts {
+                reason,
+                benchmarking_job_settings,
+                priority,
+                initial_boost,
+            } = override_opts;
+
+            {
+                let BenchmarkingJobSettings {
+                    count,
+                    error_budget,
+                } = benchmarking_job_settings
+                    .clone()
+                    .falling_back_to(&config.benchmarking_job_settings)
+                    .into();
+
+                *remaining_count = count;
+                *remaining_error_budget = error_budget;
+            }
+
+            if let Some(initial_boost) = initial_boost {
+                self.current_boost = initial_boost.clone();
+            }
+            if let Some(priority) = priority {
+                self.priority = priority.clone();
+            }
+
+            if let Some(reason) = &reason.reason {
+                self.public.reason = Some(reason.into());
+            }
+
+            if let Some(override_commit) = override_commit {
+                let mut run_parameters: RunParameters = (*self.public.run_parameters).clone();
+                run_parameters.commit_id = override_commit.clone();
+                self.public.run_parameters = Arc::new(run_parameters);
+            }
+        }
+
+        // Checks
+        if !force.force_invalid {
+            let Self {
+                public:
+                    BenchmarkingJobPublic {
+                        reason: _,
+                        run_parameters,
+                        command,
+                    },
+                state: _,
+                priority: _,
+                current_boost: _,
+            } = self;
+
+            let target_name = &command.target_name;
+            let target = config.targets.get(target_name).ok_or_else(|| {
+                anyhow!("target {:?} not found in the config", target_name.as_str())
+            })?;
+
+            let _ = CustomParameters::checked_from(
+                &run_parameters.custom_parameters.keyvals(),
+                &target.allowed_custom_parameters,
+            )?;
+
+            if *command != target.benchmarking_command {
+                bail!(
+                    "command for target {:?} is expected to be {:?}, but is: {:?}",
+                    target_name.as_str(),
+                    target.benchmarking_command,
+                    command
+                );
+            }
         }
 
         Ok(())
@@ -225,19 +260,16 @@ impl BenchmarkingJob {
 
     /// Clones everything except `current_boost` is set to 0. You can
     /// change the public fields afterwards.
-    pub fn clone_for_queue_reinsertion(
-        &self,
-        benchmarking_job_state: BenchmarkingJobState,
-    ) -> Self {
+    pub fn clone_for_queue_reinsertion(&self, state: BenchmarkingJobState) -> Self {
         let Self {
-            benchmarking_job_public,
+            public,
             priority,
             current_boost: _,
-            benchmarking_job_state: _,
+            state: _,
         } = self;
         Self {
-            benchmarking_job_public: benchmarking_job_public.clone(),
-            benchmarking_job_state,
+            public: public.clone(),
+            state,
             priority: *priority,
             current_boost: Priority::NORMAL,
         }
@@ -247,13 +279,13 @@ impl BenchmarkingJob {
         // Ignore all fields that are not "key" parts (inputs
         // determining/influencing the output)
         let BenchmarkingJob {
-            benchmarking_job_public:
+            public:
                 BenchmarkingJobPublic {
                     reason: _,
                     run_parameters,
                     command,
                 },
-            benchmarking_job_state: _,
+            state: _,
             priority: _,
             current_boost: _,
         } = self;
@@ -265,58 +297,53 @@ impl BenchmarkingJob {
 }
 
 impl BenchmarkingJobOpts {
-    /// Adds priorities from config/defaults and those from job
-    /// templates. Returns failure when priorities can't be added
-    /// (+inf + -inf).
-    pub fn complete_jobs(
-        &self,
-        benchmarking_job_settings_fallback: Option<&BenchmarkingJobSettingsOpts>,
-        job_template_list: &[JobTemplate],
-    ) -> Result<Vec<BenchmarkingJob>> {
+    /// Make one job per job template, filling the missing values
+    /// (currently just `priority` and `initial_boost`) and all other
+    /// values from the job template.
+    pub fn complete_jobs(&self, job_template_list: &[JobTemplate]) -> Vec<BenchmarkingJob> {
         let Self {
-            reason,
-            benchmarking_job_settings,
-            run_parameters,
+            insert_benchmarking_job_opts:
+                InsertBenchmarkingJobOpts {
+                    reason,
+                    benchmarking_job_settings,
+                    priority: opts_priority,
+                    initial_boost: opts_initial_boost,
+                },
+            commit_id,
         } = self;
+
         let BenchmarkingJobSettings {
             count,
             error_budget,
-            priority: priority_from_config_or_defaults,
-        } = benchmarking_job_settings
-            .complete_with_options_from(benchmarking_job_settings_fallback);
+        } = benchmarking_job_settings.clone().into();
 
         job_template_list
             .iter()
-            .map(|job_template| -> Result<_> {
+            .map(|job_template| {
                 let JobTemplate {
-                    priority: priority_from_job_template,
+                    priority,
                     initial_boost,
                     command,
                     custom_parameters,
                 } = job_template;
 
-                let priority = (priority_from_config_or_defaults + *priority_from_job_template)
-                    .map_err(ctx!(
-                    "can't add priority from config/defaults {priority_from_config_or_defaults} \
-                     and priority from job template {priority_from_job_template}"
-                ))?;
-
-                Ok(BenchmarkingJob {
-                    benchmarking_job_public: BenchmarkingJobPublic {
+                BenchmarkingJob {
+                    public: BenchmarkingJobPublic {
                         reason: reason.reason.clone(),
-                        run_parameters: run_parameters
-                            .complete(custom_parameters.clone_arc())
-                            .into(),
+                        run_parameters: Arc::new(RunParameters {
+                            commit_id: commit_id.clone(),
+                            custom_parameters: custom_parameters.clone_arc(),
+                        }),
                         command: command.clone_arc(),
                     },
-                    benchmarking_job_state: BenchmarkingJobState {
+                    state: BenchmarkingJobState {
                         remaining_count: count,
                         remaining_error_budget: error_budget,
                         last_working_directory: None,
                     },
-                    priority,
-                    current_boost: *initial_boost,
-                })
+                    priority: opts_priority.unwrap_or(*priority),
+                    current_boost: opts_initial_boost.unwrap_or(*initial_boost),
+                }
             })
             .collect()
     }

@@ -182,13 +182,6 @@ impl Display for CustomParameters {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, clap::Parser)]
-pub struct RunParametersOpts {
-    /// The commit of the source code of the target (benchmarked)
-    /// project
-    pub commit_id: GitHash,
-}
-
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunParameters {
@@ -252,16 +245,6 @@ impl AsKey for BenchmarkingJobParametersHash {
 
     fn try_from_filename_str(file_name: &str) -> Option<Self> {
         Some(Self(file_name.into()))
-    }
-}
-
-impl RunParametersOpts {
-    pub fn complete(&self, custom_parameters: Arc<CustomParameters>) -> RunParameters {
-        let Self { commit_id } = self;
-        RunParameters {
-            commit_id: commit_id.clone(),
-            custom_parameters,
-        }
     }
 }
 

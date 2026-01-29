@@ -40,7 +40,7 @@ use evobench_tools::{
     git::GitHash,
     info,
     io_utils::bash::{bash_export_variable_string, bash_string_from_program_path_and_args},
-    key::{BenchmarkingJobParameters, RunParameters, RunParametersOpts},
+    key::{BenchmarkingJobParameters, RunParameters},
     key_val_fs::key_val::Entry,
     lazyresult,
     lockable_file::{LockStatus, StandaloneExclusiveFileLock, StandaloneFileLockError},
@@ -51,18 +51,19 @@ use evobench_tools::{
         dataset_dir_env_var::dataset_dir_for,
         env_vars::assert_evobench_env_var,
         global_app_state_dir::GlobalAppStateDir,
-        insert_jobs::{ForceOpt, QuietOpt, insert_jobs, open_already_inserted},
-        polling_pool::PollingPool,
+        insert_jobs::{DryRunOpt, ForceOpt, QuietOpt, insert_jobs, open_already_inserted},
         run_context::RunContext,
         run_job::{JobRunner, get_commit_tags},
         run_queue::RunQueue,
         run_queues::RunQueues,
-        sub_command::insert::Insert,
+        sub_command::{
+            insert::{Insert, InsertBenchmarkingJobOpts, InsertOpts},
+            open_polling_pool, open_working_directory_pool,
+        },
         versioned_dataset_dir::VersionedDatasetDir,
         working_directory::{FetchedTags, Status, WorkingDirectory, WorkingDirectoryStatus},
         working_directory_pool::{
-            WorkingDirectoryId, WorkingDirectoryPool, WorkingDirectoryPoolAndLock,
-            WorkingDirectoryPoolBaseDir,
+            WorkingDirectoryId, WorkingDirectoryPool, WorkingDirectoryPoolBaseDir,
         },
     },
     serde::date_and_time::{DateTimeWithOffset, system_time_to_rfc3339},
@@ -145,15 +146,21 @@ enum SubCommand {
         all: bool,
     },
 
-    /// Manually insert (a) new job(s)
+    /// Insert zero or more jobs, from one or more templates and for
+    /// zero or more commits. For automatic periodic insertion, see
+    /// `poll` sub-command instead.
     Insert {
+        #[clap(flatten)]
+        opts: InsertOpts,
+
         /// Choice of how to specify the job parameters
         #[clap(subcommand)]
-        insert: Insert,
+        method: Insert,
     },
 
     /// Insert jobs for new commits on branch names configured in the
-    /// config option `remote_branch_names_for_poll`
+    /// config option `remote_branch_names_for_poll`. For one-off
+    /// manual insertion see `insert` instead.
     Poll {
         // No QuietOpt since that must be the default. Also, another
         // force option since the help text is different here.
@@ -173,6 +180,9 @@ enum SubCommand {
         /// other) names do not resolve.
         #[clap(long)]
         no_fail: bool,
+
+        #[clap(flatten)]
+        dry_run_opt: DryRunOpt,
 
         #[clap(subcommand)]
         mode: RunMode,
@@ -368,19 +378,6 @@ enum WdCleanupMode {
     },
 }
 
-fn open_working_directory_pool(
-    conf: &RunConfig,
-    working_directory_base_dir: Arc<WorkingDirectoryPoolBaseDir>,
-    create_dir_if_not_exists: bool,
-) -> Result<WorkingDirectoryPoolAndLock> {
-    WorkingDirectoryPool::open(
-        conf.working_directory_pool.clone_arc(),
-        working_directory_base_dir,
-        conf.remote_repository.url.clone(),
-        create_dir_if_not_exists,
-    )
-}
-
 fn open_working_directory_change_signals(conf: &RunConfig) -> Result<PollingSignals> {
     let signals_path = conf.working_directory_change_signals_path();
     PollingSignals::open(&signals_path, 0).map_err(ctx!("opening signals path {signals_path:?}"))
@@ -516,7 +513,7 @@ fn run_queues<'ce>(
             info!("the working directory pool was updated outside the app, reload it");
             let conf = &run_config_bundle.run_config;
             working_directory_pool =
-                open_working_directory_pool(conf, working_directory_base_dir.clone_arc(), true)?
+                open_working_directory_pool(conf, working_directory_base_dir.clone_arc())?
                     .into_inner();
         }
     }
@@ -844,21 +841,14 @@ fn run() -> Result<Option<ExecutionResult>> {
                         let file_name = get_filename(&entry)?;
                         let key = entry.key()?;
                         let job = entry.get()?;
-                        let commit_id = &*job
-                            .benchmarking_job_public
-                            .run_parameters
-                            .commit_id
-                            .to_string();
-                        let reason = if let Some(reason) = &job.benchmarking_job_public.reason {
+                        let commit_id = &*job.public.run_parameters.commit_id.to_string();
+                        let reason = if let Some(reason) = &job.public.reason {
                             reason.as_ref()
                         } else {
                             ""
                         };
-                        let custom_parameters = &*job
-                            .benchmarking_job_public
-                            .run_parameters
-                            .custom_parameters
-                            .to_string();
+                        let custom_parameters =
+                            &*job.public.run_parameters.custom_parameters.to_string();
                         let (locking, is_locked) = if schedule_condition.is_inactive() {
                             ("", false)
                         } else {
@@ -894,12 +884,12 @@ fn run() -> Result<Option<ExecutionResult>> {
                                 .map(|v| v.to_string())
                                 .unwrap_or_else(|| "".into())
                         } else {
-                            job.benchmarking_job_state
+                            job.state
                                 .last_working_directory
                                 .map(|v| v.to_string())
                                 .unwrap_or_else(|| "".into())
                         };
-                        let target_name = job.benchmarking_job_public.command.target_name.as_str();
+                        let target_name = job.public.command.target_name.as_str();
 
                         let system_time = key.system_time();
                         let is_older = {
@@ -979,8 +969,10 @@ fn run() -> Result<Option<ExecutionResult>> {
             Ok(None)
         }
 
-        SubCommand::Insert { insert } => {
-            insert.run(&run_config_bundle, &mut queues)?;
+        SubCommand::Insert { opts, method } => {
+            let queues = queues.force()?;
+            let n = method.run(opts, &run_config_bundle, &queues)?;
+            println!("Inserted {n} jobs.");
             Ok(None)
         }
 
@@ -988,18 +980,14 @@ fn run() -> Result<Option<ExecutionResult>> {
             force,
             quiet,
             no_fail,
+            dry_run_opt,
             mode,
         } => {
             // Returns whether at least 1 job was inserted
             let mut try_run_poll = |daemon_check_exit: Option<CheckExit>| -> Result<bool> {
                 loop {
                     let (commits, non_resolving) = {
-                        let mut polling_pool = PollingPool::open(
-                            &conf.remote_repository.url,
-                            &run_config_bundle
-                                .global_app_state_dir
-                                .working_directory_for_polling_pool_base()?,
-                        )?;
+                        let mut polling_pool = open_polling_pool(&run_config_bundle)?;
 
                         let working_directory_id = polling_pool.updated_working_dir()?;
                         polling_pool.resolve_branch_names(
@@ -1012,25 +1000,26 @@ fn run() -> Result<Option<ExecutionResult>> {
                     let mut benchmarking_jobs = Vec::new();
                     for (branch_name, commit_id, job_templates) in commits {
                         let opts = BenchmarkingJobOpts {
-                            reason: BenchmarkingJobReasonOpt {
-                                reason: branch_name.as_str().to_owned().into(),
+                            insert_benchmarking_job_opts: InsertBenchmarkingJobOpts {
+                                reason: BenchmarkingJobReasonOpt {
+                                    reason: branch_name.as_str().to_owned().into(),
+                                },
+                                benchmarking_job_settings: (*conf.benchmarking_job_settings)
+                                    .clone(),
+                                priority: None,
+                                initial_boost: None,
                             },
-                            benchmarking_job_settings: (*conf.benchmarking_job_settings).clone(),
-                            run_parameters: RunParametersOpts { commit_id },
+                            commit_id,
                         };
-                        benchmarking_jobs.append(&mut opts.complete_jobs(
-                            // already using conf.benchmarking_job_settings from above
-                            None,
-                            &job_templates,
-                        )?);
+                        benchmarking_jobs.append(&mut opts.complete_jobs(&job_templates));
                     }
 
                     let n_original = benchmarking_jobs.len();
                     let queues = queues.force()?;
                     let n = insert_jobs(
                         benchmarking_jobs,
-                        &run_config_bundle.global_app_state_dir,
-                        &conf.remote_repository.url,
+                        &run_config_bundle,
+                        dry_run_opt.clone(),
                         ForceOpt { force },
                         // Must use quiet so that it can try to insert *all*
                         // given jobs (XX: should it continue even with
@@ -1131,16 +1120,15 @@ fn run() -> Result<Option<ExecutionResult>> {
         }
 
         SubCommand::Run { mode } => {
-            let open_working_directory_pool = |conf: &RunConfig,
-                                               working_directory_base_dir: &Arc<
-                WorkingDirectoryPoolBaseDir,
-            >|
-             -> Result<_> {
-                Ok(
-                    open_working_directory_pool(conf, working_directory_base_dir.clone(), true)?
-                        .into_inner(),
-                )
-            };
+            let open_working_directory_pool =
+                |conf: &RunConfig,
+                 working_directory_base_dir: &Arc<WorkingDirectoryPoolBaseDir>|
+                 -> Result<_> {
+                    Ok(
+                        open_working_directory_pool(conf, working_directory_base_dir.clone())?
+                            .into_inner(),
+                    )
+                };
 
             match mode {
                 RunMode::One { false_if_none } => {
@@ -1239,7 +1227,7 @@ fn run() -> Result<Option<ExecutionResult>> {
 
         SubCommand::Wd { subcommand } => {
             let mut working_directory_pool =
-                open_working_directory_pool(conf, working_directory_base_dir.clone(), true)?
+                open_working_directory_pool(conf, working_directory_base_dir.clone())?
                     // XX might we want to hold onto the lock?
                     .into_inner();
 

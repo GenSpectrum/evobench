@@ -1,6 +1,7 @@
 pub mod arc;
 pub mod bool_env;
 pub mod exit_status_ext;
+pub mod fallback;
 pub mod home;
 pub mod logging;
 pub mod path_resolve_home;

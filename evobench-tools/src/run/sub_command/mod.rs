@@ -1,1 +1,43 @@
+use std::sync::Arc;
+
+use anyhow::Result;
+
+use crate::{
+    run::{
+        config::{RunConfig, RunConfigBundle},
+        polling_pool::PollingPool,
+        working_directory_pool::{
+            WorkingDirectoryPool, WorkingDirectoryPoolAndLock, WorkingDirectoryPoolBaseDir,
+        },
+    },
+    utillib::arc::CloneArc,
+};
+
 pub mod insert;
+
+// The reason to have these open_* functions here is just that making
+// them methods on the pools spams those files with
+// RunConfig/RunConfigBundle, and making them methods on RunConfig or
+// RunConfigBundle spams those.
+
+pub fn open_working_directory_pool(
+    conf: &RunConfig,
+    working_directory_base_dir: Arc<WorkingDirectoryPoolBaseDir>,
+) -> Result<WorkingDirectoryPoolAndLock> {
+    let create_dir_if_not_exists = true;
+    WorkingDirectoryPool::open(
+        conf.working_directory_pool.clone_arc(),
+        working_directory_base_dir,
+        conf.remote_repository.url.clone(),
+        create_dir_if_not_exists,
+    )
+}
+
+pub fn open_polling_pool(config: &RunConfigBundle) -> Result<PollingPool> {
+    PollingPool::open(
+        &config.run_config.remote_repository.url,
+        &config
+            .global_app_state_dir
+            .working_directory_for_polling_pool_base()?,
+    )
+}
