@@ -1,0 +1,79 @@
+@startuml
+allowmixing
+
+object JobTemplate
+JobTemplate : priority: Priority
+JobTemplate : initial_boost: Priority
+JobTemplate : command: BenchmarkingCommand
+JobTemplate : custom_parameters: CustomParameters
+
+'object RunParameters
+'RunParameters : commit_id: GitHash
+'RunParameters : custom_parameters: CustomParameters
+
+object BenchmarkingJobSettingsOpts
+BenchmarkingJobSettingsOpts : count: Option<u8>
+BenchmarkingJobSettingsOpts : error_budget: Option<u8>
+
+'object BenchmarkingJobSettings
+'BenchmarkingJobSettings : count: u8
+'BenchmarkingJobSettings : error_budget: u8
+
+object BenchmarkingJob
+BenchmarkingJob : reason: Option<String>
+BenchmarkingJob : run_parameters: RunParameters
+BenchmarkingJob : command: BenchmarkingCommand
+BenchmarkingJob : priority: Priority
+BenchmarkingJob : current_boost: Priority
+BenchmarkingJob : remaining_count: u8
+BenchmarkingJob : remaining_error_budget: u8
+BenchmarkingJob : last_working_directory: Option<WorkingDirectoryId>
+
+object InsertBenchmarkingJobOpts
+InsertBenchmarkingJobOpts : reason: Option<String>
+InsertBenchmarkingJobOpts : benchmarking_job_settings: BenchmarkingJobSettingsOpts
+InsertBenchmarkingJobOpts : priority: Option<Priority>
+InsertBenchmarkingJobOpts : initial_boost: Option<Priority>
+
+object BenchmarkingJobOpts
+BenchmarkingJobOpts : insert_benchmarking_job_opts: InsertBenchmarkingJobOpts
+BenchmarkingJobOpts : commit_id: GitHash
+
+
+rectangle GitBranchName
+rectangle GitReference
+rectangle GitHash
+rectangle RunConfig.remote_repository.remote_branch_names_for_poll
+circle lookup1
+rectangle RunConfig.job_template_lists
+circle lookup2
+rectangle templates_name
+rectangle LocalOrRemote
+rectangle GitWorkingDir
+circle git_rev_parse
+circle complete_jobs
+
+LocalOrRemote --> GitWorkingDir
+GitWorkingDir --> git_rev_parse: path
+GitBranchName --> git_rev_parse: alt. 1
+GitReference --> git_rev_parse: alt. 2
+git_rev_parse -> GitHash
+
+GitBranchName --> lookup1: key
+RunConfig.remote_repository.remote_branch_names_for_poll --> lookup1: map
+lookup1 -> templates_name
+templates_name --> lookup2: key
+RunConfig.job_template_lists --> lookup2: map
+lookup2 --> JobTemplate : multiple
+
+GitHash --> BenchmarkingJobOpts
+
+BenchmarkingJobSettingsOpts -> InsertBenchmarkingJobOpts
+InsertBenchmarkingJobOpts -> BenchmarkingJobOpts
+
+BenchmarkingJobOpts --> complete_jobs
+JobTemplate --> complete_jobs
+
+complete_jobs --> BenchmarkingJob: multiple (one per JobTemplate)
+
+@enduml

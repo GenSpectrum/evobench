@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" contentScriptType="application/ecmascript" contentStyleType="text/css" height="904px" preserveAspectRatio="none" style="width:1102px;height:904px;" version="1.1" viewBox="0 0 1102 904" width="1102px" zoomAndPan="magnify"><defs><filter height="300%" id="fari0r6lyenln" width="300%" x="-1" y="-1"><feGaussianBlur result="blurOut" stdDeviation="2.0"/><feColorMatrix in="blurOut" result="blurOut2" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .4 0"/><feOffset dx="4.0" dy="4.0" in="blurOut2" result="blurOut3"/><feBlend in="SourceGraphic" in2="blurOut3" mode="normal"/></filter></defs><g><!--MD5=[1b40aaab78f603c8a633782e32cd422a]
+cluster RunConfig.remote_repository--><polygon fill="#FFFFFF" filter="url(#fari0r6lyenln)" points="47.5,24,258.5,24,265.5,49.0679,509.5,49.0679,509.5,117,47.5,117,47.5,24" style="stroke: #000000; stroke-width: 1.5;"/><line style="stroke: #000000; stroke-width: 1.5;" x1="47.5" x2="265.5" y1="49.0679" y2="49.0679"/><text fill="#000000" font-family="sans-serif" font-size="14" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="205" x="51.5" y="40.9659">RunConfig.remote_repository</text><!--MD5=[456391a29957d05132f9989704368669]
+cluster RunConfig--><polygon fill="#FFFFFF" filter="url(#fari0r6lyenln)" points="306.5,168,384.5,168,391.5,193.0679,554.5,193.0679,554.5,261,306.5,261,306.5,168" style="stroke: #000000; stroke-width: 1.5;"/><line style="stroke: #000000; stroke-width: 1.5;" x1="306.5" x2="391.5" y1="193.0679" y2="193.0679"/><text fill="#000000" font-family="sans-serif" font-size="14" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="72" x="310.5" y="184.9659">RunConfig</text><!--MD5=[e5c4629e161f83b85ed2e7f65e0bf95c]
+entity RunConfig.remote_repository.remote_branch_names_for_poll--><rect fill="#FEFECE" filter="url(#fari0r6lyenln)" height="39.0679" style="stroke: #000000; stroke-width: 1.5;" width="430" x="63.5" y="62"/><text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacingAndGlyphs" textLength="410" x="73.5" y="86.9659">RunConfig.remote_repository.remote_branch_names_for_poll</text><!--MD5=[0011f214dff95b5830b259db48f636dd]
+entity RunConfig.job_template_lists--><rect fill="#FEFECE" filter="url(#fari0r6lyenln)" height="39.0679" style="stroke: #000000; stroke-width: 1.5;" width="215" x="323" y="206"/><text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacingAndGlyphs" textLength="195" x="333" y="230.9659">RunConfig.job_template_lists</text><rect fill="#FEFECE" filter="url(#fari0r6lyenln)" height="82.8241" style="stroke: #A80036; stroke-width: 1.5;" width="205" x="6" y="469"/><text fill="#000000" font-family="sans-serif" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="70" x="73.5" y="483.8281">JobTemplate</text><line style="stroke: #A80036; stroke-width: 1.5;" x1="7" x2="210" y1="489.3441" y2="489.3441"/><text fill="#000000" font-family="sans-serif" font-size="10" lengthAdjust="spacingAndGlyphs" textLength="76" x="12" y="504.0341">priority: Priority</text><text fill="#000000" font-family="sans-serif" font-size="10" lengthAdjust="spacingAndGlyphs" textLength="100" x="12" y="517.6541">initial_boost: Priority</text><text fill="#000000" font-family="sans-serif" font-size="10" lengthAdjust="spacingAndGlyphs" textLength="170" x="12" y="531.2741">command: BenchmarkingCommand</text><text fill="#000000" font-family="sans-serif" font-size="10" lengthAdjust="spacingAndGlyphs" textLength="193" x="12" y="544.8941">custom_parameters: CustomParameters</text><rect fill="#FEFECE" filter="url(#fari0r6lyenln)" height="55.5841" style="stroke: #A80036; stroke-width: 1.5;" width="183" x="246" y="482.5"/><text fill="#000000" font-family="sans-serif" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="169" x="253" y="497.3281">BenchmarkingJobSettingsOpts</text><line style="stroke: #A80036; stroke-width: 1.5;" x1="247" x2="428" y1="502.8441" y2="502.8441"/><text fill="#000000" font-family="sans-serif" font-size="10" lengthAdjust="spacingAndGlyphs" textLength="90" x="252" y="517.5341">count: Option&lt;u8&gt;</text><text fill="#000000" font-family="sans-serif" font-size="10" lengthAdjust="spacingAndGlyphs" textLength="125" x="252" y="531.1541">error_budget: Option&lt;u8&gt;</text><rect fill="#FEFECE" filter="url(#fari0r6lyenln)" height="137.304" style="stroke: #A80036; stroke-width: 1.5;" width="262" x="393.5" y="756"/><text fill="#000000" font-family="sans-serif" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="98" x="475.5" y="770.8281">BenchmarkingJob</text><line style="stroke: #A80036; stroke-width: 1.5;" x1="394.5" x2="654.5" y1="776.3441" y2="776.3441"/><text fill="#000000" font-family="sans-serif" font-size="10" lengthAdjust="spacingAndGlyphs" textLength="112" x="399.5" y="791.0341">reason: Option&lt;String&gt;</text><text fill="#000000" font-family="sans-serif" font-size="10" lengthAdjust="spacingAndGlyphs" textLength="156" x="399.5" y="804.6541">run_parameters: RunParameters</text><text fill="#000000" font-family="sans-serif" font-size="10" lengthAdjust="spacingAndGlyphs" textLength="170" x="399.5" y="818.2741">command: BenchmarkingCommand</text><text fill="#000000" font-family="sans-serif" font-size="10" lengthAdjust="spacingAndGlyphs" textLength="76" x="399.5" y="831.8941">priority: Priority</text><text fill="#000000" font-family="sans-serif" font-size="10" lengthAdjust="spacingAndGlyphs" textLength="107" x="399.5" y="845.5141">current_boost: Priority</text><text fill="#000000" font-family="sans-serif" font-size="10" lengthAdjust="spacingAndGlyphs" textLength="98" x="399.5" y="859.134">remaining_count: u8</text><text fill="#000000" font-family="sans-serif" font-size="10" lengthAdjust="spacingAndGlyphs" textLength="133" x="399.5" y="872.754">remaining_error_budget: u8</text><text fill="#000000" font-family="sans-serif" font-size="10" lengthAdjust="spacingAndGlyphs" textLength="250" x="399.5" y="886.374">last_working_directory: Option&lt;WorkingDirectoryId&gt;</text><rect fill="#FEFECE" filter="url(#fari0r6lyenln)" height="82.8241" style="stroke: #A80036; stroke-width: 1.5;" width="294" x="464.5" y="469"/><text fill="#000000" font-family="sans-serif" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="157" x="533" y="483.8281">InsertBenchmarkingJobOpts</text><line style="stroke: #A80036; stroke-width: 1.5;" x1="465.5" x2="757.5" y1="489.3441" y2="489.3441"/><text fill="#000000" font-family="sans-serif" font-size="10" lengthAdjust="spacingAndGlyphs" textLength="112" x="470.5" y="504.0341">reason: Option&lt;String&gt;</text><text fill="#000000" font-family="sans-serif" font-size="10" lengthAdjust="spacingAndGlyphs" textLength="282" x="470.5" y="517.6541">benchmarking_job_settings: BenchmarkingJobSettingsOpts</text><text fill="#000000" font-family="sans-serif" font-size="10" lengthAdjust="spacingAndGlyphs" textLength="121" x="470.5" y="531.2741">priority: Option&lt;Priority&gt;</text><text fill="#000000" font-family="sans-serif" font-size="10" lengthAdjust="spacingAndGlyphs" textLength="145" x="470.5" y="544.8941">initial_boost: Option&lt;Priority&gt;</text><rect fill="#FEFECE" filter="url(#fari0r6lyenln)" height="55.5841" style="stroke: #A80036; stroke-width: 1.5;" width="297" x="794" y="482.5"/><text fill="#000000" font-family="sans-serif" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="124" x="880.5" y="497.3281">BenchmarkingJobOpts</text><line style="stroke: #A80036; stroke-width: 1.5;" x1="795" x2="1090" y1="502.8441" y2="502.8441"/><text fill="#000000" font-family="sans-serif" font-size="10" lengthAdjust="spacingAndGlyphs" textLength="285" x="800" y="517.5341">insert_benchmarking_job_opts: InsertBenchmarkingJobOpts</text><text fill="#000000" font-family="sans-serif" font-size="10" lengthAdjust="spacingAndGlyphs" textLength="93" x="800" y="531.1541">commit_id: GitHash</text><!--MD5=[4a72c81f35f29367fe0817d15660d170]
+entity GitBranchName--><rect fill="#FEFECE" filter="url(#fari0r6lyenln)" height="39.0679" style="stroke: #000000; stroke-width: 1.5;" width="127" x="613" y="62"/><text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacingAndGlyphs" textLength="107" x="623" y="86.9659">GitBranchName</text><!--MD5=[40261bb113dfd7e6045a3a146f6092ed]
+entity GitReference--><rect fill="#FEFECE" filter="url(#fari0r6lyenln)" height="39.0679" style="stroke: #000000; stroke-width: 1.5;" width="107" x="933" y="206"/><text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacingAndGlyphs" textLength="87" x="943" y="230.9659">GitReference</text><!--MD5=[3091231534442985d86ec620ee3c114c]
+entity GitHash--><rect fill="#FEFECE" filter="url(#fari0r6lyenln)" height="39.0679" style="stroke: #000000; stroke-width: 1.5;" width="73" x="899" y="338.5"/><text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacingAndGlyphs" textLength="53" x="909" y="363.4659">GitHash</text><!--MD5=[9ba873291898ad8212a1c6d0471175b9]
+entity lookup1--><ellipse cx="278.5" cy="225.5" fill="#FEFECE" filter="url(#fari0r6lyenln)" rx="8" ry="8" style="stroke: #A80036; stroke-width: 2.0;"/><text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacingAndGlyphs" textLength="53" x="252" y="257.4659">lookup1</text><!--MD5=[5ef48d511bd17e17318edd3588d5a7c0]
+entity lookup2--><ellipse cx="168.5" cy="358" fill="#FEFECE" filter="url(#fari0r6lyenln)" rx="8" ry="8" style="stroke: #A80036; stroke-width: 2.0;"/><text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacingAndGlyphs" textLength="53" x="142" y="389.9659">lookup2</text><!--MD5=[fb65da214fb9ad9f018f232a22cfd63a]
+entity templates_name--><rect fill="#FEFECE" filter="url(#fari0r6lyenln)" height="39.0679" style="stroke: #000000; stroke-width: 1.5;" width="131" x="103" y="206"/><text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacingAndGlyphs" textLength="111" x="113" y="230.9659">templates_name</text><!--MD5=[fad6c2c43be7d22c0414333713be3c6f]
+entity LocalOrRemote--><rect fill="#FEFECE" filter="url(#fari0r6lyenln)" height="39.0679" style="stroke: #000000; stroke-width: 1.5;" width="122" x="779.5" y="62"/><text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacingAndGlyphs" textLength="102" x="789.5" y="86.9659">LocalOrRemote</text><!--MD5=[2c6da093ae99582bb56790bbd64cc495]
+entity GitWorkingDir--><rect fill="#FEFECE" filter="url(#fari0r6lyenln)" height="39.0679" style="stroke: #000000; stroke-width: 1.5;" width="115" x="783" y="206"/><text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacingAndGlyphs" textLength="95" x="793" y="230.9659">GitWorkingDir</text><!--MD5=[9863fe2e6f5f48c64e85dd2a144914d7]
+entity git_rev_parse--><ellipse cx="844.5" cy="358" fill="#FEFECE" filter="url(#fari0r6lyenln)" rx="8" ry="8" style="stroke: #A80036; stroke-width: 2.0;"/><text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacingAndGlyphs" textLength="89" x="800" y="389.9659">git_rev_parse</text><!--MD5=[ac052b6e5782396c0a1dc798b658f066]
+entity complete_jobs--><ellipse cx="524.5" cy="645" fill="#FEFECE" filter="url(#fari0r6lyenln)" rx="8" ry="8" style="stroke: #A80036; stroke-width: 2.0;"/><text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacingAndGlyphs" textLength="96" x="476.5" y="676.9659">complete_jobs</text><!--MD5=[6959dbece46a7e1c51170999542caba3]
+link LocalOrRemote to GitWorkingDir--><path d="M840.5,101.06 C840.5,126.68 840.5,172.88 840.5,200.92 " fill="none" id="LocalOrRemote-&gt;GitWorkingDir" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="840.5,205.93,844.5,196.93,840.5,200.93,836.5,196.93,840.5,205.93" style="stroke: #A80036; stroke-width: 1.0;"/><!--MD5=[3d16e1202e9ffdd582f8c26548531a42]
+link GitWorkingDir to git_rev_parse--><path d="M841.07,245.2 C841.89,271.95 843.38,320.48 844.1,343.8 " fill="none" id="GitWorkingDir-&gt;git_rev_parse" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="844.25,348.9,847.9913,339.7894,844.1072,343.902,839.9946,340.0179,844.25,348.9" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="28" x="843.5" y="291.897">path</text><!--MD5=[3b23d16dc4e8af7c3d9040901ffe1274]
+link GitBranchName to git_rev_parse--><path d="M678.79,101.27 C683.85,136.76 698.64,215.01 735.5,269 C761.23,306.69 807.81,336.41 830.84,349.59 " fill="none" id="GitBranchName-&gt;git_rev_parse" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="835.38,352.15,829.5055,344.2449,831.0248,349.6939,825.5758,351.2133,835.38,352.15" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="28" x="736.5" y="230.897">alt. 1</text><!--MD5=[8bc1d0e129614539d9376c2370b570f7]
+link GitReference to git_rev_parse--><path d="M966.15,245.2 C936.43,272.51 882,322.54 857.3,345.24 " fill="none" id="GitReference-&gt;git_rev_parse" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="853.32,348.9,862.654,345.7573,857.0022,345.5175,857.242,339.8657,853.32,348.9" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="28" x="928.5" y="291.897">alt. 2</text><!--MD5=[99b659e11f97913b1d416ccac614214b]
+link git_rev_parse to GitHash--><path d="M853.74,358 C866.99,358 880.24,358 893.5,358 " fill="none" id="git_rev_parse-&gt;GitHash" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="898.77,358,889.77,354,893.77,358,889.77,362,898.77,358" style="stroke: #A80036; stroke-width: 1.0;"/><!--MD5=[8a59042afeeaa70be963c4a0cb41dac0]
+link GitBranchName to lookup1--><path d="M612.94,99.93 C581.88,108.12 543.88,117.67 509.5,125 C419.96,144.08 378.49,103.44 306.5,160 C290.43,172.63 283.4,196.33 280.46,211.22 " fill="none" id="GitBranchName-&gt;lookup1" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="279.56,216.27,285.07,208.1067,280.433,211.3468,277.1929,206.7098,279.56,216.27" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="21" x="354.5" y="147.897">key</text><!--MD5=[0988ca528a519208d73f79a3b6552462]
+link RunConfig.remote_repository.remote_branch_names_for_poll to lookup1--><path d="M278.5,101.06 C278.5,130.14 278.5,185.72 278.5,211.17 " fill="none" id="RunConfig.remote_repository.remote_branch_names_for_poll-&gt;lookup1" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="278.5,216.41,282.5,207.41,278.5,211.41,274.5,207.41,278.5,216.41" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="27" x="279.5" y="147.897">map</text><!--MD5=[47dcdaf5b620586d9f483f324012887d]
+link lookup1 to templates_name--><path d="M269.16,225.5 C259.25,225.5 249.34,225.5 239.43,225.5 " fill="none" id="lookup1-&gt;templates_name" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="234.24,225.5,243.24,229.5,239.24,225.5,243.24,221.5,234.24,225.5" style="stroke: #A80036; stroke-width: 1.0;"/><!--MD5=[2ddbf556bc03c7cf1e12cc38fc6eb327]
+link templates_name to lookup2--><path d="M168.5,245.2 C168.5,271.95 168.5,320.48 168.5,343.8 " fill="none" id="templates_name-&gt;lookup2" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="168.5,348.9,172.5,339.9,168.5,343.9,164.5,339.9,168.5,348.9" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="21" x="169.5" y="291.897">key</text><!--MD5=[1b5ed8928d179e0b11c65a82708f40bd]
+link RunConfig.job_template_lists to lookup2--><path d="M393.24,245.06 C334.29,274.42 222.16,330.27 182.68,349.94 " fill="none" id="RunConfig.job_template_lists-&gt;lookup2" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="177.81,352.36,187.6493,351.9254,182.285,350.1297,184.0807,344.7654,177.81,352.36" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="27" x="323.5" y="291.897">map</text><!--MD5=[03a126b748553e004d6f606c75eb9e98]
+link lookup2 to JobTemplate--><path d="M165.27,367.09 C158.11,385.07 140.4,429.49 126.65,463.98 " fill="none" id="lookup2-&gt;JobTemplate" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="124.65,468.99,131.6882,462.1006,126.4946,464.3427,124.2525,459.1492,124.65,468.99" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="49" x="145.5" y="434.897">multiple</text><!--MD5=[76b0e41e0ca8f0d9444db9d57c3f79fa]
+link GitHash to BenchmarkingJobOpts--><path d="M936.37,377.76 C937.53,402.64 939.59,446.93 941,477.23 " fill="none" id="GitHash-&gt;BenchmarkingJobOpts" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="941.24,482.34,944.8236,473.1663,941.011,477.3452,936.832,473.5326,941.24,482.34" style="stroke: #A80036; stroke-width: 1.0;"/><!--MD5=[9b22892e723b0b9125410c875ed763b3]
+link BenchmarkingJobSettingsOpts to InsertBenchmarkingJobOpts--><path d="M429.01,510.5 C439.03,510.5 449.04,510.5 459.06,510.5 " fill="none" id="BenchmarkingJobSettingsOpts-&gt;InsertBenchmarkingJobOpts" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="464.3,510.5,455.3,506.5,459.3,510.5,455.3,514.5,464.3,510.5" style="stroke: #A80036; stroke-width: 1.0;"/><!--MD5=[a4da8cb96216ecb6047abed9c5df81ac]
+link InsertBenchmarkingJobOpts to BenchmarkingJobOpts--><path d="M758.58,510.5 C768.57,510.5 778.56,510.5 788.55,510.5 " fill="none" id="InsertBenchmarkingJobOpts-&gt;BenchmarkingJobOpts" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="793.78,510.5,784.78,506.5,788.78,510.5,784.78,514.5,793.78,510.5" style="stroke: #A80036; stroke-width: 1.0;"/><!--MD5=[b500405923c0b3a60fd50b1258ae69be]
+link BenchmarkingJobOpts to complete_jobs--><path d="M857.16,538.55 C753.71,571.34 587.16,624.14 538.36,639.61 " fill="none" id="BenchmarkingJobOpts-&gt;complete_jobs" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="533.5,641.15,543.2893,642.2317,538.2644,639.6334,540.8627,634.6086,533.5,641.15" style="stroke: #A80036; stroke-width: 1.0;"/><!--MD5=[1f3c1c8790bee4a8dfbad4f19f5c2a8c]
+link JobTemplate to complete_jobs--><path d="M211.22,546.35 C217.06,548.27 222.85,550.17 228.5,552 C336.5,587 467.53,626.8 510.28,639.71 " fill="none" id="JobTemplate-&gt;complete_jobs" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="515.27,641.22,507.8253,634.772,510.4868,639.7636,505.4951,642.4251,515.27,641.22" style="stroke: #A80036; stroke-width: 1.0;"/><!--MD5=[5f6b3594b2aaa38acd659936dcb51ecd]
+link complete_jobs to BenchmarkingJob--><path d="M524.5,654.09 C524.5,671.29 524.5,713.02 524.5,750.75 " fill="none" id="complete_jobs-&gt;BenchmarkingJob" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="524.5,755.81,528.5,746.81,524.5,750.81,520.5,746.81,524.5,755.81" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="185" x="525.5" y="721.897">multiple (one per JobTemplate)</text><!--MD5=[a629d72f70324e6826984082b599e31a]
+@startuml
+allowmixing
+
+object JobTemplate
+JobTemplate : priority: Priority
+JobTemplate : initial_boost: Priority
+JobTemplate : command: BenchmarkingCommand
+JobTemplate : custom_parameters: CustomParameters
+
+
+object BenchmarkingJobSettingsOpts
+BenchmarkingJobSettingsOpts : count: Option<u8>
+BenchmarkingJobSettingsOpts : error_budget: Option<u8>
+
+
+object BenchmarkingJob
+BenchmarkingJob : reason: Option<String>
+BenchmarkingJob : run_parameters: RunParameters
+BenchmarkingJob : command: BenchmarkingCommand
+BenchmarkingJob : priority: Priority
+BenchmarkingJob : current_boost: Priority
+BenchmarkingJob : remaining_count: u8
+BenchmarkingJob : remaining_error_budget: u8
+BenchmarkingJob : last_working_directory: Option<WorkingDirectoryId>
+
+object InsertBenchmarkingJobOpts
+InsertBenchmarkingJobOpts : reason: Option<String>
+InsertBenchmarkingJobOpts : benchmarking_job_settings: BenchmarkingJobSettingsOpts
+InsertBenchmarkingJobOpts : priority: Option<Priority>
+InsertBenchmarkingJobOpts : initial_boost: Option<Priority>
+
+object BenchmarkingJobOpts
+BenchmarkingJobOpts : insert_benchmarking_job_opts: InsertBenchmarkingJobOpts
+BenchmarkingJobOpts : commit_id: GitHash
+
+
+rectangle GitBranchName
+rectangle GitReference
+rectangle GitHash
+rectangle RunConfig.remote_repository.remote_branch_names_for_poll
+circle lookup1
+rectangle RunConfig.job_template_lists
+circle lookup2
+rectangle templates_name
+rectangle LocalOrRemote
+rectangle GitWorkingDir
+circle git_rev_parse
+circle complete_jobs
+
+LocalOrRemote - -> GitWorkingDir
+GitWorkingDir - -> git_rev_parse: path
+GitBranchName - -> git_rev_parse: alt. 1
+GitReference - -> git_rev_parse: alt. 2
+git_rev_parse -> GitHash
+
+GitBranchName - -> lookup1: key
+RunConfig.remote_repository.remote_branch_names_for_poll - -> lookup1: map
+lookup1 -> templates_name
+templates_name - -> lookup2: key
+RunConfig.job_template_lists - -> lookup2: map
+lookup2 - -> JobTemplate : multiple
+
+GitHash - -> BenchmarkingJobOpts
+
+BenchmarkingJobSettingsOpts -> InsertBenchmarkingJobOpts
+InsertBenchmarkingJobOpts -> BenchmarkingJobOpts
+
+BenchmarkingJobOpts - -> complete_jobs
+JobTemplate - -> complete_jobs
+
+complete_jobs - -> BenchmarkingJob: multiple (one per JobTemplate)
+
+@enduml
+
+PlantUML version 1.2020.02(Sun Mar 01 11:22:07 CET 2020)
+(GPL source distribution)
+Java Runtime: OpenJDK Runtime Environment
+JVM: OpenJDK 64-Bit Server VM
+Java Version: 21.0.10+7-Debian-1deb13u1
+Operating System: Linux
+Default Encoding: UTF-8
+Language: en
+Country: GB
+--></g></svg>
