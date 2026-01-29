@@ -225,9 +225,10 @@ pub enum RunMode {
 
         /// The logging level while running as daemon (overrides the
         /// top-level logging options like --verbose, --debug,
-        /// --quiet)
-        #[clap(short, long, default_value = "info")]
-        log_level: LogLevel,
+        /// --quiet) (default: "info" for run daemon, "warn" for poll
+        /// daemon)
+        #[clap(short, long)]
+        log_level: Option<LogLevel>,
 
         /// Whether to run in the foreground, or start or stop a
         /// daemon running in the background (or report the status
@@ -1079,7 +1080,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                         // for a daemon).
                         LOG_LOCAL_TIME.store(local_time, Ordering::SeqCst);
 
-                        set_log_level(log_level);
+                        set_log_level(log_level.unwrap_or(LogLevel::Warn));
 
                         try_run_poll(Some(daemon_check_exit))?;
                         Ok(())
@@ -1172,7 +1173,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                         // for a daemon).
                         LOG_LOCAL_TIME.store(local_time, Ordering::SeqCst);
 
-                        set_log_level(log_level);
+                        set_log_level(log_level.unwrap_or(LogLevel::Info));
 
                         let queues = open_queues(&run_config_bundle)?;
                         let working_directory_pool = open_working_directory_pool(
