@@ -59,7 +59,7 @@ fn start_daemon(path: Arc<Path>) -> Result<()> {
 /// Returns the path to a temporary directory, creating it if
 /// necessary and checking ownership if it already exists. The
 /// directory is not unique for all processes, but shared for all
-/// evobench-jobs instances--which is OK both because we only do 1 run
+/// evobench instances--which is OK both because we only do 1 run
 /// at the same time (and take a lock to ensure that), but also
 /// because we're now currently actually also adding the pid to the
 /// file paths inside. It is wrapped since it comes with a daemon that

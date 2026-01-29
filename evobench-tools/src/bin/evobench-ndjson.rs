@@ -191,7 +191,7 @@ enum QueriesOutput {
         /// symlink `ignore_queries_for_checksum_regex.txt ->
         /// ../queries/ignore_queries_for_checksum_regex.txt`, and a
         /// file `job-template.json5` that can be used with
-        /// `evobench-jobs insert-file` to run a job with that queries
+        /// `evobench insert-file` to run a job with that queries
         /// file.  There is also one dir with `.unclustered` appended,
         /// that contains queries that did not cluster with any other
         /// query (only if that set is not empty).

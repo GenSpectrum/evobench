@@ -80,7 +80,7 @@ pub struct Host {
     pub host_info: HostInfo,
 }
 
-/// As determined by evobench-jobs (but should compare to duplicates
+/// As determined by evobench (but should compare to duplicates
 /// of some of the fields in the bench log file resulting from a run)
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -261,12 +261,12 @@ pub struct LateContext {
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Key {
-    /// Info gleaned by evobench-jobs before executing a run.
+    /// Info gleaned by evobench before executing a run.
     pub early_context: EarlyContext,
     /// Parameters requested by the user and passed to the benchmark
     /// runner of the target project.
     pub run_parameters: RunParameters,
-    /// Info gleaned by evobench-jobs from the output file of the
+    /// Info gleaned by evobench from the output file of the
     /// evobench-probes library after executing a run.
     pub late_context: LateContext,
 }
