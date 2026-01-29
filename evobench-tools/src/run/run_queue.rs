@@ -159,11 +159,7 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
             remaining_count,
             mut remaining_error_budget,
             last_working_directory: _,
-        } = job_runner_with_job
-            .job_data
-            .job
-            .benchmarking_job_state
-            .clone();
+        } = job_runner_with_job.job_data.job.state.clone();
 
         let job_completed = |remaining_count| -> Result<()> {
             let job = job_runner_with_job
@@ -189,11 +185,7 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
             // Getting these via job.benchmarking_job_parameters() instead
             run_parameters: _,
             command: _,
-        } = job_runner_with_job
-            .job_data
-            .job
-            .benchmarking_job_public
-            .clone();
+        } = job_runner_with_job.job_data.job.public.clone();
 
         if remaining_error_budget > 0 {
             if remaining_count > 0 {

@@ -109,7 +109,7 @@ impl<'run_queues, 'j, 's> JobRunnerJobData<'run_queues, 'j, 's> {
     pub fn have_more_job_runs_for_same_commit(&self) -> bool {
         // Check if this the last run for the current job. `job` still
         // contains the count from before running it this time.
-        if self.job.benchmarking_job_state.remaining_count > 1 {
+        if self.job.state.remaining_count > 1 {
             return true;
         }
 
@@ -117,7 +117,7 @@ impl<'run_queues, 'j, 's> JobRunnerJobData<'run_queues, 'j, 's> {
         // so easy since jobs still don't contain an id? Except,
         // simply check if there is more than 1 entry.
         self.run_queues_data
-            .jobs_by_commit_id(&self.job.benchmarking_job_public.run_parameters.commit_id)
+            .jobs_by_commit_id(&self.job.public.run_parameters.commit_id)
             .len()
             > 1
     }

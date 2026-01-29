@@ -109,7 +109,7 @@ impl RunQueues {
         let mut jobs_by_commit_id = BTreeMap::default();
         for (i, rqd) in pipeline_data.iter().enumerate() {
             for (j, job) in rqd.jobs().enumerate() {
-                let commit_id = &job.benchmarking_job_public.run_parameters.commit_id;
+                let commit_id = &job.public.run_parameters.commit_id;
                 match jobs_by_commit_id.entry(commit_id.clone()) {
                     Entry::Vacant(vacant_entry) => {
                         vacant_entry.insert(vec![(i, j)]);
@@ -639,10 +639,8 @@ impl<'run_queues> RunQueuesData<'run_queues> {
                 let mut lock = job_runner
                     .working_directory_pool
                     .lock_mut("RunQueuesData.run_next_job")?;
-                working_directory_id = lock.get_a_working_directory_for(
-                    &job.benchmarking_job_public.run_parameters,
-                    self,
-                )?;
+                working_directory_id =
+                    lock.get_a_working_directory_for(&job.public.run_parameters, self)?;
 
                 lock.clear_current_working_directory()?;
             }

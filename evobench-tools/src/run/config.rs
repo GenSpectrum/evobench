@@ -580,22 +580,16 @@ pub struct RunConfigOpts {
     pub targets: Vec<Arc<BenchmarkingTarget>>,
 
     /// A set of named job template lists, referred to by name from
-    /// `job_templates_for_insert` and `remote_branch_names_for_poll`.
-    /// Each job template in a list generates a separate benchmark run
-    /// for each commit that is inserted. The order defines in which
-    /// order the jobs are inserted (which means the job generated from
-    /// the first template is scheduled first, at least if priorities
-    /// are the same). `priority` is added to whatever priority the
-    /// inserter asks for, and `initial_boost` is added to the job for
-    /// its first run only.
+    /// `remote_branch_names_for_poll` or from the command line
+    /// (`evobench-jobs insert templates`).  Each job template in a
+    /// list generates a separate benchmark run for each commit that
+    /// is inserted. The order defines in which order the jobs are
+    /// inserted (which means the job generated from the first
+    /// template is scheduled first, at least if priorities are the
+    /// same). `priority` is added to whatever priority the inserter
+    /// asks for, and `initial_boost` is added to the job for its
+    /// first run only.
     pub job_template_lists: BTreeMap<KString, Vec<JobTemplateOpts>>,
-
-    /// Job templates for using the "evobench-jobs insert" (or currently
-    /// also "insert-local", but this sub-command is planned to be
-    /// removed) sub-command. Reference into `job_template_lists` via
-    /// `Ref()`, or provide a list of JobTemplate entries directly via
-    /// `List()`.
-    pub job_templates_for_insert: ValOrRef<JobTemplateListsField, Vec<JobTemplateOpts>>,
 
     /// Each job receives a copy of these settings after expansion
     pub benchmarking_job_settings: Arc<BenchmarkingJobSettingsOpts>,
@@ -663,7 +657,6 @@ pub struct RunConfig {
     pub target_pre_exec_bash_code: Option<Arc<str>>,
     // targets: BTreeMap<ProperDirname, Arc<BenchmarkingTarget>>,
     pub job_template_lists: BTreeMap<KString, Arc<[JobTemplate]>>,
-    pub job_templates_for_insert: Arc<[JobTemplate]>,
     pub benchmarking_job_settings: Arc<BenchmarkingJobSettingsOpts>,
     pub eval_settings: Arc<EvalSettings>,
     pub remote_repository: RemoteRepository,
@@ -688,7 +681,6 @@ impl RunConfigOpts {
             target_pre_exec_bash_code,
             targets,
             job_template_lists,
-            job_templates_for_insert,
             benchmarking_job_settings,
             eval_settings,
             remote_repository,
@@ -729,20 +721,6 @@ impl RunConfigOpts {
             )
             .collect::<Result<_>>()?;
 
-        let job_templates_for_insert = job_templates_for_insert
-            // first, make sure owned values are converted, too
-            .try_map(|job_template_optss| {
-                job_template_optss
-                    .iter()
-                    .map(|job_template_opts| job_template_opts.check(&targets))
-                    .collect::<Result<_>>()
-            })?
-            // then retrieve the value, either the owned or from the
-            // collection
-            .value_with_backing(&job_template_lists)?
-            // Clone the Arc while it is still alive as a temporary
-            .clone_arc();
-
         let remote_repository = remote_repository.check(&job_template_lists, &targets)?;
 
         let commit_tags_regex: SerializableRegex =
@@ -757,7 +735,6 @@ impl RunConfigOpts {
             working_directory_pool: working_directory_pool.clone_arc(),
             target_pre_exec_bash_code: target_pre_exec_bash_code.clone(),
             job_template_lists,
-            job_templates_for_insert,
             benchmarking_job_settings: benchmarking_job_settings.clone_arc(),
             eval_settings: eval_settings.clone_arc(),
             remote_repository,

@@ -255,6 +255,14 @@ impl<T> Deref for ConfigFile<T> {
 }
 
 impl<T: DeserializeOwned + DefaultConfigPath> ConfigFile<T> {
+    pub fn path(&self) -> &Arc<Path> {
+        &self
+            .path_and_track
+            .as_ref()
+            .expect("XXX todo revamp, always store loaded path")
+            .path
+    }
+
     /// Check if the file that the config was loaded from has changed,
     /// if so, attempt to load it and if successful returns the new
     /// instance. Currently only checks the file that it was loaded

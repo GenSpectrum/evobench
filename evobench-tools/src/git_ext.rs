@@ -1,9 +1,11 @@
 //! Extension trait for `GitWorkingDir` from the `run-git` crate
 
+use std::str::FromStr;
+
 use anyhow::{Result, bail};
 use run_git::git::GitWorkingDir;
 
-use crate::serde::{git_reference::GitReference, git_url::GitUrl};
+use crate::serde::{git_branch_name::GitBranchName, git_reference::GitReference, git_url::GitUrl};
 
 pub trait MoreGitWorkingDir {
     fn get_url(&self, remote_name: &str) -> Result<String>;
@@ -15,6 +17,7 @@ pub trait MoreGitWorkingDir {
         references: Rs,
         quiet: bool,
     ) -> Result<()>;
+    fn get_current_branch(&self) -> Result<Option<GitBranchName>>;
 }
 
 impl MoreGitWorkingDir for GitWorkingDir {
@@ -59,5 +62,14 @@ impl MoreGitWorkingDir for GitWorkingDir {
         }
 
         Ok(())
+    }
+
+    /// Get the name of the currently checked-out branch, if any
+    /// (returns None if in detached HEAD state). TODO: just rename
+    /// upstream method and change return type.
+    fn get_current_branch(&self) -> Result<Option<GitBranchName>> {
+        Ok(self.git_branch_show_current()?.map(|s| {
+            GitBranchName::from_str(&s).expect("git always returns branch names for show-current")
+        }))
     }
 }
