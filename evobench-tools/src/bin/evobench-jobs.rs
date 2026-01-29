@@ -176,10 +176,10 @@ enum SubCommand {
         #[clap(long)]
         quiet: bool,
 
-        /// Do not report an error if any of the given (branch or
-        /// other) names do not resolve.
+        /// Report an error if any of the given (branch or other)
+        /// names do not resolve.
         #[clap(long)]
-        no_fail: bool,
+        fail: bool,
 
         #[clap(flatten)]
         dry_run_opt: DryRunOpt,
@@ -980,7 +980,7 @@ fn run() -> Result<Option<ExecutionResult>> {
         SubCommand::Poll {
             force,
             quiet,
-            no_fail,
+            fail,
             dry_run_opt,
             mode,
         } => {
@@ -1029,7 +1029,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                         &queues,
                     )?;
 
-                    if non_resolving.is_empty() || no_fail {
+                    if non_resolving.is_empty() || !fail {
                         if !quiet {
                             if n > 0 {
                                 println!(
