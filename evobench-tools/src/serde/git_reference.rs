@@ -29,6 +29,12 @@ impl<'t> From<&'t GitReference> for &'t str {
     }
 }
 
+impl From<GitReference> for String {
+    fn from(value: GitReference) -> Self {
+        value.0
+    }
+}
+
 impl Display for GitReference {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)

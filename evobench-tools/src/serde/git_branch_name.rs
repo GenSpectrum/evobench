@@ -38,6 +38,12 @@ impl<'t> From<&'t GitBranchName> for &'t str {
     }
 }
 
+impl From<GitBranchName> for String {
+    fn from(value: GitBranchName) -> Self {
+        value.0
+    }
+}
+
 impl Display for GitBranchName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
