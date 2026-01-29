@@ -46,7 +46,7 @@ use super::{
 pub struct WorkingDirectoryPoolOpts {
     /// Path to a directory where clones of the project to be
     /// benchmarked should be kept. By default at
-    /// `.evobench-jobs/working_directory_pool/`.
+    /// `.evobench/working_directory_pool/`.
     pub base_dir: Option<PathBuf>,
 
     /// How many clones of the target project should be maintained;
@@ -496,7 +496,7 @@ impl WorkingDirectoryPool {
     ///  actions that require the lock, but it's important to release
     ///  the lock as soon as possible via `into_inner()` (giving the
     ///  bare working directory, which can still be used for methods
-    ///  that don't require the lock), so that e.g. `evobench-jobs wd`
+    ///  that don't require the lock), so that e.g. `evobench wd`
     ///  actions don't block for the whole duration of an action
     ///  (i.e. a whole benchmarking run)!  If the action returns with
     ///  an error, stores it as metadata with the directory and

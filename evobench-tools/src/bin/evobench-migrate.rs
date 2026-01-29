@@ -24,14 +24,14 @@ use evobench_tools::{
 #[clap(set_term_width = get_terminal_width(4))]
 /// Database migration for evobench: update storage format for jobs in
 /// queues. Run this when you're getting deserialisation errors from
-/// `evobench-jobs`, or when you know that the data structures have
+/// `evobench`, or when you know that the data structures have
 /// changed and will cause errors.
 struct Opts {
     #[clap(flatten)]
     log_level: LogLevelOpt,
 
     /// Override the path to the config file (default: the paths
-    /// `~/.evobench-jobs.*` where a single one exists where the `*` is
+    /// `~/.evobench.*` where a single one exists where the `*` is
     /// the suffix for one of the supported config file formats (run
     /// `config-formats` to get the list), and if those are missing,
     /// use compiled-in default config values)

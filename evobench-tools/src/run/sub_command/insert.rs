@@ -307,7 +307,7 @@ pub enum Insert {
         commit: Option<GitHash>,
 
         /// Path(s) to the JSON file(s) to insert. The format is the
-        /// one used in the `~/.evobench-jobs/queues/` directories,
+        /// one used in the `~/.evobench/queues/` directories,
         /// except you can alternatively choose JSON5, RON, or one of
         /// the other formats shown in `config-formats` if the file
         /// has a corresponding file extension.

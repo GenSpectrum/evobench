@@ -271,8 +271,8 @@ impl ScheduleCondition {
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct QueuesConfig {
-    /// If not given, `~/.evobench-jobs/queues/` is used. Also used for
-    /// locking the `run` action of evobench-jobs, to ensure only one
+    /// If not given, `~/.evobench/queues/` is used. Also used for
+    /// locking the `run` action of evobench, to ensure only one
     /// benchmarking job is executed at the same time--if you
     /// configure multiple such directories then you don't have this
     /// guarantee any more. Supports `~/`
@@ -417,7 +417,7 @@ pub struct BenchmarkingCommand {
     /// The name is matched on the `target_name` field in
     /// `JobTemplate`, and it is used as the first path segment below
     /// `output_base_dir` for storing the results. It will also be
-    /// shown by `evobench-jobs list`.
+    /// shown by `evobench list`.
     pub target_name: ProperDirname,
 
     /// Relative path to the subdirectory (provide "." for the top
@@ -437,7 +437,7 @@ pub struct BenchmarkingCommand {
     /// declared via the global `target_pre_exec_bash_code` field, if
     /// any. Note that this value (together with the other values in
     /// BenchmarkingCommand) is copied into the job, and
-    /// `evobench-jobs wd enter` will use the copy from the time the
+    /// `evobench wd enter` will use the copy from the time the
     /// job was started, not the current value here!
     pub pre_exec_bash_code: PreExecLevel2,
 }
@@ -558,7 +558,7 @@ impl DaemonPathsOpts {
     }
 }
 
-/// Direct representation of the evobench-jobs config file
+/// Direct representation of the evobench config file
 // For why `Arc` is used, see `docs/hacking.md`
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -581,7 +581,7 @@ pub struct RunConfigOpts {
 
     /// A set of named job template lists, referred to by name from
     /// `remote_branch_names_for_poll` or from the command line
-    /// (`evobench-jobs insert templates`).  Each job template in a
+    /// (`evobench insert templates`).  Each job template in a
     /// list generates a separate benchmark run for each commit that
     /// is inserted. The order defines in which order the jobs are
     /// inserted (which means the job generated from the first
@@ -605,13 +605,13 @@ pub struct RunConfigOpts {
     /// directory.
     pub output_base_dir: Arc<TildePath<PathBuf>>,
 
-    /// The paths for the `evobench-jobs run daemon`. The defaults are
-    /// `~/.evobench-jobs/run_jobs_daemon` for the `state_dir` and
+    /// The paths for the `evobench run daemon`. The defaults are
+    /// `~/.evobench/run_jobs_daemon` for the `state_dir` and
     /// the `logs` subdir below that for `logs_dir`.  The paths
     /// support `~/` notation.
     run_jobs_daemon: DaemonPathsOpts,
 
-    /// The same as above for the `evobench-jobs poll daemon`, just
+    /// The same as above for the `evobench poll daemon`, just
     /// with the `polling_daemon` subdir as the default.
     polling_daemon: DaemonPathsOpts,
 
@@ -644,7 +644,7 @@ impl ValOrRefTarget for JobTemplateListsField {
 
 impl DefaultConfigPath for RunConfigOpts {
     fn default_config_file_name_without_suffix() -> Result<Option<ProperFilename>> {
-        Ok(Some("evobench-jobs".parse().map_err(|e| anyhow!("{e:#}"))?))
+        Ok(Some("evobench".parse().map_err(|e| anyhow!("{e:#}"))?))
     }
 }
 
