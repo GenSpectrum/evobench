@@ -1,0 +1,12 @@
+@startuml
+
+JobTemplateOpts --> target_name
+target_name --> BenchmarkingTarget
+BenchmarkingTarget --> BenchmarkingCommand
+
+JobTemplateOpts --> CustomParameters
+JobTemplateOpts --> initial_boost
+
+xxx --> JobTemplate
+
+@enduml
