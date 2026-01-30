@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow, bail};
 use chj_unix_util::{
     daemon::{
-        Daemon, DaemonCheckExit, DaemonMode, DaemonOpts, ExecutionResult,
+        Daemon, DaemonCheckExit, DaemonMode, DaemonOpts, DaemonPaths, ExecutionResult,
         warrants_restart::{
             RestartForConfigChangeOpts, RestartForExecutableChangeOpts,
             RestartForExecutableOrConfigChange,
@@ -23,7 +23,7 @@ use std::{
     env,
     ffi::OsStr,
     fmt::Display,
-    io::{BufWriter, IsTerminal, Write, stderr, stdout},
+    io::{BufWriter, IsTerminal, StdoutLock, Write, stderr, stdout},
     os::unix::{ffi::OsStrExt, process::CommandExt},
     path::{Path, PathBuf},
     process::{Command, exit},
@@ -45,6 +45,7 @@ use evobench_tools::{
     lazyresult,
     lockable_file::{LockStatus, StandaloneExclusiveFileLock, StandaloneFileLockError},
     run::{
+        bench_tmp_dir::bench_tmp_dir,
         benchmarking_job::{BenchmarkingJobOpts, BenchmarkingJobReasonOpt},
         command_log_file::CommandLogFile,
         config::{BenchmarkingCommand, RunConfig, RunConfigBundle, RunConfigOpts},
@@ -202,6 +203,10 @@ enum SubCommand {
         #[clap(subcommand)]
         subcommand: Wd,
     },
+
+    /// General program status information (but also see `list`, `wd
+    /// list`, `list-all`, `run daemon status`, `poll daemon status`)
+    Status {},
 }
 
 #[derive(Debug, Clone, clap::Subcommand)]
@@ -557,6 +562,79 @@ fn daemon_is_running(conf: &RunConfig) -> Result<bool> {
             GetRunLockError::AlreadyLocked(_) => Ok(true),
             GetRunLockError::Generic(_) => Err(e.into()),
         },
+    }
+}
+
+struct EvobenchDaemon<F: FnOnce(CheckExit) -> Result<()>> {
+    paths: DaemonPaths,
+    opts: DaemonOpts,
+    log_level: LogLevel,
+    restart_for_executable_change_opts: RestartForExecutableChangeOpts,
+    restart_for_config_change_opts: RestartForConfigChangeOpts,
+    config_file: Arc<ConfigFile<RunConfigOpts>>,
+    inner_run: F,
+}
+
+impl<F: FnOnce(CheckExit) -> Result<()>> EvobenchDaemon<F> {
+    fn into_daemon(
+        self,
+    ) -> Result<
+        Daemon<
+            RestartForExecutableOrConfigChange<Arc<ConfigFile<RunConfigOpts>>>,
+            impl FnOnce(CheckExit) -> Result<()>,
+        >,
+    > {
+        let Self {
+            log_level,
+            restart_for_executable_change_opts,
+            restart_for_config_change_opts,
+            opts,
+            paths,
+            config_file,
+            inner_run,
+        } = self;
+        let local_time = opts.logging_opts.local_time;
+
+        let run = move |daemon_check_exit: CheckExit| -> Result<()> {
+            // Use the requested time setting for
+            // local time stamp generation, too (now
+            // the default is UTC, which is expected
+            // for a daemon).
+            LOG_LOCAL_TIME.store(local_time, Ordering::SeqCst);
+
+            set_log_level(log_level);
+
+            inner_run(daemon_check_exit)
+        };
+
+        let other_restart_checks = restart_for_executable_change_opts
+            .to_restarter(
+                DEFAULT_RESTART_ON_UPGRADES,
+                TimestampFormatter {
+                    use_rfc3339: true,
+                    local_time,
+                },
+            )?
+            .and_config_change_opts(
+                restart_for_config_change_opts,
+                DEFAULT_RESTART_ON_CONFIG_CHANGE,
+                config_file,
+            );
+
+        Ok(Daemon {
+            opts,
+            restart_on_failures_default: true,
+            restart_opts: None,
+            timestamp_opts: TimestampOpts {
+                use_rfc3339: true,
+                mode: TimestampMode::Automatic {
+                    mark_added_timestamps: true,
+                },
+            },
+            paths,
+            other_restart_checks,
+            run,
+        })
     }
 }
 
@@ -1071,49 +1149,22 @@ fn run() -> Result<Option<ExecutionResult>> {
                     log_level,
                     action,
                 } => {
-                    let local_time = opts.logging_opts.local_time;
-
-                    let run = |daemon_check_exit: CheckExit| -> Result<()> {
-                        // Use the requested time setting for
-                        // local time stamp generation, too (now
-                        // the default is UTC, which is expected
-                        // for a daemon).
-                        LOG_LOCAL_TIME.store(local_time, Ordering::SeqCst);
-
-                        set_log_level(log_level.unwrap_or(LogLevel::Warn));
-
+                    let paths = conf.polling_daemon.clone();
+                    let config_file = run_config_bundle.config_file.clone_arc();
+                    let inner_run = |daemon_check_exit: CheckExit| -> Result<()> {
                         try_run_poll(Some(daemon_check_exit))?;
                         Ok(())
                     };
-
-                    let config_file = run_config_bundle.config_file.clone_arc();
-                    let other_restart_checks = restart_for_executable_change_opts
-                        .to_restarter(
-                            DEFAULT_RESTART_ON_UPGRADES,
-                            TimestampFormatter {
-                                use_rfc3339: true,
-                                local_time,
-                            },
-                        )?
-                        .and_config_change_opts(
-                            restart_for_config_change_opts,
-                            DEFAULT_RESTART_ON_CONFIG_CHANGE,
-                            config_file,
-                        );
-                    let daemon = Daemon {
+                    let daemon = EvobenchDaemon {
+                        paths,
                         opts,
-                        restart_on_failures_default: true,
-                        restart_opts: None,
-                        timestamp_opts: TimestampOpts {
-                            use_rfc3339: true,
-                            mode: TimestampMode::Automatic {
-                                mark_added_timestamps: true,
-                            },
-                        },
-                        paths: conf.polling_daemon.clone(),
-                        other_restart_checks,
-                        run,
-                    };
+                        log_level: log_level.unwrap_or(LogLevel::Warn),
+                        restart_for_executable_change_opts,
+                        restart_for_config_change_opts,
+                        config_file,
+                        inner_run,
+                    }
+                    .into_daemon()?;
                     let r = daemon.execute(action, DEFAULT_IS_HARD)?;
                     Ok(Some(r))
                 }
@@ -1164,17 +1215,8 @@ fn run() -> Result<Option<ExecutionResult>> {
                     action,
                 } => {
                     let paths = conf.run_jobs_daemon.clone();
-                    let local_time = opts.logging_opts.local_time;
                     let config_file = run_config_bundle.config_file.clone_arc();
-                    let run = |daemon_check_exit: CheckExit| -> Result<()> {
-                        // Use the requested time setting for
-                        // local time stamp generation, too (now
-                        // the default is UTC, which is expected
-                        // for a daemon).
-                        LOG_LOCAL_TIME.store(local_time, Ordering::SeqCst);
-
-                        set_log_level(log_level.unwrap_or(LogLevel::Info));
-
+                    let inner_run = |daemon_check_exit: CheckExit| -> Result<()> {
                         let queues = open_queues(&run_config_bundle)?;
                         let working_directory_pool = open_working_directory_pool(
                             &run_config_bundle.run_config,
@@ -1190,36 +1232,16 @@ fn run() -> Result<Option<ExecutionResult>> {
                         )?;
                         Ok(())
                     };
-
-                    let other_restart_checks = restart_for_executable_change_opts
-                        .to_restarter(
-                            DEFAULT_RESTART_ON_UPGRADES,
-                            TimestampFormatter {
-                                use_rfc3339: true,
-                                local_time,
-                            },
-                        )?
-                        .and_config_change_opts(
-                            restart_for_config_change_opts,
-                            DEFAULT_RESTART_ON_CONFIG_CHANGE,
-                            config_file,
-                        );
-
-                    let daemon = Daemon {
-                        opts,
-                        restart_on_failures_default: true,
-                        restart_opts: None,
-                        timestamp_opts: TimestampOpts {
-                            use_rfc3339: true,
-                            mode: TimestampMode::Automatic {
-                                mark_added_timestamps: true,
-                            },
-                        },
+                    let daemon = EvobenchDaemon {
                         paths,
-                        other_restart_checks,
-                        run,
-                    };
-
+                        opts,
+                        log_level: log_level.unwrap_or(LogLevel::Info),
+                        restart_for_executable_change_opts,
+                        restart_for_config_change_opts,
+                        config_file,
+                        inner_run,
+                    }
+                    .into_daemon()?;
                     let r = daemon.execute(action, DEFAULT_IS_HARD)?;
                     Ok(Some(r))
                 }
@@ -1429,8 +1451,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                     }
 
                     {
-                        let mut lock =
-                            working_directory_pool.lock_mut("evobench Wd::Cleanup")?;
+                        let mut lock = working_directory_pool.lock_mut("evobench Wd::Cleanup")?;
                         for id in cleanup_ids {
                             if dry_run {
                                 eprintln!("would delete working directory {id}");
@@ -1452,8 +1473,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                     verbose,
                     ids,
                 } => {
-                    let mut lock_mut =
-                        working_directory_pool.lock_mut("evobench Wd::Delete")?;
+                    let mut lock_mut = working_directory_pool.lock_mut("evobench Wd::Delete")?;
                     let opt_current_wd_id = lock_mut
                         .locked_base_dir()
                         .read_current_working_directory()?;
@@ -1833,6 +1853,67 @@ fn run() -> Result<Option<ExecutionResult>> {
                     exit(status.to_exit_code());
                 }
             }
+        }
+
+        SubCommand::Status {} => {
+            let show_status =
+                |daemon_name: &str, paths: &DaemonPaths, out: &mut StdoutLock| -> Result<_> {
+                    let daemon = EvobenchDaemon {
+                        paths: paths.clone(),
+                        opts: DaemonOpts::default(),
+                        log_level: LogLevel::Quiet,
+                        restart_for_executable_change_opts: RestartForExecutableChangeOpts::default(
+                        ),
+                        restart_for_config_change_opts: RestartForConfigChangeOpts::default(),
+                        config_file: run_config_bundle.config_file.clone_arc(),
+                        inner_run: |_| Ok(()),
+                    }
+                    .into_daemon()?;
+                    let s = daemon.status_string(true)?;
+                    let logs = &paths.log_dir;
+                    writeln!(out, "  {daemon_name} daemon: {s}, logs: {logs:?}")?;
+                    Ok(())
+                };
+
+            let mut out = stdout().lock();
+            writeln!(
+                &mut out,
+                "Evobench system status and configuration information:\n"
+            )?;
+            show_status(" run", &conf.run_jobs_daemon, &mut out)?;
+            show_status("poll", &conf.polling_daemon, &mut out)?;
+
+            // writeln!(&mut out, "\nPaths:")?;
+            writeln!(&mut out, "")?;
+            writeln!(
+                &mut out,
+                "               Queues: {:?}",
+                conf.queues
+                    .run_queues_basedir(false, &run_config_bundle.global_app_state_dir)?
+            )?;
+            writeln!(
+                &mut out,
+                "  Working directories: {:?}",
+                working_directory_base_dir.path()
+            )?;
+            writeln!(
+                &mut out,
+                "        Temporary dir: {:?}",
+                bench_tmp_dir()?.as_ref(),
+            )?;
+            writeln!(
+                &mut out,
+                "              Outputs: {:?}",
+                conf.output_base_dir,
+            )?;
+            writeln!(
+                &mut out,
+                "          Config file: {:?}",
+                run_config_bundle.config_file.path()
+            )?;
+
+            out.flush()?;
+            Ok(None)
         }
     }
 }
