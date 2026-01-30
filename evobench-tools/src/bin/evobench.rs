@@ -11,19 +11,15 @@ use chj_unix_util::{
     polling_signals::PollingSignals,
     timestamp_formatter::TimestampFormatter,
 };
-use chrono::{DateTime, Local};
 use cj_path_util::path_util::AppendToPath;
 use clap::Parser;
 use itertools::Itertools;
-use lazy_static::lazy_static;
-use yansi::{Color, Style};
 
 use std::{
     borrow::Cow,
     env,
     ffi::OsStr,
-    fmt::Display,
-    io::{BufWriter, IsTerminal, StdoutLock, Write, stderr, stdout},
+    io::{BufWriter, StdoutLock, Write, stderr, stdout},
     os::unix::{ffi::OsStrExt, process::CommandExt},
     path::{Path, PathBuf},
     process::{Command, exit},
@@ -34,16 +30,15 @@ use std::{
 
 use evobench_tools::{
     ask::ask_yn,
-    config_file::{self, ConfigFile, ron_to_string_pretty, save_config_file},
+    config_file::{self, ConfigFile, save_config_file},
     ctx, debug,
     get_terminal_width::get_terminal_width,
     git::GitHash,
     info,
     io_utils::bash::{bash_export_variable_string, bash_string_from_program_path_and_args},
     key::{BenchmarkingJobParameters, RunParameters},
-    key_val_fs::key_val::Entry,
     lazyresult,
-    lockable_file::{LockStatus, StandaloneExclusiveFileLock, StandaloneFileLockError},
+    lockable_file::{StandaloneExclusiveFileLock, StandaloneFileLockError},
     run::{
         bench_tmp_dir::bench_tmp_dir,
         benchmarking_job::{BenchmarkingJobOpts, BenchmarkingJobReasonOpt},
@@ -52,13 +47,14 @@ use evobench_tools::{
         dataset_dir_env_var::dataset_dir_for,
         env_vars::assert_evobench_env_var,
         global_app_state_dir::GlobalAppStateDir,
-        insert_jobs::{DryRunOpt, ForceOpt, QuietOpt, insert_jobs, open_already_inserted},
+        insert_jobs::{DryRunOpt, ForceOpt, QuietOpt, insert_jobs},
         run_context::RunContext,
         run_job::{JobRunner, get_commit_tags},
-        run_queue::RunQueue,
         run_queues::RunQueues,
         sub_command::{
             insert::{Insert, InsertBenchmarkingJobOpts, InsertOpts},
+            list::ListOpts,
+            list_all::ListAllOpts,
             open_polling_pool, open_working_directory_pool,
         },
         versioned_dataset_dir::VersionedDatasetDir,
@@ -82,16 +78,6 @@ type CheckExit<'t> =
 
 const DEFAULT_RESTART_ON_UPGRADES: bool = true;
 const DEFAULT_RESTART_ON_CONFIG_CHANGE: bool = true;
-
-lazy_static! {
-    static ref UNICODE_IS_FINE: bool = (|| -> Option<bool> {
-        let term = env::var_os("TERM")?;
-        let lang = env::var_os("LANG")?;
-        let lang = lang.to_str()?;
-        Some(term.as_bytes().starts_with(b"xterm") && lang.contains("UTF-8"))
-    })()
-    .unwrap_or(false);
-}
 
 #[derive(clap::Parser, Debug)]
 #[clap(next_line_help = true)]
@@ -128,23 +114,13 @@ enum SubCommand {
     /// processed ones
     ListAll {
         #[clap(flatten)]
-        terminal_table_opts: TerminalTableOpts,
+        opts: ListAllOpts,
     },
 
     /// List the currently scheduled and running jobs
     List {
         #[clap(flatten)]
-        terminal_table_opts: TerminalTableOpts,
-
-        /// Show details, not just one item per line
-        #[clap(short, long)]
-        verbose: bool,
-
-        /// Show all jobs in the extra queues (done and failures); by
-        /// default, only the last `view_jobs_max_len` jobs are shown
-        /// as stated in the QueuesConfig.
-        #[clap(short, long)]
-        all: bool,
+        opts: ListOpts,
     },
 
     /// Insert zero or more jobs, from one or more templates and for
@@ -638,8 +614,6 @@ impl<F: FnOnce(CheckExit) -> Result<()>> EvobenchDaemon<F> {
     }
 }
 
-const TARGET_NAME_WIDTH: usize = 14;
-
 const DEFAULT_IS_HARD: bool = true;
 
 fn run() -> Result<Option<ExecutionResult>> {
@@ -655,15 +629,6 @@ fn run() -> Result<Option<ExecutionResult>> {
     LOG_LOCAL_TIME.store(true, Ordering::SeqCst);
 
     let config: Option<Arc<Path>> = config.map(Into::into);
-
-    // COPY-PASTE from List action in jobqueue.rs
-    let get_filename = |entry: &Entry<_, _>| -> Result<String> {
-        let file_name = entry.file_name();
-        Ok(file_name
-            .to_str()
-            .ok_or_else(|| anyhow!("filename that cannot be decoded as UTF-8: {file_name:?}"))?
-            .to_string())
-    };
 
     // Have to handle ConfigFormats before attempting to read the
     // config
@@ -714,337 +679,14 @@ fn run() -> Result<Option<ExecutionResult>> {
             Ok(None)
         }
 
-        SubCommand::ListAll {
-            terminal_table_opts,
-        } => {
-            let already_inserted = open_already_inserted(&run_config_bundle.global_app_state_dir)?;
-
-            let mut flat_jobs: Vec<(BenchmarkingJobParameters, SystemTime)> = Vec::new();
-            for job in already_inserted
-                .keys(false, None)?
-                .map(|hash| -> Result<_> {
-                    let hash = hash?;
-                    Ok(already_inserted.get(&hash)?)
-                })
-                .filter_map(|r| r.transpose())
-            {
-                let (params, insertion_times) = job?;
-                for t in insertion_times {
-                    flat_jobs.push((params.clone(), t));
-                }
-            }
-            flat_jobs.sort_by_key(|v| v.1);
-            let mut table = TerminalTable::start(
-                &[38, 43, TARGET_NAME_WIDTH],
-                &[
-                    TerminalTableTitle {
-                        text: Cow::Borrowed("Insertion time"),
-                        span: 1,
-                    },
-                    TerminalTableTitle {
-                        text: Cow::Borrowed("Commit id"),
-                        span: 1,
-                    },
-                    TerminalTableTitle {
-                        text: Cow::Borrowed("Target name"),
-                        span: 1,
-                    },
-                    TerminalTableTitle {
-                        text: Cow::Borrowed("Custom parameters"),
-                        span: 1,
-                    },
-                ],
-                None,
-                terminal_table_opts,
-                stdout().lock(),
-            )?;
-            for (params, insertion_time) in flat_jobs {
-                let t = system_time_to_rfc3339(insertion_time, true);
-                let BenchmarkingJobParameters {
-                    run_parameters,
-                    command,
-                } = params;
-                let RunParameters {
-                    commit_id,
-                    custom_parameters,
-                } = &*run_parameters;
-                let BenchmarkingCommand {
-                    target_name,
-                    subdir: _,
-                    command: _,
-                    arguments: _,
-                    pre_exec_bash_code: _,
-                } = &*command;
-
-                let values: &[&dyn Display] =
-                    &[&t, &commit_id, &target_name.as_str(), &custom_parameters];
-                table.write_data_row(values, None)?;
-            }
-            drop(table.finish()?);
+        SubCommand::ListAll { opts } => {
+            opts.run(&run_config_bundle)?;
             Ok(None)
         }
 
-        SubCommand::List {
-            verbose,
-            terminal_table_opts,
-            all,
-        } => {
-            fn table_with_titles<'v, 's, O: Write + IsTerminal>(
-                titles: &'s [TerminalTableTitle],
-                style: Option<Style>,
-                terminal_table_opts: &TerminalTableOpts,
-                out: O,
-                verbose: bool,
-            ) -> Result<TerminalTable<'v, 's, O>> {
-                let insertion_time_width = if verbose { 82 } else { 37 };
-                TerminalTable::start(
-                    // t                    R pr WD reason commit target
-                    &[insertion_time_width, 3, 6, 5, 25, 42, TARGET_NAME_WIDTH],
-                    titles,
-                    style,
-                    terminal_table_opts.clone(),
-                    out,
-                )
-            }
-
-            let mut out = stdout().lock();
-
-            let full_span;
-            {
-                // Show a table with no data rows, for main titles
-                let titles = &[
-                    "Insertion_time",
-                    "S", // Status
-                    "Prio",
-                    "WD",
-                    "Reason",
-                    "Commit_id",
-                    "Target_name",
-                    "Custom_parameters",
-                ]
-                // .map() is not const
-                .map(|s| TerminalTableTitle {
-                    text: Cow::Borrowed(s),
-                    span: 1,
-                });
-                full_span = titles.len();
-                // Somehow have to move `out` in and out, `&mut out`
-                // would not satisfy IsTerminal.
-                let table = table_with_titles(
-                    titles,
-                    // Note: in spite of `TERM=xterm-256color`, `watch
-                    // --color` still only supports system colors
-                    // 0..14!  (Can still not use `.rgb(10, 70, 140)`
-                    // nor `.fg(Color::Fixed(30))`, and watch 4.0.2
-                    // does not support `TERM=xterm-truecolor`.)
-                    Some(Style::new().fg(Color::Fixed(4)).italic().bold()),
-                    &terminal_table_opts,
-                    out,
-                    verbose,
-                )?;
-                out = table.finish()?;
-            }
-
-            let now = SystemTime::now();
-
-            let lock = working_directory_base_dir.lock("for SubCommand::List show_queue")?;
-
-            // Not kept in sync with what happens during for loop; but
-            // then it is really about the status stored inside
-            // `pool`, thus that doesn't even matter!
-            let opt_current_working_directory = lock.read_current_working_directory()?;
-
-            let show_queue =
-                |i: &str, run_queue: &RunQueue, is_extra_queue: bool, out| -> Result<_> {
-                    let RunQueue {
-                        file_name,
-                        schedule_condition,
-                        queue,
-                    } = run_queue;
-
-                    // "Insertion time"
-                    // "R", "E", ""
-                    // priority
-                    // reason
-                    // "Commit id"
-                    // "Custom parameters"
-                    let titles = &[TerminalTableTitle {
-                        text: format!(
-                            "{i}: queue {:?} ({schedule_condition}):",
-                            file_name.as_str()
-                        )
-                        .into(),
-                        span: full_span,
-                    }];
-                    let mut table =
-                        table_with_titles(titles, None, &terminal_table_opts, out, verbose)?;
-
-                    // We want the last view_jobs_max_len items, one more
-                    // if that's the complete list (the additional entry
-                    // then occupying the "entries skipped" line). Don't
-                    // want to collect the whole list first (leads to too
-                    // many open filehandles), don't want to go through it
-                    // twice (once for counting, once to skip); getting
-                    // them in reverse, taking the first n, collecting,
-                    // then reversing the list would be one way, but
-                    // cleaner is to use a two step approach, first get
-                    // the sorted collection of keys (cheap to hold in
-                    // memory and needs to be retrieved underneath
-                    // anyway), get the section we want, then use
-                    // resolve_entries to load the items still in
-                    // streaming fashion.  Note: this could show fewer
-                    // than limit items even after showing "skipped",
-                    // because items can vanish between getting
-                    // sorted_keys and resolve_entries. But that is really
-                    // no big deal.
-                    let limit = if is_extra_queue && !all {
-                        // Get 2 more since showing "skipped 1 entry" is
-                        // not economic, and we just look at number 0
-                        // after subtracting, i.e. include the equal case.
-                        conf.queues.view_jobs_max_len + 2
-                    } else {
-                        usize::MAX
-                    };
-                    let all_sorted_keys = queue.sorted_keys(false, None, false)?;
-                    let shown_sorted_keys;
-                    if let Some(num_skipped_2) = all_sorted_keys.len().checked_sub(limit) {
-                        let num_skipped = num_skipped_2 + 2;
-                        table.print(&format!("... ({num_skipped} entries skipped)\n"))?;
-                        shown_sorted_keys = &all_sorted_keys[num_skipped..];
-                    } else {
-                        shown_sorted_keys = &all_sorted_keys;
-                    }
-
-                    for entry in queue.resolve_entries(shown_sorted_keys.into()) {
-                        let mut entry = entry?;
-                        let file_name = get_filename(&entry)?;
-                        let key = entry.key()?;
-                        let job = entry.get()?;
-                        let commit_id = &*job.public.run_parameters.commit_id.to_string();
-                        let reason = if let Some(reason) = &job.public.reason {
-                            reason.as_ref()
-                        } else {
-                            ""
-                        };
-                        let custom_parameters =
-                            &*job.public.run_parameters.custom_parameters.to_string();
-                        let (locking, is_locked) = if schedule_condition.is_inactive() {
-                            ("", false)
-                        } else {
-                            let lock_status = entry
-                                .take_lockable_file()
-                                .expect("not taken before")
-                                .get_lock_status()?;
-                            if lock_status == LockStatus::ExclusiveLock {
-                                let s = if let Some(dir) = opt_current_working_directory {
-                                    let status = lock.read_working_directory_status(dir)?;
-                                    match status.status {
-                                        // CheckedOut wasn't planned
-                                        // to happen, but now happens
-                                        // for new working dir
-                                        // assignment
-                                        Status::CheckedOut => "R0",
-                                        Status::Processing => "R", // running
-                                        Status::Error => "F",      // failure
-                                        Status::Finished => "E",   // evaluating
-                                        Status::Examination => "X", // manually marked
-                                    }
-                                } else {
-                                    "R"
-                                };
-                                (s, true)
-                            } else {
-                                ("", false)
-                            }
-                        };
-                        let priority = &*job.priority()?.to_string();
-                        let wd = if is_locked {
-                            opt_current_working_directory
-                                .map(|v| v.to_string())
-                                .unwrap_or_else(|| "".into())
-                        } else {
-                            job.state
-                                .last_working_directory
-                                .map(|v| v.to_string())
-                                .unwrap_or_else(|| "".into())
-                        };
-                        let target_name = job.public.command.target_name.as_str();
-
-                        let system_time = key.system_time();
-                        let is_older = {
-                            let age = now.duration_since(system_time)?;
-                            age > Duration::from_secs(3600 * 24)
-                        };
-                        let time = if verbose {
-                            &*format!("{file_name} ({key})")
-                        } else {
-                            let datetime: DateTime<Local> = system_time.into();
-                            &*datetime.to_rfc3339()
-                        };
-                        table.write_data_row(
-                            &[
-                                time,
-                                locking,
-                                priority,
-                                &*wd,
-                                reason,
-                                commit_id,
-                                target_name,
-                                custom_parameters,
-                            ],
-                            if is_older {
-                                // Note: need `TERM=xterm-256color`
-                                // for `watch --color` to not turn
-                                // this color to black!
-                                Some(Style::new().bright_black())
-                            } else {
-                                None
-                            },
-                        )?;
-                        if verbose {
-                            let s = ron_to_string_pretty(&job)?;
-                            table.print(&format!("{s}\n\n"))?;
-                        }
-                    }
-                    Ok(table.finish()?)
-                };
-
-            let width = get_terminal_width(1);
-            let bar_of = |c: &str| c.repeat(width);
-            let (thin_bar, thick_bar) = if *UNICODE_IS_FINE {
-                (bar_of("─"), bar_of("═"))
-            } else {
-                (bar_of("-"), bar_of("="))
-            };
-
+        SubCommand::List { opts } => {
             let queues = queues.force()?;
-            for (i, run_queue) in queues.pipeline().iter().enumerate() {
-                println!("{thin_bar}");
-                out = show_queue(&(i + 1).to_string(), run_queue, false, out)?;
-            }
-            println!("{thick_bar}");
-            let perhaps_show_extra_queue = |queue_name: &str,
-                                            queue_field: &str,
-                                            run_queue: Option<&RunQueue>,
-                                            mut out|
-             -> Result<_> {
-                if let Some(run_queue) = run_queue {
-                    out = show_queue(queue_name, run_queue, true, out)?;
-                } else {
-                    println!("No {queue_field} is configured")
-                }
-                Ok(out)
-            };
-            out =
-                perhaps_show_extra_queue("done", "done_jobs_queue", queues.done_jobs_queue(), out)?;
-            println!("{thin_bar}");
-            _ = perhaps_show_extra_queue(
-                "failures",
-                "erroneous_jobs_queue",
-                queues.erroneous_jobs_queue(),
-                out,
-            )?;
-            println!("{thin_bar}");
+            opts.run(conf, &working_directory_base_dir, queues)?;
             Ok(None)
         }
 
