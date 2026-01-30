@@ -130,9 +130,9 @@ impl ListOpts {
             out = table.finish()?;
         }
 
-        let now = SystemTime::now();
-
         let lock = working_directory_base_dir.lock("for SubCommand::List show_queue")?;
+
+        let now = SystemTime::now();
 
         // Not kept in sync with what happens during for loop; but
         // then it is really about the status stored inside
