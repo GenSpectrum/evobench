@@ -74,7 +74,7 @@ pub fn bench_tmp_dir() -> Result<BenchTmpDir> {
             let path: PathBuf = format!("/dev/shm/{user}").into();
             let path: Arc<Path> = path.into();
 
-            dbg!((&path, path.exists()));
+            info!("bench_tmp_dir path, exists?: {:?}", (&path, path.exists()));
 
             match std::fs::create_dir(&path) {
                 Ok(()) => {
