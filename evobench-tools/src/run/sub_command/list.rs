@@ -3,6 +3,7 @@ use std::{
     env,
     io::{self, IsTerminal, stdout},
     os::unix::ffi::OsStrExt,
+    path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, SystemTime},
 };
@@ -18,10 +19,12 @@ use crate::{
     key_val_fs::key_val::Entry,
     lockable_file::LockStatus,
     run::{
-        config::RunConfig, run_queue::RunQueue, run_queues::RunQueues, working_directory::Status,
+        config::RunConfig, output_directory_structure::KeyDir, run_queue::RunQueue,
+        run_queues::RunQueues, working_directory::Status,
         working_directory_pool::WorkingDirectoryPoolBaseDir,
     },
     terminal_table::{TerminalTable, TerminalTableOpts, TerminalTableTitle},
+    utillib::arc::CloneArc,
 };
 
 pub const TARGET_NAME_WIDTH: usize = 14;
@@ -34,6 +37,35 @@ lazy_static! {
         Some(term.as_bytes().starts_with(b"xterm") && lang.contains("UTF-8"))
     })()
     .unwrap_or(false);
+}
+
+#[derive(Debug, Clone, Copy, clap::Subcommand)]
+pub enum ParameterPathKind {
+    /// Relative from the output base directory (default)
+    Relative,
+    /// Full local file system path
+    Full,
+    /// URL for access via the web
+    Url,
+}
+
+impl Default for ParameterPathKind {
+    fn default() -> Self {
+        Self::Relative
+    }
+}
+
+#[derive(Debug, Clone, Copy, clap::Subcommand)]
+pub enum ParameterView {
+    /// Show separate `Commit_id`, `Target_name`, `Custom_parameters`
+    /// columns
+    Separated,
+    /// Show a single column that represents a path to the job in the
+    /// outputs directory.
+    Path {
+        #[clap(subcommand)]
+        kind: Option<ParameterPathKind>,
+    },
 }
 
 #[derive(Debug, Clone, clap::Args)]
@@ -50,6 +82,10 @@ pub struct ListOpts {
     /// as stated in the QueuesConfig.
     #[clap(short, long)]
     all: bool,
+
+    /// How to show the job parameters
+    #[clap(subcommand)]
+    parameter_view: ParameterView,
 }
 
 fn table_with_titles<'v, 's, O: io::Write + IsTerminal>(
@@ -58,16 +94,17 @@ fn table_with_titles<'v, 's, O: io::Write + IsTerminal>(
     terminal_table_opts: &TerminalTableOpts,
     out: O,
     verbose: bool,
+    view: ParameterView,
 ) -> Result<TerminalTable<'v, 's, O>> {
     let insertion_time_width = if verbose { 82 } else { 37 };
-    TerminalTable::start(
-        // t                    R pr WD reason commit target
-        &[insertion_time_width, 3, 6, 5, 25, 42, TARGET_NAME_WIDTH],
-        titles,
-        style,
-        terminal_table_opts.clone(),
-        out,
-    )
+    let widths =
+    //     t                    R pr WD reason commit target
+        &[insertion_time_width, 3, 6, 5, 25, 42, TARGET_NAME_WIDTH];
+    let widths = match view {
+        ParameterView::Separated => widths,
+        ParameterView::Path { kind: _ } => &widths[0..5],
+    };
+    TerminalTable::start(widths, titles, style, terminal_table_opts.clone(), out)
 }
 
 impl ListOpts {
@@ -81,7 +118,27 @@ impl ListOpts {
             terminal_table_opts,
             verbose,
             all,
+            parameter_view,
         } = self;
+
+        let path_base: Option<Arc<Path>> = {
+            match parameter_view {
+                ParameterView::Separated => None,
+                ParameterView::Path { kind } => Some(match kind.unwrap_or_default() {
+                    ParameterPathKind::Relative => PathBuf::from("").into(),
+                    ParameterPathKind::Full => conf.output_dir.path.clone_arc(),
+                    ParameterPathKind::Url => {
+                        let url = conf.output_dir.url.as_ref().ok_or_else(|| {
+                            anyhow!(
+                                "the URL viewing feature requires the `output_dir.url` \
+                                 field in the configuration to be set"
+                            )
+                        })?;
+                        PathBuf::from(&**url).into()
+                    }
+                }),
+            }
+        };
 
         // COPY-PASTE from List action in jobqueue.rs
         let get_filename = |entry: &Entry<_, _>| -> Result<String> {
@@ -97,26 +154,45 @@ impl ListOpts {
         let full_span;
         {
             // Show a table with no data rows, for main titles
-            let titles = &[
-                "Insertion_time",
-                "S", // Status
-                "Prio",
-                "WD",
-                "Reason",
-                "Commit_id",
-                "Target_name",
-                "Custom_parameters",
-            ]
-            // .map() is not const
-            .map(|s| TerminalTableTitle {
-                text: Cow::Borrowed(s),
-                span: 1,
-            });
+            let titles: Vec<_> = {
+                let mut titles = vec![
+                    "Insertion_time",
+                    "S", // Status
+                    "Prio",
+                    "WD",
+                    "Reason",
+                ];
+                match parameter_view {
+                    ParameterView::Separated => {
+                        titles.extend_from_slice(&[
+                            "Commit_id",
+                            "Target_name",
+                            "Custom_parameters",
+                        ]);
+                    }
+                    ParameterView::Path { kind } => {
+                        titles.push(match kind.unwrap_or_default() {
+                            ParameterPathKind::Relative => "Output_path",
+                            ParameterPathKind::Full => "Output_path",
+                            ParameterPathKind::Url => "Output_URL",
+                        });
+                    }
+                }
+
+                titles
+                    .into_iter()
+                    .map(|s| TerminalTableTitle {
+                        text: Cow::Borrowed(s),
+                        span: 1,
+                    })
+                    .collect()
+            };
             full_span = titles.len();
+
             // Somehow have to move `out` in and out, `&mut out`
             // would not satisfy IsTerminal.
             let table = table_with_titles(
-                titles,
+                &titles,
                 // Note: in spite of `TERM=xterm-256color`, `watch
                 // --color` still only supports system colors
                 // 0..14!  (Can still not use `.rgb(10, 70, 140)`
@@ -126,6 +202,7 @@ impl ListOpts {
                 &terminal_table_opts,
                 out,
                 verbose,
+                parameter_view,
             )?;
             out = table.finish()?;
         }
@@ -160,7 +237,14 @@ impl ListOpts {
                 .into(),
                 span: full_span,
             }];
-            let mut table = table_with_titles(titles, None, &terminal_table_opts, out, verbose)?;
+            let mut table = table_with_titles(
+                titles,
+                None,
+                &terminal_table_opts,
+                out,
+                verbose,
+                parameter_view,
+            )?;
 
             // We want the last view_jobs_max_len items, one more
             // if that's the complete list (the additional entry
@@ -198,18 +282,17 @@ impl ListOpts {
                 shown_sorted_keys = &all_sorted_keys;
             }
 
+            let mut row = Vec::new();
             for entry in queue.resolve_entries(shown_sorted_keys.into()) {
                 let mut entry = entry?;
                 let file_name = get_filename(&entry)?;
                 let key = entry.key()?;
                 let job = entry.get()?;
-                let commit_id = &*job.public.run_parameters.commit_id.to_string();
                 let reason = if let Some(reason) = &job.public.reason {
                     reason.as_ref()
                 } else {
                     ""
                 };
-                let custom_parameters = &*job.public.run_parameters.custom_parameters.to_string();
                 let (locking, is_locked) = if schedule_condition.is_inactive() {
                     ("", false)
                 } else {
@@ -250,7 +333,6 @@ impl ListOpts {
                         .map(|v| v.to_string())
                         .unwrap_or_else(|| "".into())
                 };
-                let target_name = job.public.command.target_name.as_str();
 
                 let system_time = key.system_time();
                 let is_older = {
@@ -263,17 +345,34 @@ impl ListOpts {
                     let datetime: DateTime<Local> = system_time.into();
                     &*datetime.to_rfc3339()
                 };
+                row.extend_from_slice(&[time, locking, priority, &*wd, reason]);
+
+                let commit_id;
+                let custom_parameters;
+                let key_dir;
+                let path;
+                match parameter_view {
+                    ParameterView::Separated => {
+                        commit_id = job.public.run_parameters.commit_id.to_string();
+                        let target_name = job.public.command.target_name.as_str();
+                        custom_parameters = job.public.run_parameters.custom_parameters.to_string();
+                        row.extend_from_slice(&[&*commit_id, target_name, &*custom_parameters]);
+                    }
+                    ParameterView::Path { kind: _ } => {
+                        let base = path_base
+                            .as_ref()
+                            .expect("initialized for ParameterView::Path");
+                        key_dir = KeyDir::from_base_target_params(
+                            base,
+                            &job.public.command.target_name,
+                            &job.public.run_parameters,
+                        );
+                        path = key_dir.path().to_string_lossy();
+                        row.push(&path);
+                    }
+                }
                 table.write_data_row(
-                    &[
-                        time,
-                        locking,
-                        priority,
-                        &*wd,
-                        reason,
-                        commit_id,
-                        target_name,
-                        custom_parameters,
-                    ],
+                    &row,
                     if is_older {
                         // Note: need `TERM=xterm-256color`
                         // for `watch --color` to not turn
@@ -287,6 +386,13 @@ impl ListOpts {
                     let s = ron_to_string_pretty(&job)?;
                     table.print(&format!("{s}\n\n"))?;
                 }
+
+                row = {
+                    row.clear();
+                    // overwrite Vec with a version of itself that
+                    // doesn't hold onto the lifetimes
+                    row.into_iter().map(|_| unreachable!()).collect()
+                };
             }
             Ok(table.finish()?)
         };

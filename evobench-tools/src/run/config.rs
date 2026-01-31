@@ -558,6 +558,34 @@ impl DaemonPathsOpts {
     }
 }
 
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "OutputDir")]
+pub struct OutputDirOpts {
+    /// The base of the directory hierarchy where the output files
+    /// should be placed. Supports `~/` for specifying the home
+    /// directory.
+    pub path: Arc<TildePath<PathBuf>>,
+
+    /// URL where the same path is served (optional). Used for
+    /// `evobench list path url`.
+    pub url: Option<Arc<str>>,
+}
+
+impl OutputDirOpts {
+    fn resolve(&self) -> Result<OutputDir> {
+        let Self { path, url } = self;
+        let path = path.resolve()?.into();
+        let url = url.clone();
+        Ok(OutputDir { path, url })
+    }
+}
+
+pub struct OutputDir {
+    pub path: Arc<Path>,
+    pub url: Option<Arc<str>>,
+}
+
 /// Direct representation of the evobench config file
 // For why `Arc` is used, see `docs/hacking.md`
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -600,10 +628,8 @@ pub struct RunConfigOpts {
     /// Information on the remote repository of the target project
     pub remote_repository: RemoteRepositoryOpts,
 
-    /// The base of the directory hierarchy where the output files
-    /// should be placed. Supports `~/` for specifying the home
-    /// directory.
-    pub output_base_dir: Arc<TildePath<PathBuf>>,
+    /// Where the output files should be placed.
+    pub output_dir: OutputDirOpts,
 
     /// The paths for the `evobench run daemon`. The defaults are
     /// `~/.evobench/run_jobs_daemon` for the `state_dir` and
@@ -660,7 +686,7 @@ pub struct RunConfig {
     pub benchmarking_job_settings: Arc<BenchmarkingJobSettingsOpts>,
     pub eval_settings: Arc<EvalSettings>,
     pub remote_repository: RemoteRepository,
-    pub output_base_dir: Arc<Path>,
+    pub output_dir: OutputDir,
     pub versioned_datasets_base_dir: Option<Arc<Path>>,
     pub targets: BTreeMap<ProperDirname, Arc<BenchmarkingTarget>>,
     pub commit_tags_regex: SerializableRegex,
@@ -684,7 +710,7 @@ impl RunConfigOpts {
             benchmarking_job_settings,
             eval_settings,
             remote_repository,
-            output_base_dir,
+            output_dir,
             run_jobs_daemon,
             polling_daemon,
             versioned_datasets_base_dir,
@@ -738,7 +764,7 @@ impl RunConfigOpts {
             benchmarking_job_settings: benchmarking_job_settings.clone_arc(),
             eval_settings: eval_settings.clone_arc(),
             remote_repository,
-            output_base_dir: output_base_dir.resolve()?.into(),
+            output_dir: output_dir.resolve()?,
             targets,
             versioned_datasets_base_dir: versioned_datasets_base_dir
                 .as_ref()

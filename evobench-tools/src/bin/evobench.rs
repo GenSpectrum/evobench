@@ -462,7 +462,7 @@ fn run_queues<'ce>(
         // XX handle errors without exiting? Or do that above
 
         let run_config = &run_config_bundle.run_config;
-        let output_base_dir = &run_config.output_base_dir;
+        let output_base_dir = &run_config.output_dir.path;
 
         let queues_data = queues.data()?;
 
@@ -1546,8 +1546,9 @@ fn run() -> Result<Option<ExecutionResult>> {
             writeln!(
                 &mut out,
                 "              Outputs: {:?}",
-                conf.output_base_dir,
+                conf.output_dir.path,
             )?;
+            writeln!(&mut out, "          Outputs URL: {:?}", conf.output_dir.url,)?;
             writeln!(
                 &mut out,
                 "          Config file: {:?}",

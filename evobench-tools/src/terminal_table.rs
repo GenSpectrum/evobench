@@ -61,6 +61,7 @@ impl TerminalTableOpts {
     }
 }
 
+#[derive(Debug)]
 pub struct TerminalTableTitle<'s> {
     pub text: Cow<'s, str>,
     /// How many columns this should span across; should normally be
