@@ -148,7 +148,9 @@ impl<'s> VersionedDatasetDirLock<'s> {
             })?
             .ok_or_else(|| {
                 anyhow!(
-                    "can't find a dataset for commit {commit_id:?} in dir {versioned_datasets_dir:?}"
+                    "can't find a dataset for commit {commit_id} in dir {versioned_datasets_dir:?} \
+                     -- datasets should be in sub-directories of this dir, named after Git \
+                     references (like tags or commits)"
                 )
             })?;
         let ancestor_or_self = &self
