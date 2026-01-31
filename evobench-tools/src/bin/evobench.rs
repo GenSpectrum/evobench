@@ -187,7 +187,7 @@ enum SubCommand {
 
 #[derive(Debug, Clone, clap::Subcommand)]
 pub enum RunMode {
-    /// Run the single job that is first due.
+    /// Carry out a single run
     One {
         /// Exit with code 1 if there is no runnable job / there were
         /// no jobs to insert.
