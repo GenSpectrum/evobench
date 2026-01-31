@@ -60,7 +60,8 @@ use evobench_tools::{
         versioned_dataset_dir::VersionedDatasetDir,
         working_directory::{FetchedTags, Status, WorkingDirectory, WorkingDirectoryStatus},
         working_directory_pool::{
-            WorkingDirectoryId, WorkingDirectoryPool, WorkingDirectoryPoolBaseDir,
+            WdAllowBareOpt, WorkingDirectoryId, WorkingDirectoryIdOpt, WorkingDirectoryPool,
+            WorkingDirectoryPoolBaseDir, finish_parsing_working_directory_ids,
         },
     },
     serde::date_and_time::{DateTimeWithOffset, system_time_to_rfc3339},
@@ -278,10 +279,13 @@ enum Wd {
         #[clap(short, long)]
         verbose: bool,
 
+        #[clap(flatten)]
+        allow_bare: WdAllowBareOpt,
+
         /// Which of the working directories in error status to
         /// immediately delete. Refuses directories with different
         /// status than `error` unless `--force` was given.
-        ids: Vec<WorkingDirectoryId>,
+        ids: Vec<WorkingDirectoryIdOpt>,
     },
     /// Open the log file for the last run in a working directory in
     /// the `PAGER` (or `less`)
@@ -292,22 +296,31 @@ enum Wd {
         #[clap(short, long)]
         list: bool,
 
+        #[clap(flatten)]
+        allow_bare: WdAllowBareOpt,
+
         /// The ID of the working direcory for which to show the (last)
         /// log file(s)
-        id: WorkingDirectoryId,
+        id: WorkingDirectoryIdOpt,
     },
     /// Mark the given working directories for examination, so that
     /// they are not deleted by `evobench wd cleanup`
     Mark {
+        #[clap(flatten)]
+        allow_bare: WdAllowBareOpt,
+
         /// The IDs of the working direcories to mark
-        ids: Vec<WorkingDirectoryId>,
+        ids: Vec<WorkingDirectoryIdOpt>,
     },
     /// Change the status of the given working directories back to
     /// "error", so that they are again deleted by `evobench wd
     /// cleanup`
     Unmark {
+        #[clap(flatten)]
+        allow_bare: WdAllowBareOpt,
+
         /// The IDs of the working direcories to unmark
-        ids: Vec<WorkingDirectoryId>,
+        ids: Vec<WorkingDirectoryIdOpt>,
     },
     /// Change the status of the given working directories back to
     /// "checkedout", so that they can be used again by `evobench
@@ -315,8 +328,11 @@ enum Wd {
     /// that lead to errors again. It may be safer, albeit costlier,
     /// to `delete` the dirs instead.)
     Recycle {
+        #[clap(flatten)]
+        allow_bare: WdAllowBareOpt,
+
         /// The IDs of the working direcories to recycle
-        ids: Vec<WorkingDirectoryId>,
+        ids: Vec<WorkingDirectoryIdOpt>,
     },
     /// Mark the given working directory for examination, then open a
     /// shell inside it. The shell in the `SHELL` environment variable
@@ -343,8 +359,11 @@ enum Wd {
         #[clap(long)]
         no_fetch: bool,
 
+        #[clap(flatten)]
+        allow_bare: WdAllowBareOpt,
+
         /// The ID of the working directory to mark and enter
-        id: WorkingDirectoryId,
+        id: WorkingDirectoryIdOpt,
     },
 }
 
@@ -1114,7 +1133,10 @@ fn run() -> Result<Option<ExecutionResult>> {
                     force,
                     verbose,
                     ids,
+                    allow_bare,
                 } => {
+                    let ids = finish_parsing_working_directory_ids(ids, allow_bare)?;
+
                     let mut lock_mut = working_directory_pool.lock_mut("evobench Wd::Delete")?;
                     let opt_current_wd_id = lock_mut
                         .locked_base_dir()
@@ -1183,7 +1205,13 @@ fn run() -> Result<Option<ExecutionResult>> {
                     }
                     Ok(None)
                 }
-                Wd::Log { list, id } => {
+                Wd::Log {
+                    list,
+                    id,
+                    allow_bare,
+                } => {
+                    let id = id.to_working_directory_id(allow_bare)?;
+
                     let working_directory_path =
                         if let Some(wd) = working_directory_pool.get_working_directory(id) {
                             wd.working_directory_path()
@@ -1232,7 +1260,8 @@ fn run() -> Result<Option<ExecutionResult>> {
                     }
                     Ok(None)
                 }
-                Wd::Mark { ids } => {
+                Wd::Mark { ids, allow_bare } => {
+                    let ids = finish_parsing_working_directory_ids(ids, allow_bare)?;
                     for id in ids {
                         if do_mark(Status::Examination, true, id, None)?.is_none() {
                             warn!("there is no working directory for id {id}");
@@ -1240,7 +1269,8 @@ fn run() -> Result<Option<ExecutionResult>> {
                     }
                     Ok(None)
                 }
-                Wd::Unmark { ids } => {
+                Wd::Unmark { ids, allow_bare } => {
+                    let ids = finish_parsing_working_directory_ids(ids, allow_bare)?;
                     for id in ids {
                         if do_mark(Status::Error, true, id, None)?.is_none() {
                             warn!("there is no working directory for id {id}");
@@ -1248,7 +1278,8 @@ fn run() -> Result<Option<ExecutionResult>> {
                     }
                     Ok(None)
                 }
-                Wd::Recycle { ids } => {
+                Wd::Recycle { ids, allow_bare } => {
+                    let ids = finish_parsing_working_directory_ids(ids, allow_bare)?;
                     for id in ids {
                         if do_mark(
                             Status::CheckedOut,
@@ -1269,7 +1300,9 @@ fn run() -> Result<Option<ExecutionResult>> {
                     force,
                     no_fetch,
                     id,
+                    allow_bare,
                 } => {
+                    let id = id.to_working_directory_id(allow_bare)?;
                     if mark && unmark {
                         bail!("please only give one of the --mark or --unmark options")
                     }

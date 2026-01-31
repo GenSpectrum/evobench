@@ -11,7 +11,10 @@ use std::{
     num::NonZeroU8,
     path::{Path, PathBuf},
     str::FromStr,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     u64,
 };
 
@@ -62,25 +65,60 @@ pub struct WorkingDirectoryPoolOpts {
     pub auto_clean: Option<WorkingDirectoryAutoCleanOpts>,
 }
 
+/// A precursor of `WorkingDirectoryId` that allows both `D123` and
+/// `123` as IDs on parsing. This is to allow for `allow_bare`. Must
+/// be converted before use.
+#[derive(Debug, Clone)]
+pub struct WorkingDirectoryIdOpt {
+    has_prefix: bool,
+    id: u64,
+}
+
+impl FromStr for WorkingDirectoryIdOpt {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        let (has_prefix, number_string) = match s.strip_prefix("D").or_else(|| s.strip_prefix("d"))
+        {
+            Some(s) => (true, s),
+            None => (false, s),
+        };
+        let id = number_string.parse()?;
+        Ok(Self { has_prefix, id })
+    }
+}
+
+#[derive(Debug, Clone, Copy, clap::Args)]
+pub struct WdAllowBareOpt {
+    /// Allow bare numbers as working directory IDs. By default,
+    /// the 'D' or 'd' prefix is required.
+    #[clap(short, long)]
+    allow_bare: bool,
+}
+
+impl WorkingDirectoryIdOpt {
+    pub fn to_working_directory_id(self, allow_bare: WdAllowBareOpt) -> Result<WorkingDirectoryId> {
+        let WdAllowBareOpt { allow_bare } = allow_bare;
+        let Self { has_prefix, id } = self;
+        if allow_bare || has_prefix {
+            Ok(WorkingDirectoryId(id))
+        } else {
+            bail!("missing 'D' or 'd' at beginning of working directory ID: {id}")
+        }
+    }
+}
+
+pub fn finish_parsing_working_directory_ids(
+    ids: Vec<WorkingDirectoryIdOpt>,
+    allow_bare: WdAllowBareOpt,
+) -> Result<Vec<WorkingDirectoryId>> {
+    ids.into_iter()
+        .map(|id| id.to_working_directory_id(allow_bare))
+        .collect()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct WorkingDirectoryId(u64);
-
-def_linear!(Linear in WorkingDirectoryCleanupToken);
-
-/// This is a linear type (i.e. it cannot be dropped) and has to be
-/// passed to `working_directory_cleanup`, which will potentially
-/// clean up or delete the working directory that this represents. If
-/// you want to prevent that, call `prohibit_cleanup()` on it before
-/// passing it, or call its `force_drop()` method (easier to do in
-/// error handlers).
-#[must_use]
-pub struct WorkingDirectoryCleanupToken {
-    linear_token: Linear,
-    working_directory_id: WorkingDirectoryId,
-    needs_cleanup: bool,
-}
-// For impl WorkingDirectoryCleanupToken: `force_drop` and
-// `prohibiting_cleanup` methods, see git history.
 
 impl WorkingDirectoryId {
     fn to_number_string(self) -> String {
@@ -101,18 +139,42 @@ impl Display for WorkingDirectoryId {
     }
 }
 
+/// But actually use `WorkingDirectoryPoolOpts` and its
+/// `to_working_directory_id` method instead!
+pub static WORKING_DIRECTORY_ID_ALLOW_WITHOUT_PREFIX: AtomicBool = AtomicBool::new(false);
+
 impl FromStr for WorkingDirectoryId {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        let number = s
-            .strip_prefix("D")
-            .or_else(|| s.strip_prefix("d"))
-            .ok_or_else(|| anyhow!("missing 'D' at beginning of working directory ID"))?;
-        let id = number.parse()?;
-        Ok(Self(id))
+        let id: WorkingDirectoryIdOpt = s.parse()?;
+        let allow_bare = WdAllowBareOpt {
+            allow_bare: WORKING_DIRECTORY_ID_ALLOW_WITHOUT_PREFIX.load(Ordering::Relaxed),
+        };
+        id.to_working_directory_id(allow_bare)
     }
 }
+
+// -----------------------------------------------------------------------------
+
+def_linear!(Linear in WorkingDirectoryCleanupToken);
+
+/// This is a linear type (i.e. it cannot be dropped) and has to be
+/// passed to `working_directory_cleanup`, which will potentially
+/// clean up or delete the working directory that this represents. If
+/// you want to prevent that, call `prohibit_cleanup()` on it before
+/// passing it, or call its `force_drop()` method (easier to do in
+/// error handlers).
+#[must_use]
+pub struct WorkingDirectoryCleanupToken {
+    linear_token: Linear,
+    working_directory_id: WorkingDirectoryId,
+    needs_cleanup: bool,
+}
+// For impl WorkingDirectoryCleanupToken: `force_drop` and
+// `prohibiting_cleanup` methods, see git history.
+
+// -----------------------------------------------------------------------------
 
 #[derive(Debug)]
 pub struct WorkingDirectoryPoolBaseDir {
