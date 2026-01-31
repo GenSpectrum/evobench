@@ -451,7 +451,7 @@ fn run_queues<'ce>(
             None,
             "test-running versioned dataset search",
             None,
-        )?;
+        ).context("while early-checking versioned datasets at startup")?;
         working_directory_pool.working_directory_cleanup(token)?;
     }
 
