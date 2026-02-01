@@ -389,14 +389,6 @@ impl WorkingDirectory {
         let git_working_dir = GitWorkingDir::from(path);
         let path = git_working_dir.working_dir_path_ref();
 
-        // XX What was the idea here, just ensure that the directory
-        // exists? But with the trailing `;`, seems like a left-over.
-        {
-            std::fs::metadata(path)
-                .map_err(ctx!("WorkingDirectory::open({path:?})"))?
-                .modified()?
-        };
-
         // Check that the url is the same
         {
             let current_url = git_working_dir.get_url(REMOTE_NAME)?;
