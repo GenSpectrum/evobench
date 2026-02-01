@@ -596,10 +596,6 @@ impl<'guard> WorkingDirectoryWithPoolLockMut<'guard> {
     /// Set status to `status`. Also increments the run count if the
     /// status changed to Status::Processing, and (re-)saves
     /// `$n.status` file if needed.
-    // (pool is locked (races?, when is
-    // the lock taken?--XXX OH, actually there is no lock!), nobody
-    // can change such a file, thus we do not have to re-check if it
-    // was changed on disk)-- XX what about this comment?
     pub fn set_and_save_status(&mut self, status: Status) -> Result<()> {
         debug!(
             "{:?} set_and_save_status({status:?})",
