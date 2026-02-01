@@ -16,6 +16,7 @@ use crate::{
 pub mod insert;
 pub mod list;
 pub mod list_all;
+pub mod wd_log;
 
 // The reason to have these open_* functions here is just that making
 // them methods on the pools spams those files with

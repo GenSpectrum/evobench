@@ -19,10 +19,9 @@ use std::{
     borrow::Cow,
     env,
     ffi::OsStr,
-    io::{BufWriter, StdoutLock, Write, stderr, stdout},
-    os::unix::{ffi::OsStrExt, process::CommandExt},
+    io::{StdoutLock, Write, stdout},
     path::{Path, PathBuf},
-    process::{Command, exit},
+    process::exit,
     sync::{Arc, atomic::Ordering},
     thread,
     time::{Duration, SystemTime},
@@ -55,6 +54,7 @@ use evobench_tools::{
             insert::{Insert, InsertBenchmarkingJobOpts, InsertOpts},
             list::ListOpts,
             list_all::ListAllOpts,
+            wd_log::LogOrLogf,
             open_polling_pool, open_working_directory_pool,
         },
         versioned_dataset_dir::VersionedDatasetDir,
@@ -289,20 +289,10 @@ enum Wd {
     },
     /// Open the log file for the last run in a working directory in
     /// the `PAGER` (or `less`)
-    Log {
-        /// Instead of opening the last log file, show a list of all
-        /// log files for the given working directory, sorted by run
-        /// start time (newest at the bottom)
-        #[clap(short, long)]
-        list: bool,
-
-        #[clap(flatten)]
-        allow_bare: WdAllowBareOpt,
-
-        /// The ID of the working direcory for which to show the (last)
-        /// log file(s)
-        id: WorkingDirectoryIdOpt,
-    },
+    Log(LogOrLogf),
+    /// Open the log file for the last run in a working directory in
+    /// `tail -f`.
+    Logf(LogOrLogf),
     /// Mark the given working directories for examination, so that
     /// they are not deleted by `evobench wd cleanup`
     Mark {
@@ -1205,59 +1195,12 @@ fn run() -> Result<Option<ExecutionResult>> {
                     }
                     Ok(None)
                 }
-                Wd::Log {
-                    list,
-                    id,
-                    allow_bare,
-                } => {
-                    let id = id.to_working_directory_id(allow_bare)?;
-
-                    let working_directory_path =
-                        if let Some(wd) = working_directory_pool.get_working_directory(id) {
-                            wd.working_directory_path()
-                        } else {
-                            let mut out = BufWriter::new(stderr().lock());
-                            writeln!(
-                                &mut out,
-                                "NOTE: working directory with id {id} does not exist. \
-                                 Looking for log files anyway."
-                            )?;
-                            out.flush()?;
-                            if !list {
-                                thread::sleep(Duration::from_millis(1400));
-                            }
-                            working_directory_pool.get_working_directory_path(id)
-                        };
-
-                    if list {
-                        let mut out = BufWriter::new(stdout().lock());
-                        for (standard_log_path, _run_id) in
-                            working_directory_path.standard_log_paths()?
-                        {
-                            out.write_all(standard_log_path.as_os_str().as_bytes())?;
-                            out.write_all(b"\n")?;
-                        }
-                        out.flush()?;
-                    } else {
-                        let (standard_log_path, _run_id) = working_directory_path
-                            .last_standard_log_path()?
-                            .ok_or_else(|| {
-                                anyhow!("could not find a log file for working directory {id}")
-                            })?;
-
-                        let pager = match std::env::var("PAGER") {
-                            Ok(s) => s,
-                            Err(e) => match e {
-                                std::env::VarError::NotPresent => "less".into(),
-                                _ => bail!("can't decode PAGER env var: {e:#}"),
-                            },
-                        };
-
-                        let mut cmd = Command::new(&pager);
-                        cmd.arg(standard_log_path);
-                        return Err(cmd.exec())
-                            .with_context(|| anyhow!("executing pager {pager:?}"));
-                    }
+                Wd::Log(opts) => {
+                    opts.run(false, &working_directory_pool)?;
+                    Ok(None)
+                }
+                Wd::Logf(opts) => {
+                    opts.run(true, &working_directory_pool)?;
                     Ok(None)
                 }
                 Wd::Mark { ids, allow_bare } => {
