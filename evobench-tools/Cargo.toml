@@ -18,6 +18,7 @@ debug = true
 
 [dependencies]
 chj-unix-util = { path = "../../../XMLHUB/xmlhub-indexer/libs/chj-unix-util/" }
+chj-rustbin = { path = "../../../chj-rustbin/" }
 
 cj-path-util = { version = "0.1.0", features = [ "unix" ] }
 
