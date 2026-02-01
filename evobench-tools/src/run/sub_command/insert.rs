@@ -11,6 +11,7 @@ use crate::{
     config_file::backend_from_path,
     git::GitHash,
     git_ext::MoreGitWorkingDir,
+    info,
     run::{
         benchmarking_job::{
             BenchmarkingJob, BenchmarkingJobOpts, BenchmarkingJobReasonOpt,
@@ -458,6 +459,7 @@ impl Insert {
                         anyhow!("{local_or_remote} Git repository has no default/current branch")
                     })?
                 };
+                info!("using {local_or_remote} branch {branch_name}");
 
                 let job_templates = conf
                     .remote_repository
