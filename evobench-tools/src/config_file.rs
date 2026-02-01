@@ -243,6 +243,8 @@ struct PathAndTrack {
 /// a config if it changed.
 pub struct ConfigFile<T> {
     config: T,
+    /// None if `config` was not loaded from a file but provided by
+    /// the `or_else` callback of `load_config`
     path_and_track: Option<PathAndTrack>,
 }
 
@@ -255,12 +257,10 @@ impl<T> Deref for ConfigFile<T> {
 }
 
 impl<T: DeserializeOwned + DefaultConfigPath> ConfigFile<T> {
-    pub fn path(&self) -> &Arc<Path> {
-        &self
-            .path_and_track
-            .as_ref()
-            .expect("XXX todo revamp, always store loaded path")
-            .path
+    /// Returns None if `config` was not loaded from a file but
+    /// provided by the `or_else` callback of `load_config`
+    pub fn path(&self) -> Option<&Arc<Path>> {
+        self.path_and_track.as_ref().map(|pt| &pt.path)
     }
 
     /// Check if the file that the config was loaded from has changed,
