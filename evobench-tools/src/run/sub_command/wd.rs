@@ -344,7 +344,7 @@ impl Wd {
                 let show_du = !no_du;
 
                 let widths = {
-                    let mut widths = vec![3 + 2, Status::MAX_STR_LEN + 2, 8 + 2, 35 + 2, 35 + 2];
+                    let mut widths = vec![4 + 2, Status::MAX_STR_LEN + 2, 8 + 2, 35 + 2, 35 + 2];
                     if show_commit {
                         widths.push(40 + 2);
                     }
