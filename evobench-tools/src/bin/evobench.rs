@@ -729,7 +729,7 @@ fn run() -> Result<Option<ExecutionResult>> {
             )?;
             writeln!(
                 &mut out,
-                "  Working directories: {:?}",
+                "  Working directories: {:?} -- but modify via `evobench wd` only",
                 working_directory_base_dir.path()
             )?;
             writeln!(
