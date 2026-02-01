@@ -1,9 +1,11 @@
 use std::{borrow::Cow, env, ffi::OsStr, io::stdout, process::exit, sync::Arc, time::SystemTime};
 
 use anyhow::{Result, anyhow, bail};
+use chj_rustbin::duu::{GetDirDiskUsage, bytes_to_gib_string};
 use chj_unix_util::polling_signals::PollingSignals;
 use cj_path_util::path_util::AppendToPath;
 use itertools::Itertools;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::{
     ask::ask_yn,
@@ -96,9 +98,19 @@ pub enum Wd {
         #[clap(short, long)]
         numeric_sort: bool,
 
+        /// Sort the list by the disk usage. Default: sort by the
+        /// `last_used` timestamp
+        #[clap(short, long)]
+        du_sort: bool,
+
         /// Only show the ID of the working directories
         #[clap(short, long)]
         id_only: bool,
+
+        /// Do not show the disk usage column (saves time when the
+        /// file system information is not cached)
+        #[clap(long)]
+        no_du: bool,
 
         /// Do not show the column with the checked-out commid id
         /// (speeds up the listing)
@@ -312,34 +324,56 @@ impl Wd {
                 id_only,
                 no_commit,
                 numeric_sort,
+                no_du,
+                du_sort,
             } => {
-                let widths = &[3 + 2, Status::MAX_STR_LEN + 2, 8 + 2, 35 + 2, 35 + 2];
-                let titles = &[
-                    "id",
-                    "status",
-                    "num_runs",
-                    "creation_timestamp",
-                    "last_use",
-                    "commit_id",
-                ]
-                .map(|s| TerminalTableTitle {
-                    text: Cow::Borrowed(s),
-                    span: 1,
-                });
-                fn used<T>(vals: &[T], show_commit: bool) -> &[T] {
-                    if show_commit {
-                        vals
-                    } else {
-                        &vals[..vals.len() - 1]
-                    }
+                if no_du && du_sort {
+                    bail!("both --no-du and --du-sort were given, these options are conflicting");
                 }
+                if id_only && du_sort {
+                    bail!("both --id-only and --du-sort were given, these options are conflicting");
+                }
+                // Note: numeric_sort && du_sort is actually fine,
+                // first sort numerically, then by size.
 
-                let mut table = if id_only {
+                let show_commit = !no_commit;
+                let show_du = !no_du;
+
+                let widths = {
+                    let mut widths = vec![3 + 2, Status::MAX_STR_LEN + 2, 8 + 2, 35 + 2, 35 + 2];
+                    if show_commit {
+                        widths.push(40 + 2);
+                    }
+                    if show_du {
+                        widths.push(7 + 2);
+                    }
+                    widths.pop();
+                    widths
+                };
+                let titles: Vec<TerminalTableTitle> = {
+                    let mut titles =
+                        vec!["id", "status", "num_runs", "creation_timestamp", "last_use"];
+                    if show_commit {
+                        titles.push("commit_id");
+                    }
+                    if show_du {
+                        titles.push("du_GiB");
+                    }
+                    titles
+                        .into_iter()
+                        .map(|s| TerminalTableTitle {
+                            text: Cow::Borrowed(s),
+                            span: 1,
+                        })
+                        .collect()
+                };
+
+                let table = if id_only {
                     None
                 } else {
                     Some(TerminalTable::start(
-                        used(widths, !no_commit),
-                        used(titles, !no_commit),
+                        &widths,
+                        &titles,
                         None,
                         terminal_table_opts,
                         stdout().lock(),
@@ -353,12 +387,16 @@ impl Wd {
                     } else {
                         all_entries.sort_by(|a, b| a.1.last_use.cmp(&b.1.last_use))
                     }
-                    all_entries.iter().map(|(id, _)| *id).collect()
+                    // *Must* let go of the &WorkingDirectory values
+                    // or we can't borrow the pool mutably below. Bummer.
+                    all_entries.into_iter().map(|(id, _)| id).collect()
                 };
+
+                let mut show_as_table = Vec::new();
 
                 for id in all_ids {
                     let mut lock = working_directory_pool.lock_mut("evobench Wd::List")?;
-                    let mut wd = lock
+                    let wd = lock
                         .get_working_directory_mut(id)
                         .expect("got it from all_entries");
                     let WorkingDirectoryStatus {
@@ -373,27 +411,58 @@ impl Wd {
                         (false, true) => !status.can_be_used_for_jobs(),
                     };
                     if show {
-                        if let Some(table) = &mut table {
-                            let row = &[
-                                id.to_string(),
-                                status.to_string(),
-                                num_runs.to_string(),
-                                creation_timestamp.to_string(),
-                                system_time_to_rfc3339(wd.last_use, true),
-                                if !no_commit {
-                                    wd.commit()?.to_string()
-                                } else {
-                                    String::new()
-                                },
-                            ];
-                            table.write_data_row(used(row, !no_commit), None)?;
+                        if table.is_some() {
+                            show_as_table.push((
+                                vec![
+                                    id.to_string(),
+                                    status.to_string(),
+                                    num_runs.to_string(),
+                                    creation_timestamp.to_string(),
+                                    system_time_to_rfc3339(wd.last_use, true),
+                                ],
+                                wd.working_directory_path(),
+                            ));
                         } else {
                             println!("{id}");
                         }
                     }
                 }
 
-                if let Some(table) = table {
+                if let Some(mut table) = table {
+                    let mut rows = show_as_table
+                        .into_par_iter()
+                        .map(|(mut row, wdp)| -> Result<_> {
+                            if show_commit {
+                                row.push(wdp.noncached_commit()?.to_string());
+                            }
+                            if show_du {
+                                let gdu = GetDirDiskUsage {
+                                    one_file_system: false,
+                                    share_globally: false,
+                                    shared_inodes: Default::default(),
+                                };
+                                let du = gdu.dir_disk_usage(wdp.into(), 0)?;
+                                let shared_inodes = gdu.shared_inodes.lock().expect("no crash");
+                                let bytes = du.total(&shared_inodes);
+                                row.push(bytes_to_gib_string(bytes));
+                            }
+                            Ok(row)
+                        })
+                        .collect::<Result<Vec<Vec<String>>>>()?;
+
+                    if du_sort {
+                        // Sort the strings, this works thanks to the
+                        // adjusted formatting
+                        let mut col = 5;
+                        if show_commit {
+                            col += 1;
+                        }
+                        rows.sort_by(|a, b| a[col].cmp(&b[col]));
+                    }
+
+                    for row in rows {
+                        table.write_data_row(&row, None)?;
+                    }
                     let _ = table.finish()?;
                 }
                 Ok(())

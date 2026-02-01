@@ -28,6 +28,7 @@ use crate::{
         WorkingDirectoryId, WorkingDirectoryPoolGuard, WorkingDirectoryPoolGuardMut,
     },
     serde::{date_and_time::DateTimeWithOffset, git_url::GitUrl},
+    utillib::arc::CloneArc,
     warn,
 };
 
@@ -155,6 +156,21 @@ impl From<Arc<PathBuf>> for WorkingDirectoryPath {
     }
 }
 
+impl From<WorkingDirectoryPath> for Arc<PathBuf> {
+    fn from(value: WorkingDirectoryPath) -> Self {
+        value.0
+    }
+}
+
+impl From<WorkingDirectoryPath> for PathBuf {
+    fn from(value: WorkingDirectoryPath) -> Self {
+        match Arc::try_unwrap(value.0) {
+            Ok(v) => v,
+            Err(value) => value.as_path().to_owned(),
+        }
+    }
+}
+
 impl WorkingDirectoryPath {
     const STANDARD_LOG_EXTENSION_BASE: &str = "output_of_benchmarking_command_at_";
     pub fn standard_log_path_from_working_dir_path(
@@ -215,6 +231,13 @@ impl WorkingDirectoryPath {
 
     pub fn last_standard_log_path(&self) -> Result<Option<(PathBuf, String)>> {
         Ok(self.standard_log_paths()?.pop())
+    }
+
+    pub fn noncached_commit(&self) -> Result<GitHash> {
+        let git_working_dir = GitWorkingDir {
+            working_dir_path: self.0.clone_arc(),
+        };
+        git_working_dir.get_head_commit_id()?.parse()
     }
 }
 
@@ -523,7 +546,7 @@ impl<'guard> WorkingDirectoryWithPoolLockMut<'guard> {
         if self.commit.is_some() {
             Ok(self.commit.as_ref().expect("just checked"))
         } else {
-            let commit: GitHash = self.git_working_dir.get_head_commit_id()?.parse()?;
+            let commit = self.working_directory_path().noncached_commit()?;
             debug!(
                 "set commit field of entry for WorkingDirectory {:?} to {commit}",
                 self.wd.git_working_dir.working_dir_path_ref()
