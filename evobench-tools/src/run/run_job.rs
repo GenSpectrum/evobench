@@ -144,7 +144,10 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
         } = run_parameters.deref();
 
         let bench_tmp_dir = &bench_tmp_dir()?;
-        dbg!((&bench_tmp_dir, bench_tmp_dir.exists()));
+        info!(
+            "bench_tmp_dir path, exists?: {:?}",
+            (&bench_tmp_dir, bench_tmp_dir.exists())
+        );
 
         // File for evobench library output
         let evobench_log;
@@ -261,7 +264,10 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                         .write_str(&serde_yml::to_string(&benchmarking_job_parameters)?)?;
                     command_output_file.write_str("\n")?;
 
-                    dbg!((&bench_tmp_dir, bench_tmp_dir.exists()));
+                    info!(
+                        "bench_tmp_dir path, exists?: {:?}",
+                        (&bench_tmp_dir, bench_tmp_dir.exists())
+                    );
 
                     let status = {
                         let mut other_files: Vec<Box<dyn Write + Send + 'static>> = vec![];
@@ -282,7 +288,10 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                         )?
                     };
 
-                    dbg!((&bench_tmp_dir, bench_tmp_dir.exists()));
+                    info!(
+                        "bench_tmp_dir path, exists?: {:?}",
+                        (&bench_tmp_dir, bench_tmp_dir.exists())
+                    );
 
                     if status.success() {
                         info!("running {cmd_in_dir} succeeded");
@@ -291,7 +300,10 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                     } else {
                         info!("running {cmd_in_dir} failed.");
 
-                        dbg!((&bench_tmp_dir, bench_tmp_dir.exists()));
+                        info!(
+                            "bench_tmp_dir path, exists?: {:?}",
+                            (&bench_tmp_dir, bench_tmp_dir.exists())
+                        );
 
                         let last_part = command_output_file.last_part(3000)?;
                         if log_level() < LogLevel::Info {
