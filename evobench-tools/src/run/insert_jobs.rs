@@ -135,7 +135,7 @@ pub fn insert_jobs(
 
     if !jobs_already_inserted.is_empty() {
         bail!(
-            "there are jobs that were already inserted:\n{}",
+            "there are jobs that were already inserted:\n\n{}",
             jobs_already_inserted.join("\n\n")
         )
     }
