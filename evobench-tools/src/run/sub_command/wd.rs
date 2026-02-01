@@ -9,7 +9,7 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::{
     ask::ask_yn,
-    ctx,
+    ctx, info,
     io_utils::bash::{bash_export_variable_string, bash_string_from_program_path_and_args},
     key::{BenchmarkingJobParameters, RunParameters},
     lazyresult,
@@ -421,6 +421,7 @@ impl Wd {
                                     system_time_to_rfc3339(wd.last_use, true),
                                 ],
                                 wd.working_directory_path(),
+                                wd.commit.clone(),
                             ));
                         } else {
                             println!("{id}");
@@ -431,9 +432,15 @@ impl Wd {
                 if let Some(mut table) = table {
                     let mut rows = show_as_table
                         .into_par_iter()
-                        .map(|(mut row, wdp)| -> Result<_> {
+                        .map(|(mut row, wdp, opt_commit)| -> Result<_> {
                             if show_commit {
-                                row.push(wdp.noncached_commit()?.to_string());
+                                let commit = if let Some(commit) = opt_commit {
+                                    info!("already had a commit! how comes?");
+                                    commit
+                                } else {
+                                    wdp.noncached_commit()?
+                                };
+                                row.push(commit.to_string());
                             }
                             if show_du {
                                 let gdu = GetDirDiskUsage {
