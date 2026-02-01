@@ -27,6 +27,7 @@ pub mod wd_log;
 pub fn open_working_directory_pool(
     conf: &RunConfig,
     working_directory_base_dir: Arc<WorkingDirectoryPoolBaseDir>,
+    omit_check: bool,
 ) -> Result<WorkingDirectoryPoolAndLock> {
     let create_dir_if_not_exists = true;
     WorkingDirectoryPool::open(
@@ -34,6 +35,7 @@ pub fn open_working_directory_pool(
         working_directory_base_dir,
         conf.remote_repository.url.clone(),
         create_dir_if_not_exists,
+        omit_check,
     )
 }
 

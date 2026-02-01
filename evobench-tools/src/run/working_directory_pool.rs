@@ -375,6 +375,8 @@ impl WorkingDirectoryPool {
         Ok(WorkingDirectoryPoolGuardMut { _lock, pool: self })
     }
 
+    /// `omit_check` is passed to `WorkingDirectory::open` (it should
+    /// only be set to true for dir listings)
     pub fn open(
         // XX why do we have working directory pool base dir twice,
         // via opts and base_dir? Just because of some weird
@@ -383,6 +385,7 @@ impl WorkingDirectoryPool {
         base_dir: Arc<WorkingDirectoryPoolBaseDir>,
         remote_repository_url: GitUrl,
         create_dir_if_not_exists: bool,
+        omit_check: bool,
     ) -> Result<WorkingDirectoryPoolAndLock> {
         if create_dir_if_not_exists {
             io_utils::div::create_dir_if_not_exists(base_dir.path(), "working pool directory")?;
@@ -446,7 +449,12 @@ impl WorkingDirectoryPool {
                             return Ok(None);
                         };
                         let path = entry.path();
-                        let wd = WorkingDirectory::open(path, &remote_repository_url, &mut guard)?;
+                        let wd = WorkingDirectory::open(
+                            path,
+                            &remote_repository_url,
+                            &mut guard,
+                            omit_check,
+                        )?;
                         Ok(Some((id, wd)))
                     },
                 )

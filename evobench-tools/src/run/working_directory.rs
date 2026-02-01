@@ -348,11 +348,12 @@ impl WorkingDirectory {
     /// about the same target project, hence they share commits, hence
     /// deleting and re-cloning the working dir is not necessary or
     /// desired, just changing that url so that the newest changes can
-    /// be retrieved.
+    /// be retrieved. `omit_check` disables that check.
     pub fn open<'pool>(
         path: PathBuf,
         url: &GitUrl,
         guard: &WorkingDirectoryPoolGuard<'pool>,
+        omit_check: bool,
     ) -> Result<Self> {
         // let quiet = false;
 
@@ -390,7 +391,7 @@ impl WorkingDirectory {
         let path = git_working_dir.working_dir_path_ref();
 
         // Check that the url is the same
-        {
+        if !omit_check {
             let current_url = git_working_dir.get_url(REMOTE_NAME)?;
             if current_url != url.as_str() {
                 warn!(

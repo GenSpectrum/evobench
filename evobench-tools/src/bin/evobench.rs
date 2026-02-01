@@ -330,7 +330,7 @@ fn run_queues<'ce>(
             info!("the working directory pool was updated outside the app, reload it");
             let conf = &run_config_bundle.run_config;
             working_directory_pool =
-                open_working_directory_pool(conf, working_directory_base_dir.clone_arc())?
+                open_working_directory_pool(conf, working_directory_base_dir.clone_arc(), false)?
                     .into_inner();
         }
     }
@@ -609,15 +609,16 @@ fn run() -> Result<Option<ExecutionResult>> {
         }
 
         SubCommand::Run { mode } => {
-            let open_working_directory_pool =
-                |conf: &RunConfig,
-                 working_directory_base_dir: &Arc<WorkingDirectoryPoolBaseDir>|
-                 -> Result<_> {
-                    Ok(
-                        open_working_directory_pool(conf, working_directory_base_dir.clone())?
-                            .into_inner(),
-                    )
-                };
+            let open_working_directory_pool = |conf: &RunConfig,
+                                               working_directory_base_dir: &Arc<
+                WorkingDirectoryPoolBaseDir,
+            >|
+             -> Result<_> {
+                Ok(
+                    open_working_directory_pool(conf, working_directory_base_dir.clone(), false)?
+                        .into_inner(),
+                )
+            };
 
             match mode {
                 RunMode::One { false_if_none } => {

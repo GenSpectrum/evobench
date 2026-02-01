@@ -244,8 +244,12 @@ impl Wd {
         conf: &RunConfig,
         working_directory_base_dir: &Arc<WorkingDirectoryPoolBaseDir>,
     ) -> Result<()> {
+        // For all cases, the Wd utilities should never change the
+        // upstream URL, OK?
+        let omit_check = true;
+
         let mut working_directory_pool =
-            open_working_directory_pool(conf, working_directory_base_dir.clone())?
+            open_working_directory_pool(conf, working_directory_base_dir.clone(), omit_check)?
                 // XX might we want to hold onto the lock?
                 .into_inner();
 
