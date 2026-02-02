@@ -20,6 +20,7 @@ use std::{
 
 use anyhow::{Result, anyhow, bail};
 use cj_path_util::path_util::AppendToPath;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -414,56 +415,63 @@ impl WorkingDirectoryPool {
             pool: &mut slf,
         };
 
-        let all_entries: BTreeMap<WorkingDirectoryId, WorkingDirectory> =
+        let all_entries: Vec<(WorkingDirectoryId, PathBuf)> =
             std::fs::read_dir(guard.pool.base_dir.path())
                 .map_err(ctx!(
                     "opening working pool directory {:?}",
                     guard.pool.base_dir.path()
                 ))?
-                .map(
-                    |entry| -> Result<Option<(WorkingDirectoryId, WorkingDirectory)>> {
-                        let entry = entry?;
-                        let ft = entry.file_type()?;
-                        if !ft.is_dir() {
-                            return Ok(None);
-                        }
-                        let id = if let Some(fname) = entry.file_name().to_str() {
-                            if let Some((id_str, _rest)) = fname.split_once('.') {
-                                if let Ok(id) = u64::from_str(id_str) {
-                                    if id >= next_id {
-                                        next_id = id + 1;
-                                    }
-                                }
-                                return Ok(None);
-                            } else {
-                                if let Ok(id) = fname.parse() {
-                                    if id >= next_id {
-                                        next_id = id + 1;
-                                    }
-                                    WorkingDirectoryId(id)
-                                } else {
-                                    return Ok(None);
+                .map(|entry| -> Result<Option<(WorkingDirectoryId, PathBuf)>> {
+                    let entry = entry?;
+                    let ft = entry.file_type()?;
+                    if !ft.is_dir() {
+                        return Ok(None);
+                    }
+                    let id = if let Some(fname) = entry.file_name().to_str() {
+                        if let Some((id_str, _rest)) = fname.split_once('.') {
+                            if let Ok(id) = u64::from_str(id_str) {
+                                if id >= next_id {
+                                    next_id = id + 1;
                                 }
                             }
-                        } else {
                             return Ok(None);
-                        };
-                        let path = entry.path();
-                        let wd = WorkingDirectory::open(
-                            path,
-                            &remote_repository_url,
-                            &guard,
-                            omit_check,
-                        )?;
-                        Ok(Some((id, wd)))
-                    },
-                )
+                        } else {
+                            if let Ok(id) = fname.parse() {
+                                if id >= next_id {
+                                    next_id = id + 1;
+                                }
+                                WorkingDirectoryId(id)
+                            } else {
+                                return Ok(None);
+                            }
+                        }
+                    } else {
+                        return Ok(None);
+                    };
+                    let path = entry.path();
+                    Ok(Some((id, path)))
+                })
                 .filter_map(Result::transpose)
                 .collect::<Result<_>>()
                 .map_err(ctx!(
                     "reading contents of working pool directory {:?}",
                     guard.pool.base_dir.path()
                 ))?;
+
+        let all_entries: BTreeMap<WorkingDirectoryId, WorkingDirectory> = all_entries
+            .into_par_iter()
+            .map(
+                |(id, path)| -> Result<(WorkingDirectoryId, WorkingDirectory)> {
+                    let wd =
+                        WorkingDirectory::open(path, &remote_repository_url, &guard, omit_check)?;
+                    Ok((id, wd))
+                },
+            )
+            .collect::<Result<_>>()
+            .map_err(ctx!(
+                "opening working directories {:?}",
+                guard.pool.base_dir.path()
+            ))?;
 
         // Let go of the guard (so that we can mutate slf and later
         // return it), but keep the lock
