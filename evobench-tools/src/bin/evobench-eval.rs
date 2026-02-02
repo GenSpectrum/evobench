@@ -24,7 +24,7 @@ const PROGRAM_NAME: &str = "evobench-eval";
 
 #[derive(clap::Parser, Debug)]
 #[clap(next_line_help = true)]
-#[clap(set_term_width = get_terminal_width(4))]
+#[clap(term_width = get_terminal_width(4))]
 struct Opts {
     #[clap(flatten)]
     log_level: LogLevelOpt,

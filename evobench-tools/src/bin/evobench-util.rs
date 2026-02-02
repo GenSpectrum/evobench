@@ -23,7 +23,7 @@ use evobench_tools::{
 
 #[derive(clap::Parser, Debug)]
 #[clap(next_line_help = true)]
-#[clap(set_term_width = get_terminal_width(4))]
+#[clap(term_width = get_terminal_width(4))]
 /// Utilities for working with evobench
 struct Opts {
     #[clap(flatten)]

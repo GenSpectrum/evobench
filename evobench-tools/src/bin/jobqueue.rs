@@ -19,7 +19,7 @@ use evobench_tools::{
 
 #[derive(clap::Parser, Debug)]
 #[clap(next_line_help = true)]
-#[clap(set_term_width = get_terminal_width(4))]
+#[clap(term_width = get_terminal_width(4))]
 /// Schedule jobs to run, which is external commands with
 /// arguments. This is more of an example of the use of the queue
 /// library, but could be useful (and tweaked to be more useful) for

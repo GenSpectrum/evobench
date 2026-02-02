@@ -21,7 +21,7 @@ use evobench_tools::{
 
 #[derive(clap::Parser, Debug)]
 #[clap(next_line_help = true)]
-#[clap(set_term_width = get_terminal_width(4))]
+#[clap(term_width = get_terminal_width(4))]
 /// Database migration for evobench: update storage format for jobs in
 /// queues. Run this when you're getting deserialisation errors from
 /// `evobench`, or when you know that the data structures have

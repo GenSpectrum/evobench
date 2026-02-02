@@ -41,7 +41,7 @@ pub struct ForceInvalidOpt {
 
 // (Note: clap::ArgEnum is only for the CLI help texts--FromStr is
 // still necessary!)
-#[derive(Debug, Clone, Copy, clap::ArgEnum)]
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
 /// Whether to look up Git references in the remote repository
 /// or in a local clone (in which case the current working dir
 /// must be inside it)
@@ -261,7 +261,7 @@ pub enum Insert {
     /// you can use the `branch` subcommand instead).
     TemplatesOfBranch {
         branch_name: GitBranchName,
-        #[clap(arg_enum)]
+        #[clap(value_enum)]
         /// Whether to look up Git references in the remote repository
         /// or in a local clone (in which case the current working dir
         /// must be inside it)
@@ -282,7 +282,7 @@ pub enum Insert {
         /// Whether to look up Git references in the remote repository
         /// or in a local clone (in which case the current working dir
         /// must be inside it)
-        #[clap(arg_enum)]
+        #[clap(value_enum)]
         local_or_remote: LocalOrRemote,
         /// Branch name to use for template lookup and commit id. If
         /// not given, the currently checked-out branch name is tried

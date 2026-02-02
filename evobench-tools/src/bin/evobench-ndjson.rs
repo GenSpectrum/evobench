@@ -99,7 +99,7 @@ impl<'t> QueryWeights<'t> {
 
 #[derive(clap::Parser, Debug)]
 #[clap(next_line_help = true)]
-#[clap(set_term_width = get_terminal_width(4))]
+#[clap(term_width = get_terminal_width(4))]
 /// Schedule and query benchmarking jobs.
 struct Opts {
     #[clap(flatten)]
