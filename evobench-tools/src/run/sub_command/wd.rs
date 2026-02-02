@@ -421,7 +421,7 @@ impl Wd {
                                     status.to_string(),
                                     num_runs.to_string(),
                                     creation_timestamp.to_string(),
-                                    system_time_to_rfc3339(wd.last_use, true),
+                                    system_time_to_rfc3339(wd.last_use, None),
                                 ],
                                 wd.working_directory_path(),
                                 wd.commit.clone(),

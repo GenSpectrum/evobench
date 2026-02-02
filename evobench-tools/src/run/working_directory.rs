@@ -136,7 +136,7 @@ pub struct WorkingDirectoryStatus {
 impl WorkingDirectoryStatus {
     fn new() -> Self {
         Self {
-            creation_timestamp: DateTimeWithOffset::now(),
+            creation_timestamp: DateTimeWithOffset::now(None),
             num_runs: 0,
             status: Status::CheckedOut,
         }

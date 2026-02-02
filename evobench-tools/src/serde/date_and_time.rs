@@ -1,7 +1,12 @@
 //! Date-and-time representations that can be nicely
 //! serialized/deserialized
 
-use std::{fmt::Display, str::FromStr, time::SystemTime};
+use std::{
+    fmt::Display,
+    str::FromStr,
+    sync::atomic::{AtomicBool, Ordering},
+    time::SystemTime,
+};
 
 use chrono::{
     DateTime, FixedOffset, Local, LocalResult, NaiveDate, NaiveDateTime, NaiveTime, TimeZone,
@@ -9,14 +14,23 @@ use chrono::{
 };
 use serde::de::Visitor;
 
-/// Stored in RFC 3339 format, with local time zone offset -- CAREFUL,
-/// if specified as the wrong string in a file, no check is done on
-/// deserialization!
+// Ordering: probably nobody will be changing it across threads (and
+// if so, ordering probably doesn't matter so much?), thus Relaxed
+// should be fine. Feel free to use Ordering::SeqCst for stores to
+// ensure the last store counts.
+pub static LOCAL_TIME: AtomicBool = AtomicBool::new(true);
+
+/// Stored in RFC 3339 format (with local time zone offset or UTC) --
+/// CAREFUL, if specified as the wrong string in a file, no check is
+/// done on deserialization!
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DateTimeWithOffset(String);
 
-pub fn system_time_to_rfc3339(t: SystemTime, local_time: bool) -> String {
-    if local_time {
+/// To format existing time points directly to string. Otherwise,
+/// consider `DateTimeWithOffset`. The default value for `local_time`
+/// is taken from the `LOCAL_TIME` atomic.
+pub fn system_time_to_rfc3339(t: SystemTime, local_time: Option<bool>) -> String {
+    if local_time.unwrap_or_else(|| LOCAL_TIME.load(Ordering::Relaxed)) {
         let t: DateTime<Local> = DateTime::from(t);
         t.to_rfc3339()
     } else {
@@ -26,8 +40,8 @@ pub fn system_time_to_rfc3339(t: SystemTime, local_time: bool) -> String {
 }
 
 impl DateTimeWithOffset {
-    pub fn now() -> Self {
-        Self(system_time_to_rfc3339(SystemTime::now(), true))
+    pub fn now(local_time: Option<bool>) -> Self {
+        Self(system_time_to_rfc3339(SystemTime::now(), local_time))
     }
 
     pub fn into_string(self) -> String {

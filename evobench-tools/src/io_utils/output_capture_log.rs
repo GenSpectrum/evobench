@@ -13,13 +13,16 @@ use std::{
     io::{BufRead, BufReader, Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     process::{Command, ExitStatus, Stdio},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, atomic::Ordering},
     thread::{Scope, ScopedJoinHandle},
 };
 
 use anyhow::{Result, anyhow};
 
-use crate::{ctx, serde::date_and_time::DateTimeWithOffset};
+use crate::{
+    ctx,
+    serde::date_and_time::{DateTimeWithOffset, LOCAL_TIME},
+};
 
 use super::bash::bash_string_from_cmd;
 
@@ -56,6 +59,7 @@ where
     std::thread::Builder::new()
         .name("output proxy".into())
         .spawn_scoped(scope, move || -> Result<()> {
+            let local_time = Some(LOCAL_TIME.load(Ordering::Relaxed));
             // Have to use two buffers, because it's not possible to
             // prepare the timestamp in advance of the read_line call
             // since the latter is blocking.
@@ -65,7 +69,7 @@ where
                 {
                     line.clear();
                     if add_timestamp {
-                        line.push_str(&DateTimeWithOffset::now().into_string());
+                        line.push_str(&DateTimeWithOffset::now(local_time).into_string());
                         line.push_str("\t");
                     }
                     if let Some(source_indicator) = source_indicator.as_ref() {

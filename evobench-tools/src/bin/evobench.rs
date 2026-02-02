@@ -47,10 +47,10 @@ use evobench_tools::{
         versioned_dataset_dir::VersionedDatasetDir,
         working_directory_pool::{WorkingDirectoryPool, WorkingDirectoryPoolBaseDir},
     },
-    serde::date_and_time::DateTimeWithOffset,
+    serde::date_and_time::{DateTimeWithOffset, LOCAL_TIME},
     utillib::{
         arc::CloneArc,
-        logging::{LOG_LOCAL_TIME, LogLevel, LogLevelOpt, set_log_level},
+        logging::{LogLevel, LogLevelOpt, set_log_level},
     },
 };
 
@@ -246,7 +246,7 @@ fn run_queues<'ce>(
         debug!("Got working directory {working_directory_id:?}");
         let ((), token) = working_directory_pool.process_in_working_directory(
             working_directory_id,
-            &DateTimeWithOffset::now(),
+            &DateTimeWithOffset::now(None),
             |working_directory| -> Result<()> {
                 let working_directory = working_directory.into_inner().expect("still there");
 
@@ -312,7 +312,7 @@ fn run_queues<'ce>(
             JobRunner {
                 working_directory_pool: &mut working_directory_pool,
                 output_base_dir: &output_base_dir,
-                timestamp: DateTimeWithOffset::now(),
+                timestamp: DateTimeWithOffset::now(None),
                 run_config,
                 versioned_dataset_dir: &versioned_dataset_dir,
             },
@@ -378,7 +378,7 @@ impl<F: FnOnce(CheckExit) -> Result<()>> EvobenchDaemon<F> {
             // local time stamp generation, too (now
             // the default is UTC, which is expected
             // for a daemon).
-            LOG_LOCAL_TIME.store(local_time, Ordering::SeqCst);
+            LOCAL_TIME.store(local_time, Ordering::SeqCst);
 
             set_log_level(log_level);
 
@@ -427,9 +427,9 @@ fn run() -> Result<Option<ExecutionResult>> {
     } = Opts::parse();
 
     set_log_level(log_level.try_into()?);
-    // Interactive use should get local time. (Daemon mode overwrites
-    // this.)
-    LOG_LOCAL_TIME.store(true, Ordering::SeqCst);
+    // Interactive use should get local time. (Daemon mode possibly
+    // overwrites this.) true or LOCAL_TIME_DEFAULT?
+    LOCAL_TIME.store(LOCAL_TIME_DEFAULT, Ordering::SeqCst);
 
     let config: Option<Arc<Path>> = config.map(Into::into);
 

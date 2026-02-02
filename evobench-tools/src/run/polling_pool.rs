@@ -79,7 +79,7 @@ impl PollingPool {
         };
         let (res, cleanup) = self.pool.process_in_working_directory(
             working_directory_id,
-            &DateTimeWithOffset::now(),
+            &DateTimeWithOffset::now(None),
             |mut working_directory| {
                 let working_directory = working_directory.get().expect("still there");
                 // Check for the commit first, then if it fails, try
@@ -109,7 +109,7 @@ impl PollingPool {
         };
         let (res, cleanup) = self.pool.process_in_working_directory(
             working_directory_id,
-            &DateTimeWithOffset::now(),
+            &DateTimeWithOffset::now(None),
             |mut working_directory| {
                 let working_directory = working_directory.get().expect("still there");
                 _ = working_directory.fetch(None)?;
@@ -166,7 +166,7 @@ impl PollingPool {
     )> {
         self.process_in_working_directory(
             working_directory_id,
-            &DateTimeWithOffset::now(),
+            &DateTimeWithOffset::now(None),
             |mut working_directory| {
                 let working_directory = working_directory.get().expect("still there");
                 let git_working_dir = &working_directory.git_working_dir;
@@ -195,7 +195,7 @@ impl PollingPool {
     ) -> Result<Vec<Option<GitHash>>> {
         self.process_in_working_directory(
             working_directory_id,
-            &DateTimeWithOffset::now(),
+            &DateTimeWithOffset::now(None),
             |mut working_directory| {
                 let working_directory = working_directory.get().expect("still there");
                 let git_working_dir = &working_directory.git_working_dir;

@@ -1,5 +1,5 @@
-//! Wrap `SystemTime` so that it has `Display` showing local time in
-//! RFC 3339 format.
+//! Wrap `SystemTime` so that it has `Display` showing RFC 3339 format
+//! with the `evobench::serde::date_and_time::LOCAL_TIME` setting.
 
 use std::{fmt::Display, ops::Deref, time::SystemTime};
 
@@ -18,7 +18,7 @@ impl Deref for SystemTimeWithDisplay {
 
 impl Display for SystemTimeWithDisplay {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&system_time_to_rfc3339(self.0, true))
+        f.write_str(&system_time_to_rfc3339(self.0, None))
     }
 }
 

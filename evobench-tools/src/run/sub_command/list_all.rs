@@ -67,7 +67,7 @@ impl ListAllOpts {
             stdout().lock(),
         )?;
         for (params, insertion_time) in flat_jobs {
-            let t = system_time_to_rfc3339(insertion_time, true);
+            let t = system_time_to_rfc3339(insertion_time, None);
             let BenchmarkingJobParameters {
                 run_parameters,
                 command,

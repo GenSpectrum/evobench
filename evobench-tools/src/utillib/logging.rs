@@ -3,27 +3,18 @@
 use std::{
     io::{BufWriter, StderrLock, Write, stderr},
     str::FromStr,
-    sync::atomic::{AtomicBool, AtomicU8, Ordering},
-    time::SystemTime,
+    sync::atomic::{AtomicU8, Ordering},
 };
 
 use anyhow::{Result, bail};
 use strum::VariantNames;
 use strum_macros::{EnumVariantNames, ToString};
 
-use crate::serde::date_and_time::system_time_to_rfc3339;
-
-/// Whether to show time stamps in the local time zone (default: UTC).
-pub static LOG_LOCAL_TIME: AtomicBool = AtomicBool::new(false);
+use crate::serde::date_and_time::DateTimeWithOffset;
 
 pub fn write_time(file: &str, line: u32, column: u32) -> BufWriter<StderrLock<'static>> {
-    let t = SystemTime::now();
-    // Costs an allocation. -- Ordering: probably nobody will be
-    // changing it across threads (and if so, ordering probably
-    // doesn't matter so much?), thus Relaxed should be fine. Feel
-    // free to use Ordering::SeqCst for stores to ensure the last
-    // store counts.
-    let t_str = system_time_to_rfc3339(t, LOG_LOCAL_TIME.load(Ordering::Relaxed));
+    // Costs an allocation.
+    let t_str = DateTimeWithOffset::now(None);
     let mut lock = BufWriter::new(stderr().lock());
     _ = write!(&mut lock, "{t_str}\t{file}:{line}:{column}\t");
     lock

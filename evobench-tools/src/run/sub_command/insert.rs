@@ -129,7 +129,7 @@ impl LocalOrRemoteGitWorkingDir {
                 let id = polling_pool.updated_working_dir()?;
                 polling_pool.process_in_working_directory(
                     id,
-                    &DateTimeWithOffset::now(),
+                    &DateTimeWithOffset::now(None),
                     |wdwp| {
                         let wd = wdwp.into_inner().expect("still there?");
                         wd.git_working_dir.get_current_branch()

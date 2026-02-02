@@ -105,7 +105,7 @@ pub fn insert_jobs(
                     let insertion_times = insertion_times
                         .iter()
                         .cloned()
-                        .map(|t| system_time_to_rfc3339(t, true))
+                        .map(|t| system_time_to_rfc3339(t, None))
                         .join(", ");
                     jobs_already_inserted.push(format!(
                         "These parameters have already been inserted at {insertion_times}:\n{}",
