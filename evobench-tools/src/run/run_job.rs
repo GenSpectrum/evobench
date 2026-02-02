@@ -21,7 +21,7 @@ use crate::{
     git_tags::GitTags,
     info,
     io_utils::{
-        capture::{CaptureOptions, OutputCaptureLog},
+        output_capture_log::{CaptureOptions, OutputCaptureLog},
         temporary_file::TemporaryFile,
     },
     key::{BenchmarkingJobParameters, RunParameters},

@@ -12,7 +12,7 @@ use anyhow::Result;
 use chrono::DateTime;
 
 use crate::{
-    ctx, io_utils::capture::OutputCaptureLog, key::BenchmarkingJobParameters,
+    ctx, io_utils::output_capture_log::OutputCaptureLog, key::BenchmarkingJobParameters,
     zstd_file::decompressed_file,
 };
 
