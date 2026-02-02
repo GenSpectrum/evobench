@@ -67,11 +67,7 @@ nix = "0.24.3"
 yansi = "1.0.1"
 
 chrono = "0.4"
-walkdir = "2"
-os_info = "=3.7"
-
 regex = "1.7"
-memmap2 = "0.9.4"
 
 linfa-clustering = "0.8.0"
 linfa = "0.8.0"
