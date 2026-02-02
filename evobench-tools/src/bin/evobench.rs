@@ -10,7 +10,7 @@ use chj_unix_util::{
     logging::{TimestampMode, TimestampOpts},
     timestamp_formatter::TimestampFormatter,
 };
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use itertools::Itertools;
 
 use std::{
@@ -71,6 +71,7 @@ const LOCAL_TIME_DEFAULT: bool = true;
     next_line_help = true,
     styles = clap_styles(),
     term_width = get_terminal_width(4),
+    bin_name = "evobench",
 )]
 /// Schedule and query benchmarking jobs.
 struct Opts {
@@ -173,6 +174,13 @@ enum SubCommand {
     /// General program status information (but also see `list`, `wd
     /// list`, `list-all`, `run daemon status`, `poll daemon status`)
     Status {},
+
+    /// Generate a shell completions file
+    Completions {
+        /// The shell to generate the completions for
+        #[arg(value_enum)]
+        shell: clap_complete_command::Shell,
+    },
 }
 
 #[derive(Debug, Clone, clap::Subcommand)]
@@ -762,6 +770,11 @@ fn run() -> Result<Option<ExecutionResult>> {
             )?;
 
             out.flush()?;
+            Ok(None)
+        }
+
+        SubCommand::Completions { shell } => {
+            shell.generate(&mut Opts::command(), &mut std::io::stdout());
             Ok(None)
         }
     }
