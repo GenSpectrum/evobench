@@ -1,7 +1,7 @@
 //! Capturing an output file of running commands--both stdout and
 //! stderr, each line prepended with "O" or "E" respectively, writing
 //! those lines to a file and optionally other filehandles like a
-//! terminal.  The `OutFile` holds both the path, and the main
+//! terminal.  The `OutputCaptureLog` holds both the path, and the main
 //! filehandle in a mutex, and allows to read back the last part of
 //! the file, e.g. for when there was an error and the application
 //! wants to include that in an error message.
@@ -99,14 +99,15 @@ pub struct CaptureOptions {
 }
 
 #[derive(Debug)]
-pub struct OutFile {
+pub struct OutputCaptureLog {
     path: PathBuf,
     file: Arc<Mutex<File>>,
 }
 
-impl OutFile {
+impl OutputCaptureLog {
     pub fn create(path: &Path) -> Result<Self> {
-        let file = File::create(path).map_err(ctx!("opening OutFile {path:?} for writing"))?;
+        let file =
+            File::create(path).map_err(ctx!("opening OutputCaptureLog {path:?} for writing"))?;
         let path = path.to_owned();
 
         Ok(Self {

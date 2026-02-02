@@ -12,7 +12,8 @@ use anyhow::Result;
 use chrono::DateTime;
 
 use crate::{
-    ctx, io_utils::capture::OutFile, key::BenchmarkingJobParameters, zstd_file::decompressed_file,
+    ctx, io_utils::capture::OutputCaptureLog, key::BenchmarkingJobParameters,
+    zstd_file::decompressed_file,
 };
 
 /// Returns `(head, rest, rest_lineno)`, where `rest_lineno` is the
@@ -52,11 +53,11 @@ pub struct CommandLogFile<P: AsRef<Path>> {
     pub path: P,
 }
 
-// XX should wrap OutFile to represent command log files while
+// XX should wrap OutputCaptureLog to represent command log files while
 // writing, then translate from *that* to CommandLogFile (which is the
 // non-writing state).
-impl From<OutFile> for CommandLogFile<PathBuf> {
-    fn from(value: OutFile) -> Self {
+impl From<OutputCaptureLog> for CommandLogFile<PathBuf> {
+    fn from(value: OutputCaptureLog) -> Self {
         Self {
             path: value.into_path(),
         }

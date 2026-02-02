@@ -21,7 +21,7 @@ use crate::{
     git_tags::GitTags,
     info,
     io_utils::{
-        capture::{CaptureOptions, OutFile},
+        capture::{CaptureOptions, OutputCaptureLog},
         temporary_file::TemporaryFile,
     },
     key::{BenchmarkingJobParameters, RunParameters},
@@ -252,7 +252,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                         command.env(check("DATASET_DIR"), dataset_dir);
                     }
 
-                    let command_output_file = OutFile::create(
+                    let command_output_file = OutputCaptureLog::create(
                         &working_directory
                             .working_directory_path()
                             .standard_log_path(&self.job_runner.timestamp)?,
