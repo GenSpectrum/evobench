@@ -452,7 +452,7 @@ impl WorkingDirectoryPool {
                         let wd = WorkingDirectory::open(
                             path,
                             &remote_repository_url,
-                            &mut guard,
+                            &guard,
                             omit_check,
                         )?;
                         Ok(Some((id, wd)))
