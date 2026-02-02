@@ -60,6 +60,11 @@ type CheckExit<'t> =
 const DEFAULT_RESTART_ON_UPGRADES: bool = true;
 const DEFAULT_RESTART_ON_CONFIG_CHANGE: bool = true;
 
+/// True since the configuration uses times, too, and those are
+/// probably better local time, and in general, just use whatever the
+/// TZ is set to. You can set TZ to UTC, too.
+const LOCAL_TIME_DEFAULT: bool = true;
+
 #[derive(clap::Parser, Debug)]
 #[clap(next_line_help = true)]
 #[clap(set_term_width = get_terminal_width(4))]
@@ -176,7 +181,9 @@ pub enum RunMode {
         false_if_none: bool,
     },
     /// Run forever, until terminated (note: evobench uses
-    /// --restart-on-failures by default)
+    /// restart-on-failures and local-time by default; the local-time
+    /// setting has no effect on times in the config file, those are
+    /// always parsed as local-time)
     Daemon {
         #[clap(flatten)]
         opts: DaemonOpts,
@@ -364,7 +371,7 @@ impl<F: FnOnce(CheckExit) -> Result<()>> EvobenchDaemon<F> {
             config_file,
             inner_run,
         } = self;
-        let local_time = opts.logging_opts.local_time;
+        let local_time = opts.logging_opts.local_time(LOCAL_TIME_DEFAULT);
 
         let run = move |daemon_check_exit: CheckExit| -> Result<()> {
             // Use the requested time setting for
@@ -405,6 +412,7 @@ impl<F: FnOnce(CheckExit) -> Result<()>> EvobenchDaemon<F> {
             paths,
             other_restart_checks,
             run,
+            local_time_default: LOCAL_TIME_DEFAULT,
         })
     }
 }
