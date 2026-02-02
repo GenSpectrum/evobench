@@ -148,6 +148,7 @@ impl WorkingDirectoryStatus {
 // since that's what `run-git` currently uses, should change that.)
 /// A path to a working directory. Has methods that only need a path,
 /// nothing else.
+#[derive(Clone)]
 pub struct WorkingDirectoryPath(Arc<PathBuf>);
 
 impl From<Arc<PathBuf>> for WorkingDirectoryPath {

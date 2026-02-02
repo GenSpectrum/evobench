@@ -437,25 +437,37 @@ impl Wd {
                     let mut rows = show_as_table
                         .into_par_iter()
                         .map(|(mut row, wdp, opt_commit)| -> Result<_> {
-                            if show_commit {
+                            let get_commit = || -> Result<String> {
                                 let commit = if let Some(commit) = opt_commit {
                                     info!("already had a commit! how comes?");
                                     commit
                                 } else {
                                     wdp.noncached_commit()?
                                 };
-                                row.push(commit.to_string());
-                            }
-                            if show_du {
+                                Ok(commit.to_string())
+                            };
+                            let get_du = || -> Result<String> {
                                 let gdu = GetDirDiskUsage {
                                     one_file_system: false,
                                     share_globally: false,
                                     shared_inodes: Default::default(),
                                 };
-                                let du = gdu.dir_disk_usage(wdp.into(), 0)?;
+                                let du = gdu.dir_disk_usage(wdp.clone().into(), 0)?;
                                 let shared_inodes = gdu.shared_inodes.lock().expect("no crash");
                                 let bytes = du.total(&shared_inodes);
-                                row.push(bytes_to_gib_string(bytes));
+                                Ok(bytes_to_gib_string(bytes))
+                            };
+                            if show_commit && show_du {
+                                let (commit, du) = rayon::join(get_commit, get_du);
+                                row.push(commit?);
+                                row.push(du?);
+                            } else {
+                                if show_commit {
+                                    row.push(get_commit()?);
+                                }
+                                if show_du {
+                                    row.push(get_du()?);
+                                }
                             }
                             Ok(row)
                         })
