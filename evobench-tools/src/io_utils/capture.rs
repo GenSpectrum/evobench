@@ -1,3 +1,11 @@
+//! Capturing an output file of running commands--both stdout and
+//! stderr, each line prepended with "O" or "E" respectively, writing
+//! those lines to a file and optionally other filehandles like a
+//! terminal.  The `OutFile` holds both the path, and the main
+//! filehandle in a mutex, and allows to read back the last part of
+//! the file, e.g. for when there was an error and the application
+//! wants to include that in an error message.
+
 use std::{
     borrow::Cow,
     ffi::OsStr,
