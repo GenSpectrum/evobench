@@ -399,9 +399,8 @@ impl Wd {
                 let mut show_as_table = Vec::new();
 
                 for id in all_ids {
-                    let mut lock = working_directory_pool.lock_mut("evobench Wd::List")?;
-                    let wd = lock
-                        .get_working_directory_mut(id)
+                    let wd = working_directory_pool
+                        .get_working_directory(id)
                         .expect("got it from all_entries");
                     let WorkingDirectoryStatus {
                         creation_timestamp,
