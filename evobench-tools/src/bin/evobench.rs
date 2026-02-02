@@ -23,6 +23,7 @@ use std::{
 };
 
 use evobench_tools::{
+    clap_styles::clap_styles,
     config_file::{self, ConfigFile, save_config_file},
     ctx, debug,
     get_terminal_width::get_terminal_width,
@@ -68,6 +69,7 @@ const LOCAL_TIME_DEFAULT: bool = true;
 #[derive(clap::Parser, Debug)]
 #[command(
     next_line_help = true,
+    styles = clap_styles(),
     term_width = get_terminal_width(4),
 )]
 /// Schedule and query benchmarking jobs.

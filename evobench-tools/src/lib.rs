@@ -1,4 +1,5 @@
 pub mod ask;
+pub mod clap_styles;
 pub mod config_file;
 pub mod conslist;
 pub mod crypto_hash;
