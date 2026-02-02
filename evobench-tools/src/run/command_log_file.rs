@@ -1,6 +1,7 @@
 //! Log files holding benchmarking command output--not the structured
 //! timing data, but stdout and stderr of the benchmarking target of
-//! the target application.
+//! the target application, plus a header with the serialized
+//! parameters.
 
 use std::{
     borrow::Cow,
