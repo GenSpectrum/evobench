@@ -31,7 +31,9 @@ macro_rules! info_if {
     }
 }
 
-// Do *not* make the fields public here to force going through `From`/`Into`, OK?
+// Do *not* make the fields public here to force going through
+// `From`/`Into`, OK? Also, do not add Clone to force evaluation
+// before doing anything further, OK?
 #[derive(Debug, clap::Args)]
 pub struct LogLevelOpts {
     /// Show what is being done (increases log-level from 'warn' to
@@ -85,6 +87,23 @@ impl TryFrom<LogLevelOpts> for LogLevel {
     }
 }
 
+/// Like `TryFrom<LogLevelOpts> for LogLevel` but returns None if none
+/// of the 3 options were given.
+impl TryFrom<LogLevelOpts> for Option<LogLevel> {
+    type Error = anyhow::Error;
+
+    fn try_from(value: LogLevelOpts) -> std::result::Result<Self, Self::Error> {
+        match value {
+            LogLevelOpts {
+                verbose: false,
+                debug: false,
+                quiet: false,
+            } => Ok(None),
+            _ => Ok(Some(value.try_into()?)),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ToString, EnumVariantNames)]
 #[strum(serialize_all = "snake_case")]
 pub enum LogLevel {
@@ -127,6 +146,26 @@ impl LogLevel {
             _ => None,
         }
     }
+}
+
+impl Default for LogLevel {
+    fn default() -> Self {
+        Self::Warn
+    }
+}
+
+#[test]
+fn t_default() {
+    assert_eq!(
+        LogLevel::default(),
+        LogLevelOpts {
+            verbose: false,
+            debug: false,
+            quiet: false
+        }
+        .try_into()
+        .expect("no conflicts")
+    )
 }
 
 // Sigh, strum_macros::EnumString is useless as it does not show the
