@@ -100,48 +100,43 @@ struct Opts {
 
 #[derive(clap::Subcommand, Debug)]
 enum SubCommand {
-    /// Show the supported config format types.
-    ConfigFormats,
-
-    /// Re-encode the config file (serialization type determined by
-    /// file extension) and save at the given path.
-    ConfigSave { output_path: PathBuf },
-
-    /// Show the list of all inserted jobs, including already
-    /// processed ones
+    /// Show the table of all inserted jobs, including already
+    /// processed ones. This is the table that `evobench insert`
+    /// checks to avoid duplicate inserts by default. .
     ListAll {
         #[clap(flatten)]
         opts: ListAllOpts,
     },
 
-    /// List the currently scheduled and running jobs
+    /// List the jobs that are being processed (per queue)
     List {
         #[clap(flatten)]
         opts: ListOpts,
     },
 
-    /// Insert zero or more jobs, from one or more templates and for
-    /// zero or more commits. For automatic periodic insertion, see
-    /// `poll` sub-command instead.
+    /// Insert zero or more jobs, either from a complete benchmarking
+    /// job description file, or using the job templates from one list
+    /// from the configuration combined with zero or more commits. For
+    /// automatic periodic insertion, see the `poll` sub-command
+    /// instead. .
     Insert {
         #[clap(flatten)]
         opts: InsertOpts,
 
-        /// Choice of how to specify the job parameters
         #[clap(subcommand)]
         method: Insert,
     },
 
     /// Insert jobs for new commits on branch names configured in the
     /// config option `remote_branch_names_for_poll`. For one-off
-    /// manual insertion see `insert` instead.
+    /// manual insertion see `insert` instead. .
     Poll {
         // No QuietOpt since that must be the default. Also, another
         // force option since the help text is different here.
         /// Normally, the same job parameters are only inserted once,
         /// subsequent polls yielding the same commits remain
         /// no-ops. This overrides the check and inserts the found
-        /// commits anyway.
+        /// commits anyway. .
         #[clap(long)]
         force: bool,
 
@@ -181,12 +176,21 @@ enum SubCommand {
     /// list`, `list-all`, `run daemon status`, `poll daemon status`)
     Status {},
 
-    /// Generate a shell completions file
+    /// Generate a shell completions file. (Redirect stdout to a file
+    /// that is `source`d from the shell.)
     Completions {
-        /// The shell to generate the completions for
+        /// The shell to generate the completions for.
         #[arg(value_enum)]
         shell: clap_complete_command::Shell,
     },
+
+    /// Show the supported config format types.
+    ConfigFormats,
+
+    /// Re-encode the config file (with the serialization type
+    /// determined by the file extension) and save it at the given
+    /// path.
+    ConfigSave { output_path: PathBuf },
 }
 
 #[derive(Debug, Clone, clap::Subcommand)]
