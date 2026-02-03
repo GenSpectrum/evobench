@@ -11,7 +11,7 @@ use evobench_tools::get_terminal_width::get_terminal_width;
 use evobench_tools::git::GitGraph;
 use evobench_tools::git_tags::GitTags;
 use evobench_tools::serde::git_reference::GitReference;
-use evobench_tools::utillib::logging::LogLevelOpt;
+use evobench_tools::utillib::logging::LogLevelOpts;
 use evobench_tools::utillib::logging::set_log_level;
 use itertools::Itertools;
 use run_git::git::GitWorkingDir;
@@ -21,7 +21,7 @@ use run_git::git::GitWorkingDir;
 #[clap(term_width = get_terminal_width(4))]
 struct Opts {
     #[clap(flatten)]
-    log_level: LogLevelOpt,
+    log_level: LogLevelOpts,
 
     /// Print commits and their parents
     #[clap(long)]

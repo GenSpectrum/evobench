@@ -21,7 +21,7 @@ use evobench_tools::{
     util::integers::rounding_integer_division,
     utillib::{
         arc::CloneArc,
-        logging::{LogLevelOpt, set_log_level},
+        logging::{LogLevelOpts, set_log_level},
     },
     warn,
 };
@@ -103,7 +103,7 @@ impl<'t> QueryWeights<'t> {
 /// Schedule and query benchmarking jobs.
 struct Opts {
     #[clap(flatten)]
-    log_level: LogLevelOpt,
+    log_level: LogLevelOpts,
 
     /// The subcommand to run. Use `--help` after the sub-command to
     /// get a list of the allowed options there.

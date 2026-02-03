@@ -33,7 +33,7 @@ macro_rules! info_if {
 
 // Do *not* make the fields public here to force going through `From`/`Into`, OK?
 #[derive(Debug, clap::Args)]
-pub struct LogLevelOpt {
+pub struct LogLevelOpts {
     /// Show what is being done (increases log-level from 'warn' to
     /// 'info')
     #[clap(short, long)]
@@ -51,32 +51,32 @@ pub struct LogLevelOpt {
     quiet: bool,
 }
 
-impl TryFrom<LogLevelOpt> for LogLevel {
+impl TryFrom<LogLevelOpts> for LogLevel {
     type Error = anyhow::Error;
 
-    fn try_from(value: LogLevelOpt) -> Result<Self> {
+    fn try_from(value: LogLevelOpts) -> Result<Self> {
         match value {
-            LogLevelOpt {
+            LogLevelOpts {
                 verbose: false,
                 debug: false,
                 quiet: false,
             } => Ok(LogLevel::Warn),
-            LogLevelOpt {
+            LogLevelOpts {
                 verbose: true,
                 debug: false,
                 quiet: false,
             } => Ok(LogLevel::Info),
-            LogLevelOpt {
+            LogLevelOpts {
                 verbose: _,
                 debug: true,
                 quiet: false,
             } => Ok(LogLevel::Debug),
-            LogLevelOpt {
+            LogLevelOpts {
                 verbose: false,
                 debug: false,
                 quiet: true,
             } => Ok(LogLevel::Quiet),
-            LogLevelOpt {
+            LogLevelOpts {
                 verbose: _,
                 debug: _,
                 quiet: true,

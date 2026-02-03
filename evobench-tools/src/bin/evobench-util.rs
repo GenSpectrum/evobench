@@ -18,7 +18,7 @@ use evobench_tools::{
     },
     serde::proper_dirname::ProperDirname,
     util::grep_diff::GrepDiffRegion,
-    utillib::logging::{LogLevelOpt, set_log_level},
+    utillib::logging::{LogLevelOpts, set_log_level},
 };
 
 #[derive(clap::Parser, Debug)]
@@ -27,7 +27,7 @@ use evobench_tools::{
 /// Utilities for working with evobench
 struct Opts {
     #[clap(flatten)]
-    log_level: LogLevelOpt,
+    log_level: LogLevelOpts,
 
     // XX should wrap that help text (COPYPASTE) in a wrapper for flatten
     /// Override the path to the config file (default: the paths

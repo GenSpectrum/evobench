@@ -51,7 +51,7 @@ use evobench_tools::{
     serde::date_and_time::{DateTimeWithOffset, LOCAL_TIME},
     utillib::{
         arc::CloneArc,
-        logging::{LogLevel, LogLevelOpt, set_log_level},
+        logging::{LogLevel, LogLevelOpts, set_log_level},
     },
 };
 
@@ -76,7 +76,7 @@ const LOCAL_TIME_DEFAULT: bool = true;
 /// Schedule and query benchmarking jobs.
 struct Opts {
     #[clap(flatten)]
-    log_level: LogLevelOpt,
+    log_level: LogLevelOpts,
 
     /// Override the path to the config file (default: the paths
     /// `~/.evobench.*` where a single one exists where the `*` is

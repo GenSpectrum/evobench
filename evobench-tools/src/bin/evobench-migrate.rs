@@ -15,7 +15,7 @@ use evobench_tools::{
     },
     utillib::{
         arc::CloneArc,
-        logging::{LogLevelOpt, set_log_level},
+        logging::{LogLevelOpts, set_log_level},
     },
 };
 
@@ -28,7 +28,7 @@ use evobench_tools::{
 /// changed and will cause errors.
 struct Opts {
     #[clap(flatten)]
-    log_level: LogLevelOpt,
+    log_level: LogLevelOpts,
 
     /// Override the path to the config file (default: the paths
     /// `~/.evobench.*` where a single one exists where the `*` is

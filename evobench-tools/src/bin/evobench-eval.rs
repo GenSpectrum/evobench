@@ -12,7 +12,7 @@ use evobench_tools::evaluator::options::{
 };
 use evobench_tools::get_terminal_width::get_terminal_width;
 use evobench_tools::stats::StatsField;
-use evobench_tools::utillib::logging::{LogLevelOpt, set_log_level};
+use evobench_tools::utillib::logging::{LogLevelOpts, set_log_level};
 use mimalloc::MiMalloc;
 
 #[global_allocator]
@@ -27,7 +27,7 @@ const PROGRAM_NAME: &str = "evobench-eval";
 #[clap(term_width = get_terminal_width(4))]
 struct Opts {
     #[clap(flatten)]
-    log_level: LogLevelOpt,
+    log_level: LogLevelOpts,
 
     /// The subcommand to run. Use `--help` after the sub-command to
     /// get a list of the allowed options there.
