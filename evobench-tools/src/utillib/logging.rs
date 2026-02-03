@@ -36,6 +36,12 @@ macro_rules! info_if {
 // before doing anything further, OK?
 #[derive(Debug, clap::Args)]
 pub struct LogLevelOpts {
+    /// Disable warnings. Conflicts with `--verbose` and `--debug`
+    /// (decreases log-level from 'warn' to 'quiet'--only errors
+    /// interrupting processing are shown)
+    #[clap(short, long)]
+    quiet: bool,
+
     /// Show what is being done (increases log-level from 'warn' to
     /// 'info')
     #[clap(short, long)]
@@ -45,12 +51,6 @@ pub struct LogLevelOpts {
     /// `--verbose`) (increases log-level from 'warn' to 'debug')
     #[clap(short, long)]
     debug: bool,
-
-    /// Disable warnings. Conflicts with `--verbose` and `--debug`
-    /// (decreases log-level from 'warn' to 'quiet'--only errors
-    /// interrupting processing are shown)
-    #[clap(short, long)]
-    quiet: bool,
 }
 
 impl TryFrom<LogLevelOpts> for LogLevel {
