@@ -34,16 +34,19 @@ macro_rules! info_if {
 // Do *not* make the fields public here to force going through `From`/`Into`, OK?
 #[derive(Debug, clap::Args)]
 pub struct LogLevelOpt {
-    /// Show what is being done
+    /// Show what is being done (increases log-level from 'warn' to
+    /// 'info')
     #[clap(short, long)]
     verbose: bool,
 
     /// Show information that helps debug this program (implies
-    /// `--verbose`)
+    /// `--verbose`) (increases log-level from 'warn' to 'debug')
     #[clap(short, long)]
     debug: bool,
 
-    /// Disable warnings. Conflicts with `--verbose` and `--debug`.
+    /// Disable warnings. Conflicts with `--verbose` and `--debug`
+    /// (decreases log-level from 'warn' to 'quiet'--only errors
+    /// interrupting processing are shown)
     #[clap(short, long)]
     quiet: bool,
 }
@@ -87,7 +90,7 @@ impl TryFrom<LogLevelOpt> for LogLevel {
 pub enum LogLevel {
     /// Do not log anything
     Quiet,
-    /// The default, only "warn!" statements are outputting anythingö.
+    /// The default, only "warn!" statements are outputting anything.
     Warn,
     /// Verbose execution, not for debugging this program but for
     /// giving the user information about what is going on
