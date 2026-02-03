@@ -444,9 +444,7 @@ fn run() -> Result<Option<ExecutionResult>> {
         subcommand,
     } = Opts::parse();
 
-    let log_level = TryInto::<Option<LogLevel>>::try_into(log_level_opts)?
-        .or(log_level)
-        .unwrap_or_default();
+    let log_level = log_level_opts.xor_log_level(log_level)?;
 
     set_log_level(log_level);
     // Interactive use should get local time. (Daemon mode possibly

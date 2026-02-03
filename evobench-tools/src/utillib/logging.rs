@@ -53,6 +53,28 @@ pub struct LogLevelOpts {
     debug: bool,
 }
 
+impl LogLevelOpts {
+    /// Complain if both options in self and `opt_log_level` are
+    /// given.
+    pub fn xor_log_level(self, opt_log_level: Option<LogLevel>) -> Result<LogLevel> {
+        if let Some(level) = TryInto::<Option<LogLevel>>::try_into(self)? {
+            if opt_log_level.is_some() {
+                bail!(
+                    "both the {} option and a log-level were given, please \
+                     only either give one of the options --quiet / --verbose / --debug \
+                     or a log-level",
+                    level
+                        .option_name()
+                        .expect("if TryInto gave a value then option_name will give one, too")
+                )
+            }
+            Ok(level)
+        } else {
+            Ok(opt_log_level.unwrap_or_default())
+        }
+    }
+}
+
 impl TryFrom<LogLevelOpts> for LogLevel {
     type Error = anyhow::Error;
 
@@ -146,6 +168,17 @@ impl LogLevel {
             _ => None,
         }
     }
+
+    /// The name of the (predominant) option that yields this
+    /// log-level
+    fn option_name(self) -> Option<&'static str> {
+        match self {
+            LogLevel::Quiet => Some("--quiet"),
+            LogLevel::Warn => None,
+            LogLevel::Info => Some("--verbose"),
+            LogLevel::Debug => Some("--debug"),
+        }
+    }
 }
 
 impl Default for LogLevel {
@@ -165,7 +198,8 @@ fn t_default() {
         }
         .try_into()
         .expect("no conflicts")
-    )
+    );
+    assert_eq!(LogLevel::default().option_name(), None);
 }
 
 // Sigh, strum_macros::EnumString is useless as it does not show the
