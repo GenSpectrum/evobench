@@ -100,9 +100,9 @@ impl ConfigBackend {
     }
 
     pub fn load_config_file<T: DeserializeOwned>(self, path: &Path) -> Result<T> {
-        let s = std::fs::read_to_string(path).map_err(ctx!("loading config file from {path:?}"))?;
+        let s = std::fs::read_to_string(path).map_err(ctx!("loading config from file {path:?}"))?;
         match self {
-            ConfigBackend::Ron => parse_ron(&s).map_err(ctx!("reading config file from {path:?}")),
+            ConfigBackend::Ron => parse_ron(&s).map_err(ctx!("reading config from file {path:?}")),
             ConfigBackend::Json5 => {
                 // https://crates.io/crates/json5
                 // https://crates.io/crates/serde_json5 <-- currently used, fork of json5
@@ -176,7 +176,7 @@ pub fn backend_from_path(path: &Path) -> Result<ConfigBackend> {
     } else {
         bail!(
             "given file path does not have an extension \
-             for determining the file type: {path:?}"
+             for determining the file format: {path:?}"
         )
     }
 }

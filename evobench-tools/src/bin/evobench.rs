@@ -85,10 +85,9 @@ struct Opts {
     log_level: Option<LogLevel>,
 
     /// Override the path to the config file (default: the paths
-    /// `~/.evobench.*` where a single one exists where the `*` is
-    /// the suffix for one of the supported config file formats (run
-    /// `config-formats` to get the list), and if those are missing,
-    /// use compiled-in default config values)
+    /// `~/.evobench.*` where a single one exists where the `*` is the
+    /// suffix for one of the supported config file formats (run
+    /// `config-formats` to get the list).
     #[clap(long)]
     config: Option<PathBuf>,
 
