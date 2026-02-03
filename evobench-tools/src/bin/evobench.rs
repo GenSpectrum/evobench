@@ -79,7 +79,8 @@ struct Opts {
     log_level_opts: LogLevelOpts,
 
     /// Alternative to --quiet / --verbose / --debug for setting the
-    /// log-level (an error is reported if both are set)
+    /// log-level (an error is reported if both are given and they
+    /// don't agree)
     #[clap(long)]
     log_level: Option<LogLevel>,
 

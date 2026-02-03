@@ -1,6 +1,7 @@
 // Use logging library instead?
 
 use std::{
+    fmt::Display,
     io::{BufWriter, StderrLock, Write, stderr},
     str::FromStr,
     sync::atomic::{AtomicU8, Ordering},
@@ -8,7 +9,7 @@ use std::{
 
 use anyhow::{Result, bail};
 use strum::VariantNames;
-use strum_macros::{EnumVariantNames, ToString};
+use strum_macros::EnumVariantNames;
 
 use crate::serde::date_and_time::DateTimeWithOffset;
 
@@ -58,15 +59,18 @@ impl LogLevelOpts {
     /// given.
     pub fn xor_log_level(self, opt_log_level: Option<LogLevel>) -> Result<LogLevel> {
         if let Some(level) = TryInto::<Option<LogLevel>>::try_into(self)? {
-            if opt_log_level.is_some() {
-                bail!(
-                    "both the {} option and a log-level were given, please \
-                     only either give one of the options --quiet / --verbose / --debug \
-                     or a log-level",
-                    level
-                        .option_name()
-                        .expect("if TryInto gave a value then option_name will give one, too")
-                )
+            if let Some(expected_log_level) = opt_log_level {
+                if level != expected_log_level {
+                    bail!(
+                        "both the {} option and log-level {} were given, please \
+                         only either give one of the options --quiet / --verbose / --debug \
+                         or a log-level",
+                        level
+                            .option_name()
+                            .expect("if TryInto gave a value then option_name will give one, too"),
+                        expected_log_level
+                    )
+                }
             }
             Ok(level)
         } else {
@@ -126,7 +130,7 @@ impl TryFrom<LogLevelOpts> for Option<LogLevel> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ToString, EnumVariantNames)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumVariantNames)]
 #[strum(serialize_all = "snake_case")]
 pub enum LogLevel {
     /// Do not log anything
@@ -169,6 +173,17 @@ impl LogLevel {
         }
     }
 
+    /// The name of the log-level (matching what parsing accepts for
+    /// the given value)
+    fn to_str(self) -> &'static str {
+        match self {
+            LogLevel::Quiet => "quiet",
+            LogLevel::Warn => "warn",
+            LogLevel::Info => "info",
+            LogLevel::Debug => "debug",
+        }
+    }
+
     /// The name of the (predominant) option that yields this
     /// log-level
     fn option_name(self) -> Option<&'static str> {
@@ -200,6 +215,21 @@ fn t_default() {
         .expect("no conflicts")
     );
     assert_eq!(LogLevel::default().option_name(), None);
+}
+
+impl Display for LogLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.to_str())
+    }
+}
+
+#[test]
+fn t_display() -> Result<()> {
+    for level_str in LogLevel::VARIANTS {
+        let level = LogLevel::from_str(level_str)?;
+        assert_eq!(level.to_str(), *level_str);
+    }
+    Ok(())
 }
 
 // Sigh, strum_macros::EnumString is useless as it does not show the
