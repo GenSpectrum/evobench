@@ -76,7 +76,12 @@ const LOCAL_TIME_DEFAULT: bool = true;
 /// Schedule and query benchmarking jobs.
 struct Opts {
     #[clap(flatten)]
-    log_level: LogLevelOpts,
+    log_level_opts: LogLevelOpts,
+
+    /// Alternative to --quiet / --verbose / --debug for setting the
+    /// log-level (an error is reported if both are set)
+    #[clap(long)]
+    log_level: Option<LogLevel>,
 
     /// Override the path to the config file (default: the paths
     /// `~/.evobench.*` where a single one exists where the `*` is
@@ -433,12 +438,17 @@ const DEFAULT_IS_HARD: bool = true;
 
 fn run() -> Result<Option<ExecutionResult>> {
     let Opts {
+        log_level_opts,
         log_level,
         config,
         subcommand,
     } = Opts::parse();
 
-    set_log_level(log_level.try_into()?);
+    let log_level = TryInto::<Option<LogLevel>>::try_into(log_level_opts)?
+        .or(log_level)
+        .unwrap_or_default();
+
+    set_log_level(log_level);
     // Interactive use should get local time. (Daemon mode possibly
     // overwrites this.) true or LOCAL_TIME_DEFAULT?
     LOCAL_TIME.store(LOCAL_TIME_DEFAULT, Ordering::SeqCst);
