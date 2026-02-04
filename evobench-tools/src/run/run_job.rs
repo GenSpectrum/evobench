@@ -168,13 +168,13 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
         let _ = std::fs::remove_file(evobench_log.path());
         let _ = std::fs::remove_file(bench_output_log.path());
 
-        let (opt_log_extraction, cleanup) = self
+        let (log_extraction, cleanup) = self
             .job_runner
             .working_directory_pool
             .process_in_working_directory(
                 working_directory_id,
                 &self.job_runner.timestamp,
-                |mut working_directory| -> Result<Option<(&ProperDirname, PathBuf)>> {
+                |mut working_directory| -> Result<(&ProperDirname, PathBuf)> {
                     // Have `checkout` always run git fetch to update
                     // the remote tags, to get them even if there have
                     // been past runs where they were not present yet;
@@ -296,7 +296,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                     if status.success() {
                         info!("running {cmd_in_dir} succeeded");
 
-                        Ok(Some((target_name, command_output_file.into_path())))
+                        Ok((target_name, command_output_file.into_path()))
                     } else {
                         info!("running {cmd_in_dir} failed.");
 
@@ -329,15 +329,6 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
         self.job_runner
             .working_directory_pool
             .working_directory_cleanup(cleanup)?;
-
-        let log_extraction = if let Some(le) = opt_log_extraction {
-            le
-        } else {
-            // It was dry run so must leave anyway, right? Todo:
-            // this whole dry_run system is almost surely not
-            // working any more and should probably be ripped out.
-            return Ok(());
-        };
 
         // The directory holding the full key information
         let key_dir = KeyDir::from_base_target_params(
