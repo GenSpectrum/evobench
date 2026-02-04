@@ -10,7 +10,7 @@ use std::{
 use cj_path_util::path_util::AppendToPath;
 use nix::{
     errno::Errno,
-    unistd::{Gid, Uid, chown, getpid, gettid},
+    unistd::{Gid, Uid, chown, getpid},
 };
 
 use crate::info;
@@ -38,8 +38,8 @@ pub fn temp_path(target_path: impl AsRef<Path>) -> Result<PathBuf, TempfileError
         .ok_or_else(|| TempfileError::MissingFileName)?;
     let mut file_name: Vec<u8> = file_name.to_string_lossy().to_string().into();
     let pid = getpid();
-    let tid = gettid();
-    write!(&mut file_name, ".tmp~{pid}-{tid}").expect("nofail: no IO");
+    let tid = std::thread::current().id();
+    write!(&mut file_name, ".tmp~{pid}-{tid:?}").expect("nofail: no IO");
     let file_name =
         String::from_utf8(file_name).expect("nofail: was a string, with strings appended");
     Ok(dir.append(file_name))
