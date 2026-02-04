@@ -325,14 +325,13 @@ fn run_queues<'ce>(
         // XX handle errors without exiting? Or do that above
 
         let run_config = &run_config_bundle.run_config;
-        let output_base_dir = &run_config.output_dir.path;
 
         let queues_data = queues.data()?;
 
         let ran = queues_data.run_next_job(
             JobRunner {
                 working_directory_pool: &mut working_directory_pool,
-                output_base_dir: &output_base_dir,
+                output_base_dir: &run_config.output_dir.path,
                 timestamp: DateTimeWithOffset::now(None),
                 run_config,
                 versioned_dataset_dir: &versioned_dataset_dir,
