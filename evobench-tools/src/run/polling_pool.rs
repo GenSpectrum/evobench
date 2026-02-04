@@ -1,7 +1,7 @@
 //! Handle polling the upstream project repository for changes, and
 //! also check commit ids for insertions for validity
 
-use std::{collections::BTreeMap, path::Path, str::FromStr, sync::Arc};
+use std::{collections::BTreeMap, num::NonZero, path::PathBuf, str::FromStr, sync::Arc};
 
 use anyhow::Result;
 use itertools::Itertools;
@@ -9,8 +9,11 @@ use run_git::git::GitWorkingDir;
 
 use crate::{
     git::GitHash,
-    run::working_directory::{
-        REMOTE_NAME, WorkingDirectoryAutoCleanOpts, WorkingDirectoryWithPoolMut,
+    run::{
+        working_directory::{
+            REMOTE_NAME, WorkingDirectoryAutoCleanOpts, WorkingDirectoryWithPoolMut,
+        },
+        working_directory_pool::WorkingDirectoryPoolContext,
     },
     serde::{
         date_and_time::DateTimeWithOffset, git_branch_name::GitBranchName,
@@ -23,7 +26,6 @@ use super::{
     config::JobTemplate,
     working_directory_pool::{
         WorkingDirectoryId, WorkingDirectoryPool, WorkingDirectoryPoolBaseDir,
-        WorkingDirectoryPoolOpts,
     },
 };
 
@@ -37,31 +39,30 @@ pub struct PollingPool {
 }
 
 impl PollingPool {
-    pub fn open(remote_repository_url: &GitUrl, polling_pool_base: &Path) -> Result<Self> {
-        let opts = WorkingDirectoryPoolOpts {
-            base_dir: Some(polling_pool_base.to_owned()),
-            capacity: 1.try_into().unwrap(),
-            // Provide auto_clean really just to silence the info
-            // message--basically infinite, since we're just using Git
-            // operations, and those should never leark (OK, assuming
-            // git gc runs.)
-            auto_clean: {
-                let min_age_days = 60; // short enough so that I learn about issues
-                Some(WorkingDirectoryAutoCleanOpts {
-                    min_age_days,
-                    min_num_runs: 3 * 60 * 24 * usize::from(min_age_days),
-                    // Uh, we're not using jobs here anyway.
-                    wait_until_commit_done: false,
-                })
-            },
-        };
-        let base_dir = Arc::new(WorkingDirectoryPoolBaseDir::new(&opts, &|| {
-            unreachable!("already given in opts")
-        })?);
+    pub fn open(remote_repository_url: GitUrl, polling_pool_base: PathBuf) -> Result<Self> {
+        let base_dir = Arc::new(WorkingDirectoryPoolBaseDir::new(
+            Some(polling_pool_base),
+            &|| unreachable!("no fallback needed as path is always given"),
+        )?);
         let pool = WorkingDirectoryPool::open(
-            Arc::new(opts),
-            base_dir,
-            remote_repository_url.clone(),
+            WorkingDirectoryPoolContext {
+                capacity: NonZero::try_from(1).unwrap(),
+                // Provide auto_clean really just to silence the info
+                // message--basically infinite, since we're just using Git
+                // operations, and those should never leark (OK, assuming
+                // git gc runs.)
+                auto_clean: {
+                    let min_age_days = 60; // short enough so that I learn about issues
+                    Some(WorkingDirectoryAutoCleanOpts {
+                        min_age_days,
+                        min_num_runs: 3 * 60 * 24 * usize::from(min_age_days),
+                        // Uh, we're not using jobs here anyway.
+                        wait_until_commit_done: false,
+                    })
+                },
+                remote_repository_url,
+                base_dir,
+            },
             true,
             false,
         )?

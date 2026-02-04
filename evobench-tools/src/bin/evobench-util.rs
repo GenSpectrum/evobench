@@ -140,10 +140,10 @@ fn post_process_single(run_dir: &RunDir, run_config: &RunConfig, no_stats: bool)
 
         // (Is this too involved?)
         let global_app_state_dir = GlobalAppStateDir::new()?;
-        let pool_base_dir =
-            WorkingDirectoryPoolBaseDir::new(&run_config.working_directory_pool, &|| {
-                global_app_state_dir.working_directory_pool_base()
-            })?;
+        let pool_base_dir = WorkingDirectoryPoolBaseDir::new(
+            run_config.working_directory_pool.base_dir.clone(),
+            &|| global_app_state_dir.working_directory_pool_base(),
+        )?;
         let pool_base_dir_path = pool_base_dir.path();
         // /involved
 

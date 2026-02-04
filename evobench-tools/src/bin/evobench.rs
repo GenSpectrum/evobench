@@ -479,7 +479,7 @@ fn run() -> Result<Option<ExecutionResult>> {
     let conf = &run_config_bundle.run_config;
 
     let working_directory_base_dir = Arc::new(WorkingDirectoryPoolBaseDir::new(
-        &conf.working_directory_pool,
+        conf.working_directory_pool.base_dir.clone(),
         &|| {
             run_config_bundle
                 .global_app_state_dir

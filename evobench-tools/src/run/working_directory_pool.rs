@@ -43,7 +43,9 @@ use super::{
     working_directory::{Status, WorkingDirectory, WorkingDirectoryStatus},
 };
 
-// clap::Args?
+/// For `RunConfigOpts` configuration file.  `remote_repository_url`
+/// is separate from this because that seemed to make more sense for
+/// the `RunConfigOpts`.
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 #[serde(rename = "WorkingDirectoryPool")]
@@ -64,6 +66,18 @@ pub struct WorkingDirectoryPoolOpts {
     /// deletion by the runner with no involvement of the target
     /// project.
     pub auto_clean: Option<WorkingDirectoryAutoCleanOpts>,
+}
+
+/// Completed options, and WorkingDirectoryPoolBaseDir even has an
+/// open (lockable) file.
+#[derive(Debug)]
+pub struct WorkingDirectoryPoolContext {
+    pub capacity: NonZeroU8,
+    /// Option since doing cleanup is optional (not because there are
+    /// values in another place), None means do not do cleanup.
+    pub auto_clean: Option<WorkingDirectoryAutoCleanOpts>,
+    pub remote_repository_url: GitUrl,
+    pub base_dir: Arc<WorkingDirectoryPoolBaseDir>,
 }
 
 /// A precursor of `WorkingDirectoryId` that allows both `D123` and
@@ -185,11 +199,11 @@ pub struct WorkingDirectoryPoolBaseDir {
 
 impl WorkingDirectoryPoolBaseDir {
     pub fn new(
-        opts: &WorkingDirectoryPoolOpts,
+        base_dir: Option<PathBuf>,
         get_working_directory_pool_base: &dyn Fn() -> Result<PathBuf>,
     ) -> Result<Self> {
-        let path: Arc<Path> = if let Some(path) = opts.base_dir.as_ref() {
-            path.to_owned()
+        let path: Arc<Path> = if let Some(path) = base_dir {
+            path.into()
         } else {
             get_working_directory_pool_base()?
         }
@@ -281,25 +295,42 @@ impl<'t> WorkingDirectoryPoolBaseDirLock<'t> {
     }
 }
 
+/// The mutable state
 #[derive(Debug)]
-pub struct WorkingDirectoryPool {
-    opts: Arc<WorkingDirectoryPoolOpts>,
-    remote_repository_url: GitUrl,
-    // Actual basedir used (opts only has an Option!)
-    base_dir: Arc<WorkingDirectoryPoolBaseDir>,
+struct WorkingDirectoryPoolState {
     next_id: u64,
     /// Contains working dirs with Status::Error, too, must be ignored
     /// when picking a dir!
     all_entries: BTreeMap<WorkingDirectoryId, WorkingDirectory>,
 }
 
+#[derive(Debug)]
+pub struct WorkingDirectoryPool {
+    /// Immutable, but contains an open lockable file handle
+    context: WorkingDirectoryPoolContext,
+    /// The mutable state
+    state: WorkingDirectoryPoolState,
+}
+
 pub struct WorkingDirectoryPoolGuard<'pool> {
     // Option since it is also used via `to_non_mut`
     _lock: Option<OwningExclusiveFileLock<File>>,
-    pool: &'pool WorkingDirectoryPool,
+    state: &'pool WorkingDirectoryPoolState,
 }
 
 impl<'pool> WorkingDirectoryPoolGuard<'pool> {
+    // Option since it is also used via `to_non_mut`. Must be done for
+    // a particular WorkingDirectoryPool instance and tie it down, but
+    // its state is enough to make it easier for
+    // WorkingDirectoryPool::open, that's why it takes a reference to
+    // the state only. Keep this all internal to this module, please.
+    fn new(
+        state: &'pool WorkingDirectoryPoolState,
+        _lock: Option<OwningExclusiveFileLock<File>>,
+    ) -> Self {
+        WorkingDirectoryPoolGuard { _lock, state }
+    }
+
     pub(crate) fn locked_working_directory_mut<'s: 'pool>(
         &'s self,
         wd: &'pool mut WorkingDirectory,
@@ -320,16 +351,16 @@ impl<'pool> WorkingDirectoryPoolGuardMut<'pool> {
     // WorkingDirectoryPoolGuard! Only as long as the lock is
     // guaranteed to be held!
     pub fn shared<'s: 'pool>(&'s self) -> WorkingDirectoryPoolGuard<'s> {
-        WorkingDirectoryPoolGuard {
-            pool: self.pool,
+        WorkingDirectoryPoolGuard::new(
+            &self.pool.state,
             // OK since self is guaranteed to outlive us
-            _lock: None,
-        }
+            None,
+        )
     }
 
     pub fn locked_base_dir<'s>(&'s self) -> WorkingDirectoryPoolBaseDirLock<'s> {
         WorkingDirectoryPoolBaseDirLock {
-            base_dir: &self.pool.base_dir,
+            base_dir: &self.pool.context.base_dir,
             // OK since self is guaranteed to outlive us
             _lock: None,
         }
@@ -341,10 +372,11 @@ pub struct WorkingDirectoryPoolAndLock(WorkingDirectoryPool, Option<OwningExclus
 impl WorkingDirectoryPoolAndLock {
     /// Take out the lock/guard; can only be done once
     pub fn take_guard<'t>(&'t mut self) -> Option<WorkingDirectoryPoolGuard<'t>> {
-        Some(WorkingDirectoryPoolGuard {
-            _lock: Some(self.1.take()?),
-            pool: &mut self.0,
-        })
+        Some(WorkingDirectoryPoolGuard::new(
+            // hmm reborrowed, right, could just take & right away?
+            &mut self.0.state,
+            Some(self.1.take()?),
+        ))
     }
 
     /// Drop the lock and get the bare pool
@@ -366,60 +398,52 @@ pub struct ProcessingError {
 impl WorkingDirectoryPool {
     /// Get exclusive lock, but sharing self
     pub fn lock<'t>(&'t self, locker: &str) -> Result<WorkingDirectoryPoolGuard<'t>> {
-        let _lock = Some(self.base_dir.get_lock(locker)?);
-        Ok(WorkingDirectoryPoolGuard { _lock, pool: self })
+        let _lock = Some(self.context.base_dir.get_lock(locker)?);
+        Ok(WorkingDirectoryPoolGuard::new(&self.state, _lock))
     }
 
     /// Get exclusive lock, for exclusive access to self
     pub fn lock_mut<'t>(&'t mut self, locker: &str) -> Result<WorkingDirectoryPoolGuardMut<'t>> {
-        let _lock = self.base_dir.get_lock(locker)?;
+        let _lock = self.context.base_dir.get_lock(locker)?;
         Ok(WorkingDirectoryPoolGuardMut { _lock, pool: self })
     }
 
-    /// `omit_check` is passed to `WorkingDirectory::open` (it should
-    /// only be set to true for dir listings)
+    /// `omit_check` is passed on to `WorkingDirectory::open` (it
+    /// should only be set to true for dir listings).
     pub fn open(
-        // XX why do we have working directory pool base dir twice,
-        // via opts and base_dir? Just because of some weird
-        // defaulting logic? I.e. the one in `opts` has to be ignored?
-        opts: Arc<WorkingDirectoryPoolOpts>,
-        base_dir: Arc<WorkingDirectoryPoolBaseDir>,
-        remote_repository_url: GitUrl,
+        context: WorkingDirectoryPoolContext,
         create_dir_if_not_exists: bool,
         omit_check: bool,
     ) -> Result<WorkingDirectoryPoolAndLock> {
         if create_dir_if_not_exists {
-            io_utils::div::create_dir_if_not_exists(base_dir.path(), "working pool directory")?;
+            io_utils::div::create_dir_if_not_exists(
+                context.base_dir.path(),
+                "working pool directory",
+            )?;
         }
 
         // Need to have exclusive access while, at least, reading ron
         // files
-        let lock = base_dir.get_lock("WorkingDirectoryPool::open")?;
+        let lock = context.base_dir.get_lock("WorkingDirectoryPool::open")?;
 
         let mut next_id: u64 = 0;
 
         // To tell WorkingDirectory::open that we do have the lock we
-        // need to make a guard, and for that we need a slf already,
-        // thus make it early with false `all_entries` and `next_id`
-        // entries.
-        let mut slf = Self {
-            opts,
-            remote_repository_url: remote_repository_url.clone(),
-            base_dir,
+        // need to make a guard, and for that we need a
+        // WorkingDirectoryPool already, or, we have arranged for
+        // WorkingDirectoryPoolState to be enough. Thus, create a fake
+        // WorkingDirectoryPoolState.
+        let fake_state = WorkingDirectoryPoolState {
             next_id,
             all_entries: Default::default(),
         };
-
-        let mut guard = WorkingDirectoryPoolGuard {
-            _lock: Some(lock),
-            pool: &mut slf,
-        };
+        let mut guard = WorkingDirectoryPoolGuard::new(&fake_state, Some(lock));
 
         let all_entries: Vec<(WorkingDirectoryId, PathBuf)> =
-            std::fs::read_dir(guard.pool.base_dir.path())
+            std::fs::read_dir(context.base_dir.path())
                 .map_err(ctx!(
                     "opening working pool directory {:?}",
-                    guard.pool.base_dir.path()
+                    context.base_dir.path()
                 ))?
                 .map(|entry| -> Result<Option<(WorkingDirectoryId, PathBuf)>> {
                     let entry = entry?;
@@ -455,34 +479,43 @@ impl WorkingDirectoryPool {
                 .collect::<Result<_>>()
                 .map_err(ctx!(
                     "reading contents of working pool directory {:?}",
-                    guard.pool.base_dir.path()
+                    context.base_dir.path()
                 ))?;
 
         let all_entries: BTreeMap<WorkingDirectoryId, WorkingDirectory> = all_entries
             .into_par_iter()
             .map(
                 |(id, path)| -> Result<(WorkingDirectoryId, WorkingDirectory)> {
-                    let wd =
-                        WorkingDirectory::open(path, &remote_repository_url, &guard, omit_check)?;
+                    let wd = WorkingDirectory::open(
+                        path,
+                        &context.remote_repository_url,
+                        &guard,
+                        omit_check,
+                    )?;
                     Ok((id, wd))
                 },
             )
             .collect::<Result<_>>()
             .map_err(ctx!(
                 "opening working directories {:?}",
-                guard.pool.base_dir.path()
+                context.base_dir.path()
             ))?;
 
-        // Let go of the guard (so that we can mutate slf and later
-        // return it), but keep the lock
+        // Remove the lock since we need to hand it out with the
+        // finished instance
         let lock = guard._lock.take().expect("we put it there above");
 
-        slf.all_entries = all_entries;
-        slf.next_id = next_id;
+        let slf = WorkingDirectoryPool {
+            context,
+            state: WorkingDirectoryPoolState {
+                next_id,
+                all_entries,
+            },
+        };
 
         info!(
             "opened directory pool {:?} with next_id {next_id}, len {}/{}",
-            slf.base_dir,
+            slf.context.base_dir,
             slf.active_len(),
             slf.capacity()
         );
@@ -496,7 +529,7 @@ impl WorkingDirectoryPool {
         &self,
         working_directory_id: WorkingDirectoryId,
     ) -> Option<&WorkingDirectory> {
-        self.all_entries.get(&working_directory_id)
+        self.state.all_entries.get(&working_directory_id)
     }
 
     /// For cases where the working directory existing does not matter
@@ -507,7 +540,8 @@ impl WorkingDirectoryPool {
         working_directory_id: WorkingDirectoryId,
     ) -> WorkingDirectoryPath {
         Arc::new(
-            self.base_dir
+            self.context
+                .base_dir
                 .get_working_directory_path(working_directory_id),
         )
         .into()
@@ -518,34 +552,34 @@ impl WorkingDirectoryPool {
         &mut self,
         working_directory_id: WorkingDirectoryId,
     ) -> Option<&mut WorkingDirectory> {
-        self.all_entries.get_mut(&working_directory_id)
+        self.state.all_entries.get_mut(&working_directory_id)
     }
 
     pub fn base_dir(&self) -> &WorkingDirectoryPoolBaseDir {
-        &self.base_dir
+        &self.context.base_dir
     }
 
     /// The value from the configuration as `usize`. Guaranteed to be
     /// at least 1.
     pub fn capacity(&self) -> usize {
-        self.opts.capacity.get().into()
+        self.context.capacity.get().into()
     }
 
     pub fn git_url(&self) -> &GitUrl {
-        &self.remote_repository_url
+        &self.context.remote_repository_url
     }
 
     /// This includes working dirs with errors, that (normally) must
     /// be left aside and not used for processing!  The returned
     /// entries are sorted by `WorkingDirectoryId`
     pub fn all_entries(&self) -> impl Iterator<Item = (WorkingDirectoryId, &WorkingDirectory)> {
-        self.all_entries.iter().map(|(id, wd)| (*id, wd))
+        self.state.all_entries.iter().map(|(id, wd)| (*id, wd))
     }
 
     pub fn all_entries_mut(
         &mut self,
     ) -> impl Iterator<Item = (WorkingDirectoryId, &mut WorkingDirectory)> {
-        self.all_entries.iter_mut().map(|(id, wd)| (*id, wd))
+        self.state.all_entries.iter_mut().map(|(id, wd)| (*id, wd))
     }
 
     /// The entries that can be used for processing. The returned
@@ -638,7 +672,7 @@ impl WorkingDirectoryPool {
                     .expect("we're not removing it in the mean time");
 
                 let needs_cleanup = wd.needs_cleanup(
-                    self.opts.auto_clean.as_ref(),
+                    self.context.auto_clean.as_ref(),
                     have_other_jobs_for_same_commit,
                 )?;
                 let token = WorkingDirectoryCleanupToken {
@@ -709,7 +743,7 @@ impl<'pool> WorkingDirectoryPoolGuard<'pool> {
         working_directory_id: WorkingDirectoryId,
     ) -> Option<WorkingDirectoryWithPoolLock<'guard>> {
         Some(WorkingDirectoryWithPoolLock {
-            wd: self.pool.all_entries.get(&working_directory_id)?,
+            wd: self.state.all_entries.get(&working_directory_id)?,
         })
     }
 }
@@ -721,7 +755,7 @@ impl<'pool> WorkingDirectoryPoolGuardMut<'pool> {
         working_directory_id: WorkingDirectoryId,
     ) -> Option<WorkingDirectoryWithPoolLockMut<'guard>> {
         Some(WorkingDirectoryWithPoolLockMut {
-            wd: self.pool.all_entries.get_mut(&working_directory_id)?,
+            wd: self.pool.state.all_entries.get_mut(&working_directory_id)?,
         })
     }
 
@@ -757,7 +791,7 @@ impl<'pool> WorkingDirectoryPoolGuardMut<'pool> {
             self.pool.git_url(),
             &self.shared(),
         )?;
-        self.pool.all_entries.insert(id, dir);
+        self.pool.state.all_entries.insert(id, dir);
         Ok(id)
     }
 
@@ -792,19 +826,20 @@ impl<'pool> WorkingDirectoryPoolGuardMut<'pool> {
     ) -> Result<()> {
         let wd = self
             .pool
+            .state
             .all_entries
             .get_mut(&working_directory_id)
             .ok_or_else(|| anyhow!("working directory id must still exist"))?;
         let path = wd.git_working_dir.working_dir_path_arc();
         info!("delete_working_directory: deleting directory {path:?}");
-        self.pool.all_entries.remove(&working_directory_id);
+        self.pool.state.all_entries.remove(&working_directory_id);
         std::fs::remove_dir_all(&*path).map_err(ctx!("deleting directory {path:?}"))?;
         Ok(())
     }
 
     fn next_id(&mut self) -> WorkingDirectoryId {
-        let id = self.pool.next_id;
-        self.pool.next_id += 1;
+        let id = self.pool.state.next_id;
+        self.pool.state.next_id += 1;
         WorkingDirectoryId(id)
     }
 
@@ -916,7 +951,11 @@ impl<'pool> WorkingDirectoryPoolGuardMut<'pool> {
     /// preventing the removal, just always remove at runtime when
     /// setting it anew / do tmp-and-rename)?
     pub fn clear_current_working_directory(&self) -> Result<()> {
-        let path = self.pool.base_dir.current_working_directory_symlink_path();
+        let path = self
+            .pool
+            .context
+            .base_dir
+            .current_working_directory_symlink_path();
         if let Err(e) = std::fs::remove_file(&path) {
             match e.kind() {
                 std::io::ErrorKind::NotFound => (),
@@ -931,7 +970,11 @@ impl<'pool> WorkingDirectoryPoolGuardMut<'pool> {
     /// `clear_current_working_directory`.
     fn set_current_working_directory(&self, id: WorkingDirectoryId) -> Result<()> {
         let source_path = id.to_directory_file_name();
-        let target_path = self.pool.base_dir.current_working_directory_symlink_path();
+        let target_path = self
+            .pool
+            .context
+            .base_dir
+            .current_working_directory_symlink_path();
         std::os::unix::fs::symlink(&source_path, &target_path).map_err(ctx!(
             "creating symlink at {target_path:?} to {source_path:?}"
         ))

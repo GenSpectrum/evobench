@@ -2,15 +2,13 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use crate::{
-    run::{
-        config::{RunConfig, RunConfigBundle},
-        polling_pool::PollingPool,
-        working_directory_pool::{
-            WorkingDirectoryPool, WorkingDirectoryPoolAndLock, WorkingDirectoryPoolBaseDir,
-        },
+use crate::run::{
+    config::{RunConfig, RunConfigBundle},
+    polling_pool::PollingPool,
+    working_directory_pool::{
+        WorkingDirectoryPool, WorkingDirectoryPoolAndLock, WorkingDirectoryPoolBaseDir,
+        WorkingDirectoryPoolContext, WorkingDirectoryPoolOpts,
     },
-    utillib::arc::CloneArc,
 };
 
 pub mod insert;
@@ -24,16 +22,32 @@ pub mod wd_log;
 // RunConfig/RunConfigBundle, and making them methods on RunConfig or
 // RunConfigBundle spams those.
 
+/// Takes `base_dir` since it needs to be constructed from what's in
+/// `conf` and `GlobalAppStateDir`, which is done way up in main, so
+/// we receive it from there, and we ignore the partially-duplicate
+/// piece of data in `conf`.
 pub fn open_working_directory_pool(
     conf: &RunConfig,
-    working_directory_base_dir: Arc<WorkingDirectoryPoolBaseDir>,
+    base_dir: Arc<WorkingDirectoryPoolBaseDir>,
     omit_check: bool,
 ) -> Result<WorkingDirectoryPoolAndLock> {
     let create_dir_if_not_exists = true;
+
+    let WorkingDirectoryPoolOpts {
+        // `base_dir` is ignored since we take `base_dir` as argument
+        // as described in the function doc
+        base_dir: _,
+        capacity,
+        auto_clean,
+    } = &*conf.working_directory_pool;
+
     WorkingDirectoryPool::open(
-        conf.working_directory_pool.clone_arc(),
-        working_directory_base_dir,
-        conf.remote_repository.url.clone(),
+        WorkingDirectoryPoolContext {
+            capacity: *capacity,
+            auto_clean: auto_clean.clone(),
+            remote_repository_url: conf.remote_repository.url.clone(),
+            base_dir,
+        },
         create_dir_if_not_exists,
         omit_check,
     )
@@ -41,8 +55,8 @@ pub fn open_working_directory_pool(
 
 pub fn open_polling_pool(config: &RunConfigBundle) -> Result<PollingPool> {
     PollingPool::open(
-        &config.run_config.remote_repository.url,
-        &config
+        config.run_config.remote_repository.url.clone(),
+        config
             .global_app_state_dir
             .working_directory_for_polling_pool_base()?,
     )
