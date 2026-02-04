@@ -641,11 +641,7 @@ fn run() -> Result<Option<ExecutionResult>> {
         }
 
         SubCommand::Run { mode } => {
-            let open_working_directory_pool = |conf: &RunConfig,
-                                               working_directory_base_dir: &Arc<
-                WorkingDirectoryPoolBaseDir,
-            >|
-             -> Result<_> {
+            let open_working_directory_pool = |conf: &RunConfig| -> Result<_> {
                 Ok(
                     open_working_directory_pool(conf, working_directory_base_dir.clone(), false)?
                         .into_inner(),
@@ -655,10 +651,8 @@ fn run() -> Result<Option<ExecutionResult>> {
             match mode {
                 RunMode::One { false_if_none } => {
                     let queues = queues.into_value()?;
-                    let working_directory_pool = open_working_directory_pool(
-                        &run_config_bundle.run_config,
-                        &working_directory_base_dir,
-                    )?;
+                    let working_directory_pool =
+                        open_working_directory_pool(&run_config_bundle.run_config)?;
                     match run_queues(
                         run_config_bundle,
                         queues,
@@ -688,14 +682,12 @@ fn run() -> Result<Option<ExecutionResult>> {
                     let config_file = run_config_bundle.config_file.clone_arc();
                     let inner_run = |daemon_check_exit: CheckExit| -> Result<()> {
                         let queues = open_queues(&run_config_bundle)?;
-                        let working_directory_pool = open_working_directory_pool(
-                            &run_config_bundle.run_config,
-                            &working_directory_base_dir,
-                        )?;
+                        let working_directory_pool =
+                            open_working_directory_pool(&run_config_bundle.run_config)?;
                         run_queues(
                             run_config_bundle,
                             queues,
-                            working_directory_base_dir,
+                            working_directory_base_dir.clone(),
                             working_directory_pool,
                             false,
                             Some(daemon_check_exit.clone()),
