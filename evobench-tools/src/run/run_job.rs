@@ -3,6 +3,7 @@
 use std::{
     io::{Write, stderr},
     ops::Deref,
+    os::unix::fs::symlink,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
@@ -330,12 +331,34 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             .working_directory_pool
             .working_directory_cleanup(cleanup)?;
 
+        // ____________________________________________________________________________________
+        // Generate key_dir and all files within
+
         // The directory holding the full key information
         let key_dir = KeyDir::from_base_target_params(
             self.job_runner.output_base_dir,
             &command.target_name,
             &run_parameters,
         );
+
+        {
+            // get PathBuf latest_dir and create it if it does not exist
+            let latest_dir = self.job_runner.output_base_dir.join("latest");
+            std::fs::create_dir_all(&latest_dir).map_err(ctx!("create_dir_all {latest_dir:?}"))?;
+
+            // We use the same logic as KeyDir does for constructing the path, but we use "../" instead of output_base_dir as the
+            let key_dir_relative_from_latest_dir = KeyDir::from_base_target_params(
+                &PathBuf::from("../"),
+                &command.target_name,
+                &run_parameters,
+            );
+
+            // We want to create a symlink to our key_dir in latest_dir, so the output is discoverable
+            let symlink_location = latest_dir.join(self.job_runner.timestamp.as_str());
+
+            symlink(key_dir_relative_from_latest_dir.path(), &symlink_location)
+                .map_err(ctx!("creating symlink at {symlink_location:?}"))?;
+        }
 
         // Below that, we make a dir for this particular run
         let run_dir = key_dir.append(&self.job_runner.timestamp)?;
@@ -399,6 +422,9 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             // Do not omit generation of evobench.log stats
             false,
         )?;
+
+        // key_dir generation finished
+        // ____________________________________________________________________________________
 
         key_dir.generate_summaries_for_key_dir(
             // Do not omit generation of evobench.log stats
