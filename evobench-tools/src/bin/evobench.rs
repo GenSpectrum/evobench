@@ -680,6 +680,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                 } => {
                     let paths = conf.run_jobs_daemon.clone();
                     let config_file = run_config_bundle.config_file.clone_arc();
+                    // The code that runs in the daemon and executes the jobs
                     let inner_run = |daemon_check_exit: CheckExit| -> Result<()> {
                         let queues = open_queues(&run_config_bundle)?;
                         let working_directory_pool =
