@@ -356,7 +356,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             // We want to create a symlink to our key_dir in latest_dir, so the output is discoverable
             let symlink_location = latest_dir.join(self.job_runner.timestamp.as_str());
 
-            symlink(key_dir_relative_from_latest_dir.path(), symlink_location)
+            symlink(key_dir_relative_from_latest_dir.path(), &symlink_location)
                 .map_err(ctx!("creating symlink at {symlink_location:?}"))?;
         }
 
