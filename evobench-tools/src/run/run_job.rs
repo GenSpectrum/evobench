@@ -1,6 +1,7 @@
 //! Running a benchmarking job
 
 use std::{
+    fs::{create_dir_all, remove_file},
     io::{Write, stderr},
     ops::Deref,
     os::unix::fs::symlink,
@@ -166,8 +167,8 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
         // processes alone (in case running multiple independent
         // daemons might be useful)), just those that would get in the
         // way).
-        let _ = std::fs::remove_file(evobench_log.path());
-        let _ = std::fs::remove_file(bench_output_log.path());
+        let _ = remove_file(evobench_log.path());
+        let _ = remove_file(bench_output_log.path());
 
         let (log_extraction, cleanup) = self
             .job_runner
@@ -341,28 +342,31 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             &run_parameters,
         );
 
+        // Maintain a "latest" subdirectory at the top of the output
+        // dir tree: symlink the new entry into it, with timestamp as
+        // name. Create the symlink first so that it is visible even
+        // in case part of the actions creating the run output
+        // directory fails.
         {
-            // get PathBuf latest_dir and create it if it does not exist
             let latest_dir = self.job_runner.output_base_dir.join("latest");
-            std::fs::create_dir_all(&latest_dir).map_err(ctx!("create_dir_all {latest_dir:?}"))?;
+            create_dir_all(&latest_dir).map_err(ctx!("create_dir_all {latest_dir:?}"))?;
 
-            // We use the same logic as KeyDir does for constructing the path, but we use "../" instead of output_base_dir as the
+            // To get a relative path, simply start with ".." as the
+            // base dir
             let key_dir_relative_from_latest_dir = KeyDir::from_base_target_params(
-                &PathBuf::from("../"),
+                "..".as_ref(),
                 &command.target_name,
                 &run_parameters,
             );
 
-            // We want to create a symlink to our key_dir in latest_dir, so the output is discoverable
             let symlink_location = latest_dir.join(self.job_runner.timestamp.as_str());
-
             symlink(key_dir_relative_from_latest_dir.path(), &symlink_location)
                 .map_err(ctx!("creating symlink at {symlink_location:?}"))?;
         }
 
         // Below that, we make a dir for this particular run
         let run_dir = key_dir.append(&self.job_runner.timestamp)?;
-        std::fs::create_dir_all(run_dir.path()).map_err(ctx!("create_dir_all {run_dir:?}"))?;
+        create_dir_all(run_dir.path()).map_err(ctx!("create_dir_all {run_dir:?}"))?;
 
         info!("moving files to {run_dir:?}");
 
