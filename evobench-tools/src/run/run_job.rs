@@ -33,7 +33,7 @@ use crate::{
         config::RunConfig,
         dataset_dir_env_var::dataset_dir_for,
         env_vars::assert_evobench_env_var,
-        output_directory_structure::KeyDir,
+        output_directory_structure::{KeyDir, RunDir},
         post_process::compress_file_as,
         run_queues::RunQueuesData,
         versioned_dataset_dir::VersionedDatasetDir,
@@ -332,108 +332,113 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             .working_directory_pool
             .working_directory_cleanup(cleanup)?;
 
-        // ____________________________________________________________________________________
-        // Generate key_dir and all files within
-
-        // The directory holding the full key information
-        let key_dir = KeyDir::from_base_target_params(
-            self.job_runner.output_base_dir,
-            &command.target_name,
-            &run_parameters,
-        );
-
-        // Maintain a "latest" subdirectory at the top of the output
-        // dir tree: symlink the new entry into it, with timestamp as
-        // name. Create the symlink first so that it is visible even
-        // in case part of the actions creating the run output
-        // directory fails.
+        // Move the results to the right location below the
+        // `output_base_dir`, and create/update the extracts
         {
-            let latest_dir = self.job_runner.output_base_dir.join("latest");
-            create_dir_all(&latest_dir).map_err(ctx!("create_dir_all {latest_dir:?}"))?;
-
-            // To get a relative path, simply start with ".." as the
-            // base dir
-            let key_dir_relative_from_latest_dir = KeyDir::from_base_target_params(
-                "..".as_ref(),
+            // The directory holding the results of all of the runs for
+            // the same "key" information
+            let key_dir: KeyDir = KeyDir::from_base_target_params(
+                self.job_runner.output_base_dir,
                 &command.target_name,
                 &run_parameters,
             );
 
-            let symlink_location = latest_dir.join(self.job_runner.timestamp.as_str());
-            symlink(key_dir_relative_from_latest_dir.path(), &symlink_location)
-                .map_err(ctx!("creating symlink at {symlink_location:?}"))?;
-        }
+            // Maintain a "latest" subdirectory at the top of the output
+            // dir tree: symlink the new entry into it, with timestamp as
+            // name. Create the symlink first so that it is visible even
+            // in case part of the actions creating the run output
+            // directory fails.
+            {
+                let latest_dir = self.job_runner.output_base_dir.join("latest");
+                create_dir_all(&latest_dir).map_err(ctx!("create_dir_all {latest_dir:?}"))?;
 
-        // Below that, we make a dir for this particular run
-        let run_dir = key_dir.append(&self.job_runner.timestamp)?;
-        create_dir_all(run_dir.path()).map_err(ctx!("create_dir_all {run_dir:?}"))?;
+                // To get a relative path, simply start with ".." as the
+                // base dir
+                let key_dir_relative_from_latest_dir = KeyDir::from_base_target_params(
+                    "..".as_ref(),
+                    &command.target_name,
+                    &run_parameters,
+                );
 
-        info!("moving files to {run_dir:?}");
+                let symlink_location = latest_dir.join(self.job_runner.timestamp.as_str());
+                symlink(key_dir_relative_from_latest_dir.path(), &symlink_location)
+                    .map_err(ctx!("creating symlink at {symlink_location:?}"))?;
+            }
 
-        // First try to compress the log file, here we check whether
-        // it exists; before we expect to compress evobench.log
-        // without checking its existence.
-        if bench_output_log.path().exists() {
-            compress_file_as(
-                bench_output_log.path(),
-                run_dir.bench_output_log_path(),
+            // Inside the key_dir, make a dir for this particular run,
+            // move the result files there and generate the files with the
+            // extracts.
+            {
+                let run_dir: RunDir = key_dir.append(&self.job_runner.timestamp)?;
+                create_dir_all(run_dir.path()).map_err(ctx!("create_dir_all {run_dir:?}"))?;
+
+                info!("moving files to {run_dir:?}");
+
+                // First try to compress the log file, here we check whether
+                // it exists; before we expect to compress evobench.log
+                // without checking its existence.
+                if bench_output_log.path().exists() {
+                    compress_file_as(
+                        bench_output_log.path(),
+                        run_dir.bench_output_log_path(),
+                        false,
+                    )?;
+                    drop(bench_output_log);
+                }
+
+                let evobench_log_tmp =
+                    compress_file_as(evobench_log.path(), run_dir.evobench_log_path(), true)?;
+
+                let (target_name, standard_log_tempfile) = log_extraction;
+                compress_file_as(&standard_log_tempfile, run_dir.standard_log_path(), false)?;
+                // It's OK to delete the original now, but we'll make use of
+                // it for reading back.
+                let standard_log_tempfile = TemporaryFile::from(standard_log_tempfile);
+
+                {
+                    let target = run_dir.append_str("schedule_condition.ron")?;
+                    info!("saving context to {target:?}");
+                    let schedule_condition_str = ron_to_string_pretty(&schedule_condition)?;
+                    std::fs::write(&target, &schedule_condition_str)
+                        .map_err(ctx!("saving to {target:?}"))?
+                }
+
+                {
+                    let target = run_dir.append_str("reason.ron")?;
+                    info!("saving context to {target:?}");
+                    let s = ron_to_string_pretty(&reason)?;
+                    std::fs::write(&target, &s).map_err(ctx!("saving to {target:?}"))?
+                }
+
+                let evobench_log_path = evobench_log.path().to_owned();
+                run_dir.post_process_single(
+                    Some(&evobench_log_path),
+                    move || {
+                        info!("evaluating the benchmark file succeeded");
+
+                        drop(evobench_log);
+
+                        rename_tmp_path(evobench_log_tmp)?;
+
+                        info!("compressed benchmark file renamed");
+                        Ok(())
+                    },
+                    // log extraction:
+                    target_name,
+                    standard_log_tempfile.path(),
+                    &self.job_runner.run_config,
+                    // Do not omit generation of evobench.log stats
+                    false,
+                )?;
+            }
+
+            // Now that the results for the run are in the right place, we
+            // can update the summaries for the key
+            key_dir.generate_summaries_for_key_dir(
+                // Do not omit generation of evobench.log stats
                 false,
             )?;
-            drop(bench_output_log);
         }
-
-        let evobench_log_tmp =
-            compress_file_as(evobench_log.path(), run_dir.evobench_log_path(), true)?;
-
-        let (target_name, standard_log_tempfile) = log_extraction;
-        compress_file_as(&standard_log_tempfile, run_dir.standard_log_path(), false)?;
-        // It's OK to delete the original now, but we'll make use of
-        // it for reading back.
-        let standard_log_tempfile = TemporaryFile::from(standard_log_tempfile);
-
-        {
-            let target = run_dir.append_str("schedule_condition.ron")?;
-            info!("saving context to {target:?}");
-            let schedule_condition_str = ron_to_string_pretty(&schedule_condition)?;
-            std::fs::write(&target, &schedule_condition_str)
-                .map_err(ctx!("saving to {target:?}"))?
-        }
-
-        {
-            let target = run_dir.append_str("reason.ron")?;
-            info!("saving context to {target:?}");
-            let s = ron_to_string_pretty(&reason)?;
-            std::fs::write(&target, &s).map_err(ctx!("saving to {target:?}"))?
-        }
-
-        let evobench_log_path = evobench_log.path().to_owned();
-        run_dir.post_process_single(
-            Some(&evobench_log_path),
-            move || {
-                info!("evaluating the benchmark file succeeded");
-
-                drop(evobench_log);
-
-                rename_tmp_path(evobench_log_tmp)?;
-
-                info!("compressed benchmark file renamed");
-                Ok(())
-            },
-            // log extraction:
-            target_name,
-            standard_log_tempfile.path(),
-            &self.job_runner.run_config,
-            // Do not omit generation of evobench.log stats
-            false,
-        )?;
-
-        // key_dir generation finished
-        // ____________________________________________________________________________________
-
-        key_dir.generate_summaries_for_key_dir(
-            // Do not omit generation of evobench.log stats
-            false,
-        )?;
 
         Ok(())
     }
