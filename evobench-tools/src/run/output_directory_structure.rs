@@ -47,7 +47,8 @@ fn typed_dir_listing_of_dirs<T: TryFrom<PathBuf, Error = anyhow::Error>>(
         ))
 }
 
-fn parse_path<T: FromStr>(path: &Path) -> Result<T>
+/// Parse a path's filename as T
+fn parse_path_filename<T: FromStr>(path: &Path) -> Result<T>
 where
     T::Err: Display,
 {
@@ -102,9 +103,11 @@ impl ParametersDir {
 
     /// Returns `(target_name, custom_env_vars)`. This returns custom
     /// env vars that are *not* checked against the config; they are
-    /// the raw values, but they still do follow the requirements for
-    /// env var names. Similarly, `target_name` is not checked against
-    /// anything (other than being a directory name).
+    /// the raw values, but they still do follow the general
+    /// requirements for env var names (as per
+    /// `AllowedEnvVar<AllowableCustomEnvVar>::from_str`). Similarly,
+    /// `target_name` is not checked against anything (other than
+    /// being a directory name).
     pub fn parse(
         &self,
     ) -> Result<(
@@ -155,7 +158,7 @@ impl TryFrom<PathBuf> for KeyDir {
     type Error = anyhow::Error;
 
     fn try_from(path: PathBuf) -> std::result::Result<Self, Self::Error> {
-        _ = parse_path::<GitHash>(&path)?;
+        _ = parse_path_filename::<GitHash>(&path)?;
         Ok(Self(path))
     }
 }
@@ -211,7 +214,7 @@ impl TryFrom<PathBuf> for RunDir {
     type Error = anyhow::Error;
 
     fn try_from(path: PathBuf) -> std::result::Result<Self, Self::Error> {
-        _ = parse_path::<DateTimeWithOffset>(&path)?;
+        _ = parse_path_filename::<DateTimeWithOffset>(&path)?;
         Ok(Self(path))
     }
 }
