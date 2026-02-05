@@ -78,9 +78,10 @@ where
 // --- The types ----------------------------------------------------------------
 
 /// The dir representing all of a key except for the commit id
-/// (i.e. custom parameters and target name).
+/// (i.e. custom parameters and target name--note that this is *not*
+/// the same info as `RunParameters` contains!).
 #[derive(Debug, Clone)]
-pub struct CustomParametersDir(PathBuf);
+pub struct ParametersDir(PathBuf);
 
 /// Dir representing all of the key, including commit id at the
 /// end. I.e. one level below a `RunParametersDir`.
@@ -94,7 +95,7 @@ pub struct RunDir(PathBuf);
 
 // --- Their implementations ----------------------------------------------------
 
-impl CustomParametersDir {
+impl ParametersDir {
     pub fn path(&self) -> &Path {
         &self.0
     }
@@ -188,7 +189,7 @@ impl KeyDir {
             .path()
             .parent()
             .expect("parent guaranteed by construction");
-        let params_dir = CustomParametersDir(parent_path.to_owned());
+        let params_dir = ParametersDir(parent_path.to_owned());
         let (target_name, params) = params_dir.parse()?;
         Ok((target_name, params, commit))
     }
