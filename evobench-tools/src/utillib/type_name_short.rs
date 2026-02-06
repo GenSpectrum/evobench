@@ -14,7 +14,7 @@ pub fn short_name(s: &str) -> &str {
 }
 
 /// `type_name` without the namespace
-pub fn type_name_short<T>() -> &'static str {
+pub fn type_name_short<T: ?Sized>() -> &'static str {
     short_name(type_name::<T>())
 }
 

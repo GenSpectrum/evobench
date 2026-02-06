@@ -19,8 +19,11 @@ use crate::{
     key_val_fs::key_val::Entry,
     lockable_file::LockStatus,
     run::{
-        config::RunConfig, output_directory_structure::KeyDir, run_queue::RunQueue,
-        run_queues::RunQueues, working_directory::Status,
+        config::RunConfig,
+        output_directory_structure::{KeyDir, ToPath},
+        run_queue::RunQueue,
+        run_queues::RunQueues,
+        working_directory::Status,
         working_directory_pool::WorkingDirectoryPoolBaseDir,
     },
     terminal_table::{TerminalTable, TerminalTableOpts, TerminalTableTitle},
@@ -363,11 +366,11 @@ impl ListOpts {
                             .as_ref()
                             .expect("initialized for ParameterView::Path");
                         key_dir = KeyDir::from_base_target_params(
-                            base,
-                            &job.public.command.target_name,
+                            base.clone_arc(),
+                            job.public.command.target_name.clone(),
                             &job.public.run_parameters,
                         );
-                        path = key_dir.path().to_string_lossy();
+                        path = key_dir.to_path().to_string_lossy();
                         row.push(&path);
                     }
                 }

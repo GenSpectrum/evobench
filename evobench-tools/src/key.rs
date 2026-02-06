@@ -89,17 +89,63 @@ pub struct EarlyContext {
     pub username: String,
 }
 
+/// Same as `CustomParameters` but not checked against a config. Keys
+/// are checked for basic correctness but not whether usable for a
+/// particular benchmark, and the values are of unknown type.
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct UncheckedCustomParameters(BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, KString>);
+
+impl From<BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, KString>> for UncheckedCustomParameters {
+    fn from(value: BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, KString>) -> Self {
+        Self(value)
+    }
+}
+
 /// Custom key/value pairings, passed on as environment variables when
 /// executing the benchmarking runner of the target project. These
 /// are checked for allowed and required values.
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct CustomParameters(BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, CustomParameterValue>);
 
+/// Extend `path` with segments leading to the folder to use for
+/// files for this run. TEMPORARY solution.
+fn extend_path<'a>(path: &mut PathBuf, key_vals: impl Iterator<Item = (&'a str, &'a str)> + 'a) {
+    for (key, val) in key_vals {
+        // key.len() + 1 + val.len() is statically guaranteed to
+        // fit in the 255 bytes of max file name length on
+        // Linux. \0 is disallowed on construction time. Since we
+        // interpolate a =, there are no possible remaining
+        // invalid cases.
+        path.push(format!("{key}={val}"));
+    }
+}
+
+pub trait ExtendPath {
+    fn key_val_strs(&self) -> impl Iterator<Item = (&str, &str)>;
+
+    fn extend_path(&self, mut path: PathBuf) -> PathBuf {
+        extend_path(&mut path, self.key_val_strs());
+        path
+    }
+}
+
+impl ExtendPath for UncheckedCustomParameters {
+    fn key_val_strs(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.0.iter().map(|(k, v)| (k.as_str(), v.as_str()))
+    }
+}
+
 impl From<BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, CustomParameterValue>>
     for CustomParameters
 {
     fn from(value: BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, CustomParameterValue>) -> Self {
         Self(value)
+    }
+}
+
+impl ExtendPath for CustomParameters {
+    fn key_val_strs(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.0.iter().map(|(k, v)| (k.as_str(), v.as_str()))
     }
 }
 
@@ -115,6 +161,11 @@ impl CustomParameters {
             .iter()
             .map(|(k, v)| (k.clone(), KString::from_ref(v.as_str())))
             .collect()
+    }
+
+    pub fn extend_path(&self, mut path: PathBuf) -> PathBuf {
+        extend_path(&mut path, self.key_val_strs());
+        path
     }
 
     pub fn checked_from(
@@ -171,6 +222,8 @@ impl CustomParameters {
 }
 
 impl Display for CustomParameters {
+    /// Nice view for humans with commas, used in "evobench list
+    /// separated"
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut is_first = true;
         for (k, custom_parameter_value) in self.btree_map().iter() {
@@ -187,24 +240,6 @@ impl Display for CustomParameters {
 pub struct RunParameters {
     pub commit_id: GitHash,
     pub custom_parameters: Arc<CustomParameters>,
-}
-
-impl RunParameters {
-    /// Extend `path` with segments leading to the folder to use for
-    /// files for this run. TEMPORARY solution.
-    pub fn extend_path(&self, mut path: PathBuf) -> PathBuf {
-        for (key, val) in self.custom_parameters.0.iter() {
-            let val = val.as_str();
-            // key.len() + 1 + val.len() is statically guaranteed to
-            // fit in the 255 bytes of max file name length on
-            // Linux. \0 is disallowed on construction time. Since we
-            // interpolate a =, there are no possible remaining
-            // invalid cases.
-            path.push(format!("{key}={val}"));
-        }
-        path.push(self.commit_id.to_string());
-        path
-    }
 }
 
 /// Only the parts of a BenchmarkingJob that determine results--but

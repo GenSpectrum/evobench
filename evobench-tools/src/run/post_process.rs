@@ -6,6 +6,7 @@ use std::{
     ffi::OsString,
     path::{Path, PathBuf},
     process::Command,
+    sync::Arc,
 };
 
 use anyhow::{Result, bail};
@@ -16,7 +17,7 @@ use crate::{
     run::{
         command_log_file::CommandLogFile,
         config::{RunConfig, ScheduleCondition},
-        output_directory_structure::{KeyDir, RunDir},
+        output_directory_structure::{KeyDir, RunDir, SubDirs, ToPath},
     },
     serde::{proper_dirname::ProperDirname, proper_filename::ProperFilename},
     utillib::logging::{LogLevel, log_level},
@@ -78,7 +79,7 @@ fn generate_summary(
     args.push(key_dir.append(file_base_name).into());
 
     for job_output_dir in job_output_dirs {
-        let evobench_log = job_output_dir.path().append("evobench.log.zstd");
+        let evobench_log = job_output_dir.to_path().append("evobench.log.zstd");
         if std::fs::exists(&evobench_log).map_err(ctx!("checking path {evobench_log:?}"))? {
             args.push(evobench_log.into());
         } else {
@@ -187,7 +188,7 @@ impl RunDir {
                     let command_log = command_log_file.command_log()?;
 
                     for log_extract in log_extracts {
-                        log_extract.extract_seconds_from(&command_log, self.path())?;
+                        log_extract.extract_seconds_from(&command_log, self.to_path())?;
                     }
                 }
             } else {
@@ -209,11 +210,11 @@ impl KeyDir {
     /// generation for the evobench.log data (which currently is all
     /// that this method is doing, but in the future it might do stats
     /// of other data)
-    pub fn generate_summaries_for_key_dir(&self, no_summary_stats: bool) -> Result<()> {
-        let key_dir = self.path();
+    pub fn generate_summaries_for_key_dir(self: &Arc<Self>, no_summary_stats: bool) -> Result<()> {
+        let key_dir = self.to_path();
         info!("(re-)evaluating the summary files across all results in key dir {key_dir:?}");
 
-        let run_dirs = self.run_dirs()?;
+        let run_dirs = self.sub_dirs()?;
 
         if !no_summary_stats {
             generate_all_summaries_for_situation(None, key_dir, &run_dirs)?;
@@ -223,7 +224,7 @@ impl KeyDir {
             let mut job_output_dirs_by_situation: HashMap<ProperFilename, Vec<RunDir>> =
                 HashMap::new();
             for run_dir in &run_dirs {
-                let schedule_condition_path = run_dir.path().append("schedule_condition.ron");
+                let schedule_condition_path = run_dir.to_path().append("schedule_condition.ron");
                 match std::fs::read_to_string(&schedule_condition_path) {
                     Ok(s) => {
                         let schedule_condition: ScheduleCondition = ron::from_str(&s)

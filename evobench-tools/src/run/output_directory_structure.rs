@@ -1,10 +1,12 @@
 //! The directory structure for output files.
 
 use std::{
+    cell::OnceCell,
     collections::BTreeMap,
     fmt::Display,
     path::{Path, PathBuf},
     str::FromStr,
+    sync::Arc,
 };
 
 use anyhow::{Result, anyhow, bail};
@@ -12,43 +14,61 @@ use cj_path_util::path_util::AppendToPath;
 use kstring::KString;
 
 use crate::{
-    ctx,
+    clone, ctx,
     git::GitHash,
-    key::RunParameters,
-    run::env_vars::AllowableCustomEnvVar,
+    key::{CustomParameters, ExtendPath, RunParameters, UncheckedCustomParameters},
     serde::{
         allowed_env_var::AllowedEnvVar, date_and_time::DateTimeWithOffset,
         proper_dirname::ProperDirname, proper_filename::ProperFilename,
     },
-    utillib::type_name_short::type_name_short,
+    utillib::{arc::CloneArc, type_name_short::type_name_short},
 };
 
-/// Skips non-directory entries, but requires all directory entries to
-/// be convertible to `T`.
-fn typed_dir_listing_of_dirs<T: TryFrom<PathBuf, Error = anyhow::Error>>(
-    dir_path: &Path,
-) -> Result<Vec<T>> {
-    std::fs::read_dir(&dir_path)
-        .map_err(ctx!("opening dir {dir_path:?}"))?
-        .map(|entry| -> Result<Option<T>> {
-            let entry: std::fs::DirEntry = entry?;
-            let ft = entry.file_type()?;
-            if ft.is_dir() {
-                Ok(Some(T::try_from(entry.path())?))
-            } else {
-                Ok(None)
-            }
-        })
-        .filter_map(|r| r.transpose())
-        .collect::<Result<_, _>>()
-        .map_err(ctx!(
-            "getting {} listing for dir {dir_path:?}",
-            type_name_short::<T>()
-        ))
+pub trait ToPath {
+    /// May be slightly costly on first run but then cached in those
+    /// cases
+    fn to_path(&self) -> &Arc<Path>;
+}
+
+pub trait SubDirs: ToPath {
+    type Target;
+    fn append_str(self: Arc<Self>, file_name: &str) -> Result<Self::Target>;
+
+    /// Skips non-directory entries, but requires all directory entries to
+    /// be convertible to `T`.
+    fn sub_dirs(self: &Arc<Self>) -> Result<Vec<Self::Target>> {
+        let dir_path = self.to_path();
+        std::fs::read_dir(dir_path)
+            .map_err(ctx!("opening dir {dir_path:?}"))?
+            .map(|entry| -> Result<Option<Self::Target>> {
+                let entry: std::fs::DirEntry = entry?;
+                let ft = entry.file_type()?;
+                if ft.is_dir() {
+                    if let Some(file_name) = entry.file_name().to_str() {
+                        Ok(Some(self.clone_arc().append_str(&file_name)?))
+                    } else {
+                        // silently ignore those paths, OK?
+                        Ok(None)
+                    }
+                } else {
+                    Ok(None)
+                }
+            })
+            .filter_map(|r| r.transpose())
+            .collect::<Result<_, _>>()
+            .map_err(ctx!(
+                "getting {} listing for dir {dir_path:?}",
+                type_name_short::<Self>()
+            ))
+    }
+}
+
+pub trait ReplaceBasePath {
+    fn replace_base_path(&self, base_path: Arc<Path>) -> Self;
 }
 
 /// Parse a path's filename as T
-fn parse_path_filename<T: FromStr>(path: &Path) -> Result<T>
+fn parse_path_filename<T: FromStr>(path: &Path) -> Result<(T, &Path)>
 where
     T::Err: Display,
 {
@@ -60,7 +80,7 @@ where
         .ok_or_else(|| anyhow!("path is missing a parent dir"))?;
     if let Ok(file_name_str) = file_name.to_owned().into_string() {
         match T::from_str(&file_name_str) {
-            Ok(v) => Ok(v),
+            Ok(v) => Ok((v, dir)),
             Err(e) => {
                 bail!(
                     "dir name {file_name_str:?} in {dir:?} \
@@ -76,205 +96,343 @@ where
     }
 }
 
+/// Need to be able to handle unchecked custom parameters for parsing
+/// since there's no config file for parsing a file system, or more to
+/// the point, when the config changes, the file system must still be
+/// readable, thus the representation must remain independent of the
+/// config. But allow to represent both. Do this at runtime for
+/// ~simplicity. (Maybe this should be moved to where the contained
+/// types are defined, which maybe shouldn't all be in `key.rs`.)
+#[derive(Debug, Clone)]
+pub enum CheckedOrUncheckedCustomParameters {
+    UncheckedCustomParameters(Arc<UncheckedCustomParameters>),
+    CustomParameters(Arc<CustomParameters>),
+}
+
+impl CheckedOrUncheckedCustomParameters {
+    fn extend_path(&self, path: PathBuf) -> PathBuf {
+        match self {
+            CheckedOrUncheckedCustomParameters::UncheckedCustomParameters(v) => v.extend_path(path),
+            CheckedOrUncheckedCustomParameters::CustomParameters(v) => v.extend_path(path),
+        }
+    }
+}
+
 // --- The types ----------------------------------------------------------------
 
 /// The dir representing all of a key except for the commit id
 /// (i.e. custom parameters and target name--note that this is *not*
 /// the same info as `RunParameters` contains!).
-#[derive(Debug, Clone)]
-pub struct ParametersDir(PathBuf);
+///
+/// Note that it contains env vars that may *not* be checked against
+/// the config. They are still guaranteed to follow the general
+/// requirements for env var names (as per
+/// `AllowedEnvVar<AllowableCustomEnvVar>::from_str`). Similarly,
+/// `target_name` may not be checked against anything (other than
+/// being a directory name).
+#[derive(Debug)]
+pub struct ParametersDir {
+    base_path: Arc<Path>,
+    target_name: ProperDirname,
+    custom_parameters: CheckedOrUncheckedCustomParameters,
+    path_cache: OnceCell<Arc<Path>>,
+}
 
 /// Dir representing all of the key, including commit id at the
 /// end. I.e. one level below a `RunParametersDir`.
 #[derive(Debug, Clone)]
-pub struct KeyDir(PathBuf);
+pub struct KeyDir {
+    parent: Arc<ParametersDir>,
+    commit_id: GitHash,
+    path_cache: OnceCell<Arc<Path>>,
+}
 
 /// Dir with the results for an individual benchmarking run. I.e. one
 /// level below a `KeyDir`.
 #[derive(Debug, Clone)]
-pub struct RunDir(PathBuf);
+pub struct RunDir {
+    parent: Arc<KeyDir>,
+    timestamp: DateTimeWithOffset,
+    path_cache: OnceCell<Arc<Path>>,
+}
 
 // --- Their implementations ----------------------------------------------------
 
-impl ParametersDir {
-    pub fn path(&self) -> &Path {
-        &self.0
-    }
-
-    /// Returns `(target_name, custom_env_vars)`. This returns custom
-    /// env vars that are *not* checked against the config; they are
-    /// the raw values, but they still do follow the general
-    /// requirements for env var names (as per
-    /// `AllowedEnvVar<AllowableCustomEnvVar>::from_str`). Similarly,
-    /// `target_name` is not checked against anything (other than
-    /// being a directory name).
-    pub fn parse(
-        &self,
-    ) -> Result<(
-        ProperDirname,
-        BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, KString>,
-    )> {
-        let mut path = self.path();
-        let mut params = BTreeMap::new();
-        loop {
-            if let Some(dir_name) = path.file_name() {
-                let dir_name_str = dir_name.to_str().ok_or_else(|| {
-                    anyhow!(
-                        "directory segment can't be decoded as string: {:?} in {:?}",
-                        dir_name.to_string_lossy().as_ref(),
-                        self.path()
-                    )
-                })?;
-                if let Some((var_name, val)) = dir_name_str.split_once('=') {
-                    let key = AllowedEnvVar::from_str(var_name)?;
-                    let val = KString::from_ref(val);
-                    params.insert(key, val);
-
-                    if let Some(parent) = path.parent() {
-                        path = parent;
-                    } else {
-                        bail!(
-                            "parsing {} {:?}: ran out of parent segments",
-                            type_name_short::<Self>(),
-                            self.path()
-                        );
-                    }
-                } else {
-                    let target_name = ProperDirname::from_str(dir_name_str).map_err(|msg| {
-                        anyhow!("not a proper directory name: {dir_name_str:?}: {msg}")
-                    })?;
-                    return Ok((target_name, params));
-                }
-            }
+impl ToPath for ParametersDir {
+    fn to_path(&self) -> &Arc<Path> {
+        let Self {
+            base_path,
+            target_name,
+            custom_parameters,
+            path_cache,
+        } = self;
+        if path_cache.get().is_none() {
+            let path = custom_parameters.extend_path(base_path.append(target_name.as_str()));
+            _ = path_cache.set(path.into());
         }
-    }
-
-    pub fn key_dirs(&self) -> Result<Vec<KeyDir>> {
-        typed_dir_listing_of_dirs(self.path())
+        self.path_cache.get().unwrap()
     }
 }
 
-impl TryFrom<PathBuf> for KeyDir {
+impl TryFrom<Arc<Path>> for ParametersDir {
     type Error = anyhow::Error;
 
-    fn try_from(path: PathBuf) -> std::result::Result<Self, Self::Error> {
-        _ = parse_path_filename::<GitHash>(&path)?;
-        Ok(Self(path))
+    fn try_from(path: Arc<Path>) -> std::result::Result<Self, Self::Error> {
+        let target_name;
+        let custom_env_vars;
+        let base_path;
+        {
+            let mut current_path = &*path;
+            let mut current_vars = BTreeMap::new();
+            loop {
+                if let Some(dir_name) = current_path.file_name() {
+                    let dir_name_str = dir_name.to_str().ok_or_else(|| {
+                        anyhow!(
+                            "directory segment can't be decoded as string: {:?} in {:?}",
+                            dir_name.to_string_lossy().as_ref(),
+                            path
+                        )
+                    })?;
+                    if let Some((var_name, val)) = dir_name_str.split_once('=') {
+                        let key = AllowedEnvVar::from_str(var_name)?;
+                        let val = KString::from_ref(val);
+                        current_vars.insert(key, val);
+
+                        if let Some(parent) = current_path.parent() {
+                            current_path = parent;
+                        } else {
+                            bail!(
+                                "parsing {} {:?}: ran out of parent segments",
+                                type_name_short::<Self>(),
+                                path
+                            );
+                        }
+                    } else {
+                        target_name = ProperDirname::from_str(dir_name_str).map_err(|msg| {
+                            anyhow!("not a proper directory name: {dir_name_str:?}: {msg}")
+                        })?;
+                        custom_env_vars = current_vars;
+                        base_path = current_path.into();
+                        break;
+                    }
+                }
+            }
+        }
+        Ok(Self {
+            base_path,
+            target_name,
+            custom_parameters: CheckedOrUncheckedCustomParameters::UncheckedCustomParameters(
+                Arc::new(UncheckedCustomParameters::from(custom_env_vars)),
+            ),
+            path_cache: OnceCell::from(path),
+        })
+    }
+}
+
+impl ReplaceBasePath for ParametersDir {
+    fn replace_base_path(&self, base_path: Arc<Path>) -> Self {
+        let Self {
+            base_path: _,
+            target_name,
+            custom_parameters,
+            path_cache: _,
+        } = self;
+        clone!(target_name);
+        clone!(custom_parameters);
+        Self {
+            base_path,
+            target_name,
+            custom_parameters,
+            path_cache: Default::default(),
+        }
+    }
+}
+
+impl ParametersDir {
+    pub fn base_path(&self) -> &Arc<Path> {
+        &self.base_path
+    }
+    pub fn target_name(&self) -> &ProperDirname {
+        &self.target_name
+    }
+    pub fn custom_parameters(&self) -> &CheckedOrUncheckedCustomParameters {
+        &self.custom_parameters
+    }
+}
+
+impl TryFrom<Arc<Path>> for KeyDir {
+    type Error = anyhow::Error;
+
+    fn try_from(path: Arc<Path>) -> std::result::Result<Self, Self::Error> {
+        let (commit_id, parent_dir) = parse_path_filename(&path)?;
+        let parent_dir: Arc<Path> = parent_dir.into();
+        let parent = ParametersDir::try_from(parent_dir)?.into();
+        Ok(Self {
+            parent,
+            commit_id,
+            path_cache: OnceCell::from(path),
+        })
+    }
+}
+
+impl ReplaceBasePath for KeyDir {
+    fn replace_base_path(&self, base_path: Arc<Path>) -> Self {
+        let Self {
+            parent,
+            commit_id,
+            path_cache: _,
+        } = self;
+        let parent = parent.replace_base_path(base_path).into();
+        clone!(commit_id);
+        Self {
+            parent,
+            commit_id,
+            path_cache: Default::default(),
+        }
+    }
+}
+
+impl ToPath for KeyDir {
+    fn to_path(&self) -> &Arc<Path> {
+        let Self {
+            parent,
+            commit_id,
+            path_cache,
+        } = self;
+        if path_cache.get().is_none() {
+            let path = parent.to_path().append(commit_id.to_string());
+            _ = path_cache.set(path.into());
+        }
+        path_cache.get().unwrap()
+    }
+}
+
+impl SubDirs for KeyDir {
+    type Target = RunDir;
+
+    fn append_str(self: Arc<Self>, file_name: &str) -> Result<Self::Target> {
+        Ok(self.append(file_name.parse()?))
     }
 }
 
 impl KeyDir {
     pub fn from_base_target_params(
-        output_base_dir: &Path,
-        target_name: &ProperDirname,
-        run_parameters: &RunParameters,
-    ) -> Self {
-        KeyDir::try_from(run_parameters.extend_path(output_base_dir.append(target_name.as_str())))
-            .expect("self-created paths follow the spec")
+        output_base_dir: Arc<Path>,
+        target_name: ProperDirname,
+        RunParameters {
+            commit_id,
+            custom_parameters,
+        }: &RunParameters,
+    ) -> Arc<Self> {
+        let parent = Arc::new(ParametersDir {
+            target_name,
+            custom_parameters: CheckedOrUncheckedCustomParameters::CustomParameters(
+                custom_parameters.clone_arc(),
+            ),
+            base_path: output_base_dir,
+            path_cache: Default::default(),
+        });
+        let commit_id = commit_id.clone();
+        Arc::new(KeyDir {
+            commit_id,
+            parent,
+            path_cache: Default::default(),
+        })
     }
 
-    pub fn parse(
-        &self,
-    ) -> Result<(
-        ProperDirname,
-        BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, KString>,
-        GitHash,
-    )> {
-        let dir_name = self
-            .path()
-            .file_name()
-            .expect("filename guaranteed by construction");
-        let dir_name_str = dir_name
-            .to_str()
-            .expect("guaranteed parseable by construction");
-        let commit = GitHash::from_str(dir_name_str)?;
-        let parent_path = self
-            .path()
-            .parent()
-            .expect("parent guaranteed by construction");
-        let params_dir = ParametersDir(parent_path.to_owned());
-        let (target_name, params) = params_dir.parse()?;
-        Ok((target_name, params, commit))
+    pub fn append(self: Arc<Self>, dir_name: DateTimeWithOffset) -> RunDir {
+        RunDir {
+            parent: self,
+            timestamp: dir_name,
+            path_cache: Default::default(),
+        }
     }
 
-    pub fn path(&self) -> &Path {
-        &self.0
+    pub fn parent(&self) -> &Arc<ParametersDir> {
+        &self.parent
     }
-
-    pub fn append(&self, dir_name: &DateTimeWithOffset) -> Result<RunDir> {
-        RunDir::try_from(self.path().append(dir_name.as_str()))
-    }
-
-    pub fn run_dirs(&self) -> Result<Vec<RunDir>> {
-        typed_dir_listing_of_dirs(self.path())
+    pub fn commit_id(&self) -> &GitHash {
+        &self.commit_id
     }
 }
 
-impl TryFrom<PathBuf> for RunDir {
+impl TryFrom<Arc<Path>> for RunDir {
     type Error = anyhow::Error;
 
-    fn try_from(path: PathBuf) -> std::result::Result<Self, Self::Error> {
-        _ = parse_path_filename::<DateTimeWithOffset>(&path)?;
-        Ok(Self(path))
+    fn try_from(path: Arc<Path>) -> std::result::Result<Self, Self::Error> {
+        let (timestamp, parent_path) = parse_path_filename(&path)?;
+        let parent_path: Arc<Path> = parent_path.into();
+        let parent = KeyDir::try_from(parent_path)?.into();
+        Ok(Self {
+            parent,
+            timestamp,
+            path_cache: OnceCell::from(path),
+        })
+    }
+}
+
+impl ReplaceBasePath for RunDir {
+    fn replace_base_path(&self, base_path: Arc<Path>) -> Self {
+        let Self {
+            parent,
+            timestamp,
+            path_cache: _,
+        } = self;
+        let parent = parent.replace_base_path(base_path).into();
+        clone!(timestamp);
+        Self {
+            parent,
+            timestamp,
+            path_cache: Default::default(),
+        }
+    }
+}
+
+impl ToPath for RunDir {
+    fn to_path(&self) -> &Arc<Path> {
+        let Self {
+            parent,
+            timestamp,
+            path_cache,
+        } = self;
+        if path_cache.get().is_none() {
+            let path = parent.to_path().append(timestamp.to_string());
+            _ = path_cache.set(path.into());
+        }
+        path_cache.get().unwrap()
     }
 }
 
 impl RunDir {
-    pub fn parse(
-        &self,
-    ) -> Result<(
-        ProperDirname,
-        BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, KString>,
-        GitHash,
-        DateTimeWithOffset,
-    )> {
-        let dir_name = self
-            .path()
-            .file_name()
-            .expect("filename guaranteed by construction");
-        let dir_name_str = dir_name
-            .to_str()
-            .expect("guaranteed parseable by construction");
-        let timestamp = DateTimeWithOffset::from_str(dir_name_str)?;
-        let parent_path = self
-            .path()
-            .parent()
-            .expect("parent guaranteed by construction");
-        let key_dir = KeyDir(parent_path.to_owned());
-        let (target_name, params, commit) = key_dir.parse()?;
-        Ok((target_name, params, commit, timestamp))
+    pub fn parent(&self) -> &Arc<KeyDir> {
+        &self.parent
     }
-
-    pub fn path(&self) -> &Path {
-        &self.0
+    pub fn timestamp(&self) -> &DateTimeWithOffset {
+        &self.timestamp
     }
 
     /// The path to the compressed evobench.log file
     pub fn evobench_log_path(&self) -> PathBuf {
-        self.path().append("evobench.log.zstd")
+        self.to_path().append("evobench.log.zstd")
     }
 
     /// The optional output location that target projects can use,
     /// passed to it via the `BENCH_OUTPUT_LOG` env variable then
     /// compressed/moved to this location.
     pub fn bench_output_log_path(&self) -> PathBuf {
-        self.path().append("bench_output.log.zstd")
+        self.to_path().append("bench_output.log.zstd")
     }
 
     /// The path to the compressed stdout/stderr output from the
     /// target application while running this benchmark.
     pub fn standard_log_path(&self) -> PathBuf {
-        self.path().append("standard.log.zstd")
-    }
-
-    pub fn target_name(&self) -> Result<ProperDirname> {
-        Ok(self.parse()?.0)
+        self.to_path().append("standard.log.zstd")
     }
 
     /// Files below a RunDir are normal files (no special type, at
     /// least for now)
     pub fn append(&self, file_name: &ProperFilename) -> PathBuf {
-        self.path().append(file_name.as_str())
+        self.to_path().append(file_name.as_str())
     }
 
     /// Same as `append` but returns an error if file_name cannot be a

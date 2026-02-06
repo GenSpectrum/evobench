@@ -1,4 +1,8 @@
-use std::{ffi::OsString, path::PathBuf};
+use std::{
+    ffi::OsString,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use anyhow::{Result, bail};
 use cj_path_util::path_util::AppendToPath;
@@ -12,7 +16,7 @@ use evobench_tools::{
     run::{
         config::{RunConfig, RunConfigBundle},
         global_app_state_dir::GlobalAppStateDir,
-        output_directory_structure::{KeyDir, RunDir},
+        output_directory_structure::{KeyDir, RunDir, SubDirs},
         post_process::compress_file_as,
         working_directory_pool::WorkingDirectoryPoolBaseDir,
     },
@@ -127,7 +131,7 @@ enum SubCommand {
 }
 
 fn post_process_single(run_dir: &RunDir, run_config: &RunConfig, no_stats: bool) -> Result<()> {
-    let target = run_dir.target_name()?;
+    let target = run_dir.parent().parent().target_name();
     let standard_log_path = run_dir.standard_log_path();
     if !standard_log_path.exists() {
         info!(
@@ -135,8 +139,7 @@ fn post_process_single(run_dir: &RunDir, run_config: &RunConfig, no_stats: bool)
              from the working directory pool dir"
         );
 
-        let (_, _, _, date_time_with_offset) = run_dir.parse()?;
-        let date_time_with_offset_str = date_time_with_offset.as_str();
+        let date_time_with_offset_str = run_dir.timestamp().as_str();
 
         // (Is this too involved?)
         let global_app_state_dir = GlobalAppStateDir::new()?;
@@ -228,6 +231,7 @@ fn main() -> Result<()> {
             )?;
             let run_config = &run_config_bundle.run_config;
 
+            let run_dir: Arc<Path> = run_dir.into();
             let run_dir = RunDir::try_from(run_dir)?;
 
             post_process_single(&run_dir, run_config, no_stats)?;
@@ -246,10 +250,11 @@ fn main() -> Result<()> {
             )?;
             let run_config = &run_config_bundle.run_config;
 
-            let key_dir = KeyDir::try_from(key_dir)?;
+            let key_dir: Arc<Path> = key_dir.into();
+            let key_dir: Arc<_> = KeyDir::try_from(key_dir)?.into();
 
             if single {
-                for run_dir in key_dir.run_dirs()? {
+                for run_dir in key_dir.sub_dirs()? {
                     post_process_single(&run_dir, run_config, no_single_stats)?;
                 }
             }

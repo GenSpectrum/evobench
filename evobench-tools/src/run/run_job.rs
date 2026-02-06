@@ -33,14 +33,17 @@ use crate::{
         config::RunConfig,
         dataset_dir_env_var::dataset_dir_for,
         env_vars::assert_evobench_env_var,
-        output_directory_structure::{KeyDir, RunDir},
+        output_directory_structure::{KeyDir, ReplaceBasePath, RunDir, ToPath},
         post_process::compress_file_as,
         run_queues::RunQueuesData,
         versioned_dataset_dir::VersionedDatasetDir,
         working_directory::{FetchTags, FetchedTags, WorkingDirectory},
     },
     serde::{date_and_time::DateTimeWithOffset, proper_dirname::ProperDirname},
-    utillib::logging::{LogLevel, log_level},
+    utillib::{
+        arc::CloneArc,
+        logging::{LogLevel, log_level},
+    },
 };
 
 use super::{
@@ -79,7 +82,7 @@ pub fn get_commit_tags(
 /// bundled before selecting the job to run.
 pub struct JobRunner<'pool> {
     pub working_directory_pool: &'pool mut WorkingDirectoryPool,
-    pub output_base_dir: &'pool Path,
+    pub output_base_dir: &'pool Arc<Path>,
     /// The timestamp for this run.
     pub timestamp: DateTimeWithOffset,
     // Separate lifetime?
@@ -337,10 +340,10 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
         {
             // The directory holding the results of all of the runs for
             // the same "key" information
-            let key_dir: KeyDir = KeyDir::from_base_target_params(
-                self.job_runner.output_base_dir,
-                &command.target_name,
-                &run_parameters,
+            let key_dir = KeyDir::from_base_target_params(
+                self.job_runner.output_base_dir.clone_arc(),
+                command.target_name.clone(),
+                run_parameters,
             );
 
             // Maintain a "latest" subdirectory at the top of the output
@@ -352,25 +355,27 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                 let latest_dir = self.job_runner.output_base_dir.join("latest");
                 create_dir_all(&latest_dir).map_err(ctx!("create_dir_all {latest_dir:?}"))?;
 
-                // To get a relative path, simply start with ".." as the
-                // base dir
-                let key_dir_relative_from_latest_dir = KeyDir::from_base_target_params(
-                    "..".as_ref(),
-                    &command.target_name,
-                    &run_parameters,
-                );
+                // To get a relative path, simply use ".." as the base
+                // dir.
+                let key_dir_relative_from_latest_dir =
+                    key_dir.replace_base_path(Arc::<Path>::from("..".as_ref()));
 
                 let symlink_location = latest_dir.join(self.job_runner.timestamp.as_str());
-                symlink(key_dir_relative_from_latest_dir.path(), &symlink_location)
-                    .map_err(ctx!("creating symlink at {symlink_location:?}"))?;
+                symlink(
+                    key_dir_relative_from_latest_dir.to_path(),
+                    &symlink_location,
+                )
+                .map_err(ctx!("creating symlink at {symlink_location:?}"))?;
             }
 
             // Inside the key_dir, make a dir for this particular run,
             // move the result files there and generate the files with the
             // extracts.
             {
-                let run_dir: RunDir = key_dir.append(&self.job_runner.timestamp)?;
-                create_dir_all(run_dir.path()).map_err(ctx!("create_dir_all {run_dir:?}"))?;
+                let run_dir: RunDir = key_dir
+                    .clone_arc()
+                    .append(self.job_runner.timestamp.clone());
+                create_dir_all(run_dir.to_path()).map_err(ctx!("create_dir_all {run_dir:?}"))?;
 
                 info!("moving files to {run_dir:?}");
 
