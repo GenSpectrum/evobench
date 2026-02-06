@@ -21,6 +21,7 @@ use crate::{
     ctx,
     git::GitHash,
     git_tags::GitTags,
+    html_files::write_redirect_html_file,
     info,
     io_utils::{
         output_capture_log::{CaptureOptions, OutputCaptureLog},
@@ -351,7 +352,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             // dir tree: symlink the new entry into it, with timestamp as
             // name. Create the symlink first so that it is visible even
             // in case part of the actions creating the run output
-            // directory fails.
+            // directory fails. -- Also see "latest-redir" below.
             {
                 let latest_dir = self.job_runner.output_base_dir.join("latest");
                 create_dir_all(&latest_dir).map_err(ctx!("create_dir_all {latest_dir:?}"))?;
@@ -369,15 +370,34 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                 .map_err(ctx!("creating symlink at {symlink_location:?}"))?;
             }
 
-            // Inside the key_dir, make a dir for this particular run,
-            // move the result files there and generate the files with the
-            // extracts.
-            {
-                let run_dir: RunDir = key_dir
-                    .clone_arc()
-                    .append(self.job_runner.timestamp.clone());
-                create_dir_all(run_dir.to_path()).map_err(ctx!("create_dir_all {run_dir:?}"))?;
+            // Inside the key_dir, make a dir for this particular run
+            let run_dir: RunDir = key_dir
+                .clone_arc()
+                .append(self.job_runner.timestamp.clone());
+            create_dir_all(run_dir.to_path()).map_err(ctx!("create_dir_all {run_dir:?}"))?;
 
+            // Maintain a "latest-redir" subdirectory at the top of
+            // the output dir tree: make a new subdirectory with an
+            // index.html containing a redirect to the actual
+            // directory. This keeps the URL canonical, letting one
+            // know what the context is, and allows to go to the
+            // parent directory--hence redirect into the run dir, not
+            // key dir.  -- Also see "latest" above.
+            if let Some(output_dir_url) = &self.job_runner.run_config.output_dir.url {
+                let latest_dir = self.job_runner.output_base_dir.join("latest-redir");
+                let subdir = latest_dir.join(self.job_runner.timestamp.as_str());
+                create_dir_all(&subdir).map_err(ctx!("create_dir_all {subdir:?}"))?;
+
+                // To get a relative path, simply use `output_dir_url` as the base
+                // dir.
+                let redirect_target = run_dir.replace_base_path(output_dir_url.into_arc_path());
+                let url = redirect_target.to_path().to_string_lossy();
+                write_redirect_html_file(&subdir.append("index.html"), &url)?;
+            }
+
+            // Move the result files to the run_dir and generate the
+            // files with the extracts.
+            {
                 info!("moving files to {run_dir:?}");
 
                 // First try to compress the log file, here we check whether
