@@ -1,8 +1,4 @@
-use std::{
-    ffi::OsString,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::{ffi::OsString, path::PathBuf, sync::Arc};
 
 use anyhow::{Result, bail};
 use cj_path_util::path_util::AppendToPath;
@@ -22,7 +18,10 @@ use evobench_tools::{
     },
     serde::proper_dirname::ProperDirname,
     util::grep_diff::GrepDiffRegion,
-    utillib::logging::{LogLevelOpts, set_log_level},
+    utillib::{
+        into_arc_path::IntoArcPath,
+        logging::{LogLevelOpts, set_log_level},
+    },
 };
 
 #[derive(clap::Parser, Debug)]
@@ -231,8 +230,7 @@ fn main() -> Result<()> {
             )?;
             let run_config = &run_config_bundle.run_config;
 
-            let run_dir: Arc<Path> = run_dir.into();
-            let run_dir = RunDir::try_from(run_dir)?;
+            let run_dir = RunDir::try_from(run_dir.into_arc_path())?;
 
             post_process_single(&run_dir, run_config, no_stats)?;
         }
@@ -250,8 +248,7 @@ fn main() -> Result<()> {
             )?;
             let run_config = &run_config_bundle.run_config;
 
-            let key_dir: Arc<Path> = key_dir.into();
-            let key_dir: Arc<_> = KeyDir::try_from(key_dir)?.into();
+            let key_dir: Arc<_> = KeyDir::try_from(key_dir.into_arc_path())?.into();
 
             if single {
                 for run_dir in key_dir.sub_dirs()? {

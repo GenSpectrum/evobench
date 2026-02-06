@@ -21,7 +21,7 @@ use crate::{
         allowed_env_var::AllowedEnvVar, date_and_time::DateTimeWithOffset,
         proper_dirname::ProperDirname, proper_filename::ProperFilename,
     },
-    utillib::{arc::CloneArc, type_name_short::type_name_short},
+    utillib::{arc::CloneArc, into_arc_path::IntoArcPath, type_name_short::type_name_short},
 };
 
 pub trait ToPath {
@@ -265,8 +265,7 @@ impl TryFrom<Arc<Path>> for KeyDir {
 
     fn try_from(path: Arc<Path>) -> std::result::Result<Self, Self::Error> {
         let (commit_id, parent_dir) = parse_path_filename(&path)?;
-        let parent_dir: Arc<Path> = parent_dir.into();
-        let parent = ParametersDir::try_from(parent_dir)?.into();
+        let parent = ParametersDir::try_from(parent_dir.into_arc_path())?.into();
         Ok(Self {
             parent,
             commit_id,
@@ -361,8 +360,7 @@ impl TryFrom<Arc<Path>> for RunDir {
 
     fn try_from(path: Arc<Path>) -> std::result::Result<Self, Self::Error> {
         let (timestamp, parent_path) = parse_path_filename(&path)?;
-        let parent_path: Arc<Path> = parent_path.into();
-        let parent = KeyDir::try_from(parent_path)?.into();
+        let parent = KeyDir::try_from(parent_path.into_arc_path())?.into();
         Ok(Self {
             parent,
             timestamp,

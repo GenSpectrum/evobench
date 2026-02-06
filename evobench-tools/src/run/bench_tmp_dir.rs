@@ -1,18 +1,14 @@
-use std::{
-    fs::File,
-    ops::Deref,
-    os::unix::fs::MetadataExt,
-    path::{Path, PathBuf},
-    sync::Arc,
-    time::Duration,
-};
+use std::{fs::File, ops::Deref, os::unix::fs::MetadataExt, path::Path, sync::Arc, time::Duration};
 
 use anyhow::{Result, bail};
 use cj_path_util::path_util::AppendToPath;
 use nix::unistd::getuid;
 use rand::Rng;
 
-use crate::{ctx, info, utillib::user::get_username};
+use crate::{
+    ctx, info,
+    utillib::{into_arc_path::IntoArcPath, user::get_username},
+};
 
 /// The path to a temporary directory, and [on Linux (because of
 /// systems using systemd--Debian from trixie onwards will delete
@@ -71,8 +67,7 @@ pub fn bench_tmp_dir() -> Result<BenchTmpDir> {
     let user = get_username()?;
     match std::env::consts::OS {
         "linux" => {
-            let path: PathBuf = format!("/dev/shm/{user}").into();
-            let path: Arc<Path> = path.into();
+            let path = format!("/dev/shm/{user}").into_arc_path();
 
             info!("bench_tmp_dir path, exists?: {:?}", (&path, path.exists()));
 
@@ -103,8 +98,7 @@ pub fn bench_tmp_dir() -> Result<BenchTmpDir> {
             }
         }
         _ => {
-            let path: PathBuf = "./tmp".into();
-            let path: Arc<Path> = path.into();
+            let path = "./tmp".into_arc_path();
             std::fs::create_dir_all(&path).map_err(ctx!("create_dir_all {path:?}"))?;
             start_daemon(path.clone())?;
             Ok(BenchTmpDir { path })

@@ -203,7 +203,7 @@ impl WorkingDirectoryPoolBaseDir {
         get_working_directory_pool_base: &dyn Fn() -> Result<PathBuf>,
     ) -> Result<Self> {
         let path: Arc<Path> = if let Some(path) = base_dir {
-            path.into()
+            path
         } else {
             get_working_directory_pool_base()?
         }

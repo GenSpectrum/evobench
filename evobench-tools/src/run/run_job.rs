@@ -42,6 +42,7 @@ use crate::{
     serde::{date_and_time::DateTimeWithOffset, proper_dirname::ProperDirname},
     utillib::{
         arc::CloneArc,
+        into_arc_path::IntoArcPath,
         logging::{LogLevel, log_level},
     },
 };
@@ -358,7 +359,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                 // To get a relative path, simply use ".." as the base
                 // dir.
                 let key_dir_relative_from_latest_dir =
-                    key_dir.replace_base_path(Arc::<Path>::from("..".as_ref()));
+                    key_dir.replace_base_path("..".into_arc_path());
 
                 let symlink_location = latest_dir.join(self.job_runner.timestamp.as_str());
                 symlink(
