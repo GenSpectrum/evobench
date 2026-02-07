@@ -16,6 +16,7 @@ use crate::{
     clone, ctx,
     git::GitHash,
     key::{CustomParameters, ExtendPath, RunParameters, UncheckedCustomParameters},
+    run::env_vars::AllowableCustomEnvVar,
     serde::{
         allowed_env_var::AllowedEnvVar, date_and_time::DateTimeWithOffset,
         proper_dirname::ProperDirname, proper_filename::ProperFilename,
@@ -109,10 +110,21 @@ pub enum CheckedOrUncheckedCustomParameters {
 }
 
 impl CheckedOrUncheckedCustomParameters {
-    fn extend_path(&self, path: PathBuf) -> PathBuf {
+    pub fn extend_path(&self, path: PathBuf) -> PathBuf {
         match self {
             CheckedOrUncheckedCustomParameters::UncheckedCustomParameters(v) => v.extend_path(path),
             CheckedOrUncheckedCustomParameters::CustomParameters(v) => v.extend_path(path),
+        }
+    }
+
+    pub fn get(&self, key: &AllowedEnvVar<AllowableCustomEnvVar>) -> Option<&str> {
+        match self {
+            CheckedOrUncheckedCustomParameters::UncheckedCustomParameters(v) => {
+                v.btree_map().get(key).map(AsRef::as_ref)
+            }
+            CheckedOrUncheckedCustomParameters::CustomParameters(v) => {
+                v.btree_map().get(key).map(AsRef::as_ref)
+            }
         }
     }
 }
@@ -211,7 +223,11 @@ impl TryFrom<Arc<Path>> for ParametersDir {
                             anyhow!("not a proper directory name: {dir_name_str:?}: {msg}")
                         })?;
                         custom_env_vars = current_vars;
-                        base_path = current_path.into();
+                        if let Some(parent) = current_path.parent() {
+                            base_path = parent.into();
+                        } else {
+                            bail!("path is missing a base_dir part: {path:?}")
+                        }
                         break;
                     }
                 }
@@ -430,5 +446,36 @@ impl RunDir {
         let proper = ProperFilename::from_str(file_name)
             .map_err(|msg| anyhow!("not a proper file name ({msg}): {file_name:?}"))?;
         Ok(self.append(&proper))
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn t_try_from() {
+        let path = "/home/evobench/silo-benchmark-outputs/api/CONCURRENCY=120/DATASET=SC2open\
+                    /RANDOMIZED=1/REPEAT=1/SORTED=0"
+            .into_arc_path();
+        let d = ParametersDir::try_from(path.clone_arc()).unwrap();
+        assert_eq!(
+            d.base_path(),
+            &"/home/evobench/silo-benchmark-outputs".into_arc_path()
+        );
+        assert_eq!(d.target_name().as_str(), "api");
+
+        let p = |name: &str| -> AllowedEnvVar<AllowableCustomEnvVar> { name.parse().unwrap() };
+        assert_eq!(d.custom_parameters().get(&p("CONCURRENCY")), Some("120"));
+        assert_eq!(d.custom_parameters().get(&p("DATASET")), Some("SC2open"));
+        assert_eq!(d.custom_parameters().get(&p("SORTED")), Some("0"));
+
+        assert_eq!(d.to_path(), &path);
+
+        let new_base_path = "foo".into_arc_path();
+        let new_path = "foo/api/CONCURRENCY=120/DATASET=SC2open/RANDOMIZED=1/REPEAT=1/SORTED=0"
+            .into_arc_path();
+        let d2 = d.replace_base_path(new_base_path.clone_arc());
+        assert_eq!(d2.base_path(), &new_base_path);
+        assert_eq!(d2.to_path(), &new_path);
     }
 }

@@ -96,3 +96,9 @@ impl AsRef<OsStr> for CustomParameterValue {
         self.as_str().as_ref()
     }
 }
+
+impl AsRef<str> for CustomParameterValue {
+    fn as_ref(&self) -> &str {
+        self.as_str().as_ref()
+    }
+}

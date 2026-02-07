@@ -101,6 +101,12 @@ impl From<BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, KString>> for Unchecked
     }
 }
 
+impl UncheckedCustomParameters {
+    pub fn btree_map(&self) -> &BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, KString> {
+        &self.0
+    }
+}
+
 /// Custom key/value pairings, passed on as environment variables when
 /// executing the benchmarking runner of the target project. These
 /// are checked for allowed and required values.
