@@ -500,13 +500,15 @@ impl OutputSubdir {
     }
 }
 
-/// Attempt to parse as all levels, with the deepest type first. Using
-/// `?` to end with successful results, staying in the closure when
-/// there are errors.
+/// Attempt to parse as all levels, with the deepest type first.
 impl TryFrom<Arc<Path>> for OutputSubdir {
     type Error = anyhow::Error;
 
     fn try_from(path: Arc<Path>) -> std::result::Result<Self, Self::Error> {
+        // By exchanging the Ok and Err cases via .invert(), `?` ends
+        // with the first successful result (converted into
+        // OutputSubdir). The code flow stays in the closure while
+        // there are errors. Invert the meaning back outside.
         (|| -> Result<anyhow::Error, OutputSubdir> {
             let e1 = RunDir::try_from(path.clone_arc()).invert()?;
             let e2 = KeyDir::try_from(path.clone_arc()).invert()?;
