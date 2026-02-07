@@ -187,6 +187,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "auri"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5da7b6ebeccf4f51676eb61d30c4f9b1f6a41dd9ca2b8d5074c73bc921d362c3"
+dependencies = [
+ "ahtml",
+ "anyhow",
+ "chj-util",
+ "itertools 0.10.5",
+ "kstring 1.0.6",
+ "pct-str",
+ "thiserror 1.0.40",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -612,6 +627,7 @@ dependencies = [
  "anstyle",
  "anyhow",
  "approx",
+ "auri",
  "base64",
  "chj-rustbin",
  "chj-unix-util",
@@ -997,6 +1013,15 @@ name = "is_terminal_polyfill"
 version = "1.70.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8478577c03552c21db0e2724ffb8986a5ce7af88107e6be5d2ee6e158c12800"
+
+[[package]]
+name = "itertools"
+version = "0.10.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b0fd2260e829bddf4cb6ea802289de2f86d6a7a690192fbe91b3f46e0f2c8473"
+dependencies = [
+ "either",
+]
 
 [[package]]
 name = "itertools"
@@ -1448,6 +1473,16 @@ dependencies = [
  "proc-macro2-diagnostics",
  "quote",
  "syn 2.0.100",
+]
+
+[[package]]
+name = "pct-str"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf1bdcc492c285a50bed60860dfa00b50baf1f60c73c7d6b435b01a2a11fd6ff"
+dependencies = [
+ "thiserror 1.0.40",
+ "utf8-decode",
 ]
 
 [[package]]
@@ -2120,6 +2155,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "utf8-decode"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca61eb27fa339aa08826a29f03e87b99b4d8f0fc2255306fd266bb1b6a9de498"
+
+[[package]]
 name = "utf8parse"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2226,7 +2267,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
