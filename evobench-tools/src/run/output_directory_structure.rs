@@ -1,12 +1,11 @@
 //! The directory structure for output files.
 
 use std::{
-    cell::OnceCell,
     collections::BTreeMap,
     fmt::Display,
     path::{Path, PathBuf},
     str::FromStr,
-    sync::Arc,
+    sync::{Arc, OnceLock},
 };
 
 use anyhow::{Result, anyhow, bail};
@@ -135,7 +134,7 @@ pub struct ParametersDir {
     base_path: Arc<Path>,
     target_name: ProperDirname,
     custom_parameters: CheckedOrUncheckedCustomParameters,
-    path_cache: OnceCell<Arc<Path>>,
+    path_cache: OnceLock<Arc<Path>>,
 }
 
 /// Dir representing all of the key, including commit id at the
@@ -144,7 +143,7 @@ pub struct ParametersDir {
 pub struct KeyDir {
     parent: Arc<ParametersDir>,
     commit_id: GitHash,
-    path_cache: OnceCell<Arc<Path>>,
+    path_cache: OnceLock<Arc<Path>>,
 }
 
 /// Dir with the results for an individual benchmarking run. I.e. one
@@ -153,7 +152,7 @@ pub struct KeyDir {
 pub struct RunDir {
     parent: Arc<KeyDir>,
     timestamp: DateTimeWithOffset,
-    path_cache: OnceCell<Arc<Path>>,
+    path_cache: OnceLock<Arc<Path>>,
 }
 
 // --- Their implementations ----------------------------------------------------
@@ -166,11 +165,11 @@ impl ToPath for ParametersDir {
             custom_parameters,
             path_cache,
         } = self;
-        if path_cache.get().is_none() {
-            let path = custom_parameters.extend_path(base_path.append(target_name.as_str()));
-            _ = path_cache.set(path.into());
-        }
-        self.path_cache.get().unwrap()
+        path_cache.get_or_init(|| {
+            custom_parameters
+                .extend_path(base_path.append(target_name.as_str()))
+                .into()
+        })
     }
 }
 
@@ -224,7 +223,7 @@ impl TryFrom<Arc<Path>> for ParametersDir {
             custom_parameters: CheckedOrUncheckedCustomParameters::UncheckedCustomParameters(
                 Arc::new(UncheckedCustomParameters::from(custom_env_vars)),
             ),
-            path_cache: OnceCell::from(path),
+            path_cache: path.into(),
         })
     }
 }
@@ -269,7 +268,7 @@ impl TryFrom<Arc<Path>> for KeyDir {
         Ok(Self {
             parent,
             commit_id,
-            path_cache: OnceCell::from(path),
+            path_cache: path.into(),
         })
     }
 }
@@ -298,11 +297,7 @@ impl ToPath for KeyDir {
             commit_id,
             path_cache,
         } = self;
-        if path_cache.get().is_none() {
-            let path = parent.to_path().append(commit_id.to_string());
-            _ = path_cache.set(path.into());
-        }
-        path_cache.get().unwrap()
+        path_cache.get_or_init(|| parent.to_path().append(commit_id.to_string()).into())
     }
 }
 
@@ -364,7 +359,7 @@ impl TryFrom<Arc<Path>> for RunDir {
         Ok(Self {
             parent,
             timestamp,
-            path_cache: OnceCell::from(path),
+            path_cache: path.into(),
         })
     }
 }
@@ -393,11 +388,7 @@ impl ToPath for RunDir {
             timestamp,
             path_cache,
         } = self;
-        if path_cache.get().is_none() {
-            let path = parent.to_path().append(timestamp.to_string());
-            _ = path_cache.set(path.into());
-        }
-        path_cache.get().unwrap()
+        path_cache.get_or_init(|| parent.to_path().append(timestamp.to_string()).into())
     }
 }
 
