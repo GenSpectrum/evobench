@@ -242,6 +242,7 @@ pub enum Insert {
     /// Take template definitions of a given named entry from the
     /// configuration file, and commits from explicitly specified
     /// references.
+    #[command(after_help = "  Note: more job‑setting options are available in the parent command!")]
     Templates {
         /// The name of the entry in the `job_template_lists_name`
         /// field in the configuration file (RunConfig).
@@ -260,6 +261,7 @@ pub enum Insert {
     /// configuration file, and commits specified separately (if you
     /// want to take the commit from the same branch that you specify,
     /// you can use the `branch` subcommand instead).
+    #[command(after_help = "  Note: more job‑setting options are available in the parent command!")]
     TemplatesOfBranch {
         branch_name: GitBranchName,
         #[clap(value_enum)]
@@ -279,6 +281,7 @@ pub enum Insert {
     /// for 'remote'.  If you just want to take the configuration from
     /// a branch, but specify the commit independently, use the
     /// `template-of-branch` subcommand instead.
+    #[command(after_help = "  Note: more job‑setting options are available in the parent command!")]
     Branch {
         /// Whether to look up Git references in the remote repository
         /// or in a local clone (in which case the current working dir
@@ -300,6 +303,7 @@ pub enum Insert {
     /// Take template definitions and commit from job specification
     /// files (e.g. to re-use files of failed jobs from queues, or
     /// edit manually)
+    #[command(after_help = "  Note: more job‑setting options are available in the parent command!")]
     JobFiles {
         #[clap(flatten)]
         force_invalid_opt: ForceInvalidOpt,
