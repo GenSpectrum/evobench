@@ -9,3 +9,5 @@ RUSTSEC-2025-0056
 RUSTSEC-2025-0067
 # serde_yml 0.0.12 affected by RUSTSEC-2025-0068 (unsound)
 RUSTSEC-2025-0068
+# idna 0.5.0 affected by RUSTSEC-2024-0421 (`idna` accepts Punycode labels that do not produce any non-ASCII when decoded)
+RUSTSEC-2024-0421
