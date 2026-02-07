@@ -248,9 +248,7 @@ impl TryFrom<Arc<Path>> for ParametersDir {
                     if current_path.is_top() {
                         bail!("path is missing a target or base_dir part: {path:?}")
                     }
-                    bail!(
-                        "path {path:?} contains a '..' or starts with a '.' part: {current_path:?}"
-                    )
+                    bail!("path {path:?} contains a '..' or '.' part: {current_path:?}")
                 }
             }
         }
@@ -581,7 +579,7 @@ mod tests {
         // `..`.file_name() returns None
         assert_eq!(
             &t("um/api/foo=1/baz=3/../bar=2/").err().unwrap(),
-            "can't parse path \"um/api/foo=1/baz=3/../bar=2/\"\n- as RunDir: dir name \"bar=2\" in \"um/api/foo=1/baz=3/../bar=2/\" does not parse as DateTimeWithOffset: input contains invalid characters\n- as KeyDir: dir name \"bar=2\" in \"um/api/foo=1/baz=3/../bar=2/\" does not parse as GitHash: not a git hash of 40 hex bytes: \"bar=2\"\n- as ParametersDir: path \"um/api/foo=1/baz=3/../bar=2/\" contains a '..' or starts with a '.' part: \"um/api/foo=1/baz=3/..\""
+            "can't parse path \"um/api/foo=1/baz=3/../bar=2/\"\n- as RunDir: dir name \"bar=2\" in \"um/api/foo=1/baz=3/../bar=2/\" does not parse as DateTimeWithOffset: input contains invalid characters\n- as KeyDir: dir name \"bar=2\" in \"um/api/foo=1/baz=3/../bar=2/\" does not parse as GitHash: not a git hash of 40 hex bytes: \"bar=2\"\n- as ParametersDir: path \"um/api/foo=1/baz=3/../bar=2/\" contains a '..' or '.' part: \"um/api/foo=1/baz=3/..\""
         );
         assert_eq!(
             &t("api/foo=1/bar=2/09193b52688a964956b3fae0f52eeae471adc027")?,
@@ -616,14 +614,21 @@ mod tests {
         // parent(). file_name() then yields another Null.
         assert_eq!(
             &t(".").err().unwrap(),
-            "can't parse path \".\"\n- as RunDir: path is missing a file name\n- as KeyDir: path is missing a file name\n- as ParametersDir: path \".\" contains a '..' or starts with a '.' part: \".\""
+            "can't parse path \".\"\n- as RunDir: path is missing a file name\n- as KeyDir: path is missing a file name\n- as ParametersDir: path \".\" contains a '..' or '.' part: \".\""
         );
         assert_eq!(
             &t("./foo=1").err().unwrap(),
-            "can't parse path \"./foo=1\"\n- as RunDir: dir name \"foo=1\" in \"./foo=1\" does not parse as DateTimeWithOffset: input contains invalid characters\n- as KeyDir: dir name \"foo=1\" in \"./foo=1\" does not parse as GitHash: not a git hash of 40 hex bytes: \"foo=1\"\n- as ParametersDir: path \"./foo=1\" contains a '..' or starts with a '.' part: \".\""
+            "can't parse path \"./foo=1\"\n- as RunDir: dir name \"foo=1\" in \"./foo=1\" does not parse as DateTimeWithOffset: input contains invalid characters\n- as KeyDir: dir name \"foo=1\" in \"./foo=1\" does not parse as GitHash: not a git hash of 40 hex bytes: \"foo=1\"\n- as ParametersDir: path \"./foo=1\" contains a '..' or '.' part: \".\""
         );
         assert_eq!(&t("./a/foo=1")?, "BASE/a/foo=1");
         assert_eq!(&t("./a/./foo=1")?, "BASE/a/foo=1");
+        // Only if the `.` is right of a `..` it happens
+        assert_eq!(
+            &t("./../.").err().unwrap(),
+            "can't parse path \"./../.\"\n- as RunDir: path is missing a file name\n- as KeyDir: path is missing a file name\n- as ParametersDir: path \"./../.\" contains a '..' or '.' part: \"./../.\""
+        );
+        assert_eq!(&t("a/.././b")?, "BASE/b");
+        assert_eq!(&t("a/../b/.")?, "BASE/b");
         Ok(())
     }
 }
