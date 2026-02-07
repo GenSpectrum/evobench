@@ -21,7 +21,10 @@ use crate::{
         allowed_env_var::AllowedEnvVar, date_and_time::DateTimeWithOffset,
         proper_dirname::ProperDirname, proper_filename::ProperFilename,
     },
-    utillib::{arc::CloneArc, into_arc_path::IntoArcPath, type_name_short::type_name_short},
+    utillib::{
+        arc::CloneArc, into_arc_path::IntoArcPath, invert::Invert, path_is_top::PathIsTop,
+        type_name_short::type_name_short,
+    },
 };
 
 pub trait ToPath {
@@ -83,7 +86,7 @@ where
             Ok(v) => Ok((v, dir)),
             Err(e) => {
                 bail!(
-                    "dir name {file_name_str:?} in {dir:?} \
+                    "dir name {file_name_str:?} in {path:?} \
                      does not parse as {}: {e:#}",
                     type_name_short::<T>()
                 )
@@ -92,7 +95,7 @@ where
     } else {
         let lossy1 = file_name.to_string_lossy();
         let lossy: &str = lossy1.as_ref();
-        bail!("can't decode dir name to string: {lossy:?} in {dir:?}");
+        bail!("can't decode dir name to string: {lossy:?} in {path:?}");
     }
 }
 
@@ -167,6 +170,13 @@ pub struct RunDir {
     path_cache: OnceLock<Arc<Path>>,
 }
 
+#[derive(derive_more::From)]
+pub enum OutputSubdir {
+    ParametersDir(Arc<ParametersDir>),
+    KeyDir(Arc<KeyDir>),
+    RunDir(Arc<RunDir>),
+}
+
 // --- Their implementations ----------------------------------------------------
 
 impl ToPath for ParametersDir {
@@ -210,13 +220,16 @@ impl TryFrom<Arc<Path>> for ParametersDir {
                         current_vars.insert(key, val);
 
                         if let Some(parent) = current_path.parent() {
+                            if parent.is_top() {
+                                bail!(
+                                    "parsing {} {:?}: missing target segment left of the var segments",
+                                    type_name_short::<Self>(),
+                                    path
+                                );
+                            }
                             current_path = parent;
                         } else {
-                            bail!(
-                                "parsing {} {:?}: ran out of parent segments",
-                                type_name_short::<Self>(),
-                                path
-                            );
+                            unreachable!("because file_name() above already failed, right?")
                         }
                     } else {
                         target_name = ProperDirname::from_str(dir_name_str).map_err(|msg| {
@@ -226,10 +239,18 @@ impl TryFrom<Arc<Path>> for ParametersDir {
                         if let Some(parent) = current_path.parent() {
                             base_path = parent.into();
                         } else {
-                            bail!("path is missing a base_dir part: {path:?}")
+                            // This never happens, right?
+                            bail!("path is missing a base_dir part (1): {path:?}")
                         }
                         break;
                     }
+                } else {
+                    if current_path.is_top() {
+                        bail!("path is missing a target or base_dir part: {path:?}")
+                    }
+                    bail!(
+                        "path {path:?} contains a '..' or starts with a '.' part: {current_path:?}"
+                    )
                 }
             }
         }
@@ -448,12 +469,67 @@ impl RunDir {
         Ok(self.append(&proper))
     }
 }
+
+// Implement conversions from the bare (non-Arc) variants
+macro_rules! def_output_subdir_from {
+    { $t:tt } => {
+        impl From<$t> for OutputSubdir {
+            fn from(value: $t) -> Self {
+                Self::$t(Arc::new(value))
+            }
+        }
+    }
+}
+def_output_subdir_from!(ParametersDir);
+def_output_subdir_from!(KeyDir);
+def_output_subdir_from!(RunDir);
+
+impl OutputSubdir {
+    pub fn replace_base_path(self, path: Arc<Path>) -> Self {
+        match self {
+            OutputSubdir::ParametersDir(v) => v.replace_base_path(path).into(),
+            OutputSubdir::KeyDir(v) => v.replace_base_path(path).into(),
+            OutputSubdir::RunDir(v) => v.replace_base_path(path).into(),
+        }
+    }
+
+    pub fn to_path(&self) -> &Arc<Path> {
+        match self {
+            OutputSubdir::ParametersDir(v) => v.to_path(),
+            OutputSubdir::KeyDir(v) => v.to_path(),
+            OutputSubdir::RunDir(v) => v.to_path(),
+        }
+    }
+}
+
+/// Attempt to parse as all levels, with the deepest type first. Using
+/// `?` to end with successful results, staying in the closure when
+/// there are errors.
+impl TryFrom<Arc<Path>> for OutputSubdir {
+    type Error = anyhow::Error;
+
+    fn try_from(path: Arc<Path>) -> std::result::Result<Self, Self::Error> {
+        (|| -> Result<anyhow::Error, OutputSubdir> {
+            let e1 = RunDir::try_from(path.clone_arc()).invert()?;
+            let e2 = KeyDir::try_from(path.clone_arc()).invert()?;
+            let e3 = ParametersDir::try_from(path.clone_arc()).invert()?;
+            Ok(anyhow!(
+                "can't parse path {path:?}\n\
+                 - as RunDir: {e1:#}\n\
+                 - as KeyDir: {e2:#}\n\
+                 - as ParametersDir: {e3:#}"
+            ))
+        })()
+        .invert()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn t_try_from() {
+    fn t_parameters_dir() {
         let path = "/home/evobench/silo-benchmark-outputs/api/CONCURRENCY=120/DATASET=SC2open\
                     /RANDOMIZED=1/REPEAT=1/SORTED=0"
             .into_arc_path();
@@ -477,5 +553,77 @@ mod tests {
         let d2 = d.replace_base_path(new_base_path.clone_arc());
         assert_eq!(d2.base_path(), &new_base_path);
         assert_eq!(d2.to_path(), &new_path);
+    }
+
+    #[test]
+    fn t_output_subdir() -> Result<(), String> {
+        let t1 = |s: &str| -> Result<OutputSubdir> {
+            let dir = OutputSubdir::try_from(s.into_arc_path())?;
+            Ok(dir.replace_base_path("BASE".into_arc_path()))
+        };
+        let t2 = |s: &str| -> Result<PathBuf> {
+            let dir = t1(s)?;
+            Ok(dir.to_path().to_path_buf())
+        };
+        let t = |s: &str| -> Result<String, String> {
+            match t2(s) {
+                Ok(p) => Ok(p.to_string_lossy().to_string()),
+                Err(e) => Err(e.to_string()),
+            }
+        };
+
+        assert_eq!(&t("/foo=1//bar=2/fa")?, "BASE/fa");
+        assert_eq!(&t("api/foo=1//bar=2/")?, "BASE/api/bar=2/foo=1");
+        assert_eq!(&t("um/api/foo=1/bar=2/")?, "BASE/api/bar=2/foo=1");
+        assert_eq!(&t("/api/foo=1/bar=2/")?, "BASE/api/bar=2/foo=1");
+        // parent() skips over `.`
+        assert_eq!(&t("um/api/foo=1/./bar=2/")?, "BASE/api/bar=2/foo=1");
+        // `..`.file_name() returns None
+        assert_eq!(
+            &t("um/api/foo=1/baz=3/../bar=2/").err().unwrap(),
+            "can't parse path \"um/api/foo=1/baz=3/../bar=2/\"\n- as RunDir: dir name \"bar=2\" in \"um/api/foo=1/baz=3/../bar=2/\" does not parse as DateTimeWithOffset: input contains invalid characters\n- as KeyDir: dir name \"bar=2\" in \"um/api/foo=1/baz=3/../bar=2/\" does not parse as GitHash: not a git hash of 40 hex bytes: \"bar=2\"\n- as ParametersDir: path \"um/api/foo=1/baz=3/../bar=2/\" contains a '..' or starts with a '.' part: \"um/api/foo=1/baz=3/..\""
+        );
+        assert_eq!(
+            &t("api/foo=1/bar=2/09193b52688a964956b3fae0f52eeae471adc027")?,
+            "BASE/api/bar=2/foo=1/09193b52688a964956b3fae0f52eeae471adc027"
+        );
+        assert_eq!(
+            &t("api/foo=1/bar=2/09193b52688a964956b3fae0f52eeae471adc027/\
+                2026-02-02T11:26:48.563793486+00:00")?,
+            "BASE/api/bar=2/foo=1/09193b52688a964956b3fae0f52eeae471adc027/\
+             2026-02-02T11:26:48.563793486+00:00"
+        );
+        // Parses as the commit id *is* a ProperDirname thus used as
+        // target name! Hmm, could it check for the kinds of errors in
+        // earlier parses and decide on that? If it is successful
+        // parsing 2 out of 3 then... basically do those counts. 2
+        // successful parses > 1 parse. Although should perhaps
+        // require "non-trivial", too.
+        assert_eq!(
+            &t("/foo=1//bar=2/09193b52688a964956b3fae0f52eeae471adc027")?,
+            "BASE/09193b52688a964956b3fae0f52eeae471adc027"
+        );
+        // Interesting case since the multi-error message feature is
+        // actually useful here:
+        assert_eq!(
+            &t("/foo=1//bar=2/09193b52688a964956b3fae0f52eeae471adc027/\
+                2026-02-02T11:26:48.563793486+00:00")
+            .err()
+            .unwrap(),
+            "can't parse path \"/foo=1//bar=2/09193b52688a964956b3fae0f52eeae471adc027/2026-02-02T11:26:48.563793486+00:00\"\n- as RunDir: parsing ParametersDir \"/foo=1//bar=2\": missing target segment left of the var segments\n- as KeyDir: dir name \"2026-02-02T11:26:48.563793486+00:00\" in \"/foo=1//bar=2/09193b52688a964956b3fae0f52eeae471adc027/2026-02-02T11:26:48.563793486+00:00\" does not parse as GitHash: not a git hash of 40 hex bytes: \"2026-02-02T11:26:48.563793486+00:00\"\n- as ParametersDir: not a proper directory name: \"2026-02-02T11:26:48.563793486+00:00\": a file name (not path), must not contain '/', '\\n', '\\0', and must not be \".\", \"..\", the empty string, or longer than 255 bytes, and not have a file extension"
+        );
+        // `.` is not dropped: it's only skiped by
+        // parent(). file_name() then yields another Null.
+        assert_eq!(
+            &t(".").err().unwrap(),
+            "can't parse path \".\"\n- as RunDir: path is missing a file name\n- as KeyDir: path is missing a file name\n- as ParametersDir: path \".\" contains a '..' or starts with a '.' part: \".\""
+        );
+        assert_eq!(
+            &t("./foo=1").err().unwrap(),
+            "can't parse path \"./foo=1\"\n- as RunDir: dir name \"foo=1\" in \"./foo=1\" does not parse as DateTimeWithOffset: input contains invalid characters\n- as KeyDir: dir name \"foo=1\" in \"./foo=1\" does not parse as GitHash: not a git hash of 40 hex bytes: \"foo=1\"\n- as ParametersDir: path \"./foo=1\" contains a '..' or starts with a '.' part: \".\""
+        );
+        assert_eq!(&t("./a/foo=1")?, "BASE/a/foo=1");
+        assert_eq!(&t("./a/./foo=1")?, "BASE/a/foo=1");
+        Ok(())
     }
 }

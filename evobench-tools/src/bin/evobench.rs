@@ -1,4 +1,5 @@
 use anyhow::{Context, Result, anyhow, bail};
+use auri::url_encoding::url_decode;
 use chj_unix_util::{
     daemon::{
         Daemon, DaemonCheckExit, DaemonMode, DaemonOpts, DaemonPaths, ExecutionResult,
@@ -12,11 +13,14 @@ use chj_unix_util::{
 };
 use clap::{CommandFactory, Parser};
 use itertools::Itertools;
+use url::Url;
 
 use std::{
     io::{StdoutLock, Write, stdout},
+    os::unix::{ffi::OsStrExt, process::CommandExt},
     path::{Path, PathBuf},
-    process::exit,
+    process::{Command, exit},
+    str::FromStr,
     sync::{Arc, atomic::Ordering},
     thread,
     time::Duration,
@@ -28,13 +32,16 @@ use evobench_tools::{
     ctx, debug,
     get_terminal_width::get_terminal_width,
     git::GitHash,
-    info, lazyresult,
+    info,
+    io_utils::shell::preferred_shell,
+    lazyresult,
     run::{
         bench_tmp_dir::bench_tmp_dir,
         benchmarking_job::{BenchmarkingJobOpts, BenchmarkingJobReasonOpt},
         config::{RunConfig, RunConfigBundle, RunConfigOpts},
         global_app_state_dir::GlobalAppStateDir,
         insert_jobs::{DryRunOpt, ForceOpt, QuietOpt, insert_jobs},
+        output_directory_structure::OutputSubdir,
         run_context::RunContext,
         run_job::JobRunner,
         run_queues::RunQueues,
@@ -51,6 +58,7 @@ use evobench_tools::{
     serde::date_and_time::{DateTimeWithOffset, LOCAL_TIME},
     utillib::{
         arc::CloneArc,
+        into_arc_path::IntoArcPath,
         logging::{LogLevel, LogLevelOpts, set_log_level},
     },
 };
@@ -169,6 +177,17 @@ enum SubCommand {
         /// get a list of the allowed options there.
         #[clap(subcommand)]
         subcommand: Wd,
+    },
+
+    /// Parse URLs to output directories
+    Url {
+        /// Open a new $SHELL (or bash) in the output
+        /// directory. Default: print the path instead. .
+        #[clap(long)]
+        cd: bool,
+
+        /// The URL or (partial) path to parse
+        url: String,
     },
 
     /// General program status information (but also see `list`, `wd
@@ -712,6 +731,54 @@ fn run() -> Result<Option<ExecutionResult>> {
 
         SubCommand::Wd { subcommand } => {
             subcommand.run(conf, &working_directory_base_dir)?;
+            Ok(None)
+        }
+
+        SubCommand::Url { cd, url } => {
+            // Allow both copy-paste from web browser (at least
+            // Firefox encodes '=' in path part via url_encoding), and
+            // local paths. First see if it's a URL (XX false
+            // positives?).
+            let path = match Url::from_str(&url) {
+                Ok(mut url) => {
+                    url.set_fragment(None);
+                    url.set_query(None);
+                    // At that point '=' are still URL-encoded, thus:
+                    url_decode(url.as_str())?
+                }
+                Err(_) => {
+                    // Unparseable as Url; no problem, just can't
+                    // remove any fragment and query parts. Don't just
+                    // url_decode, since custom variables might
+                    // contain such parts, too; only do it if there
+                    // are no '=' in the path, OK?
+                    if url.contains('=') {
+                        url
+                    } else {
+                        url_decode(&url)?
+                    }
+                }
+            }
+            .into_arc_path();
+
+            let subdir = OutputSubdir::try_from(path)?;
+            let subdir = subdir.replace_base_path(conf.output_dir.path.clone_arc());
+            let local_path = subdir.to_path();
+
+            if cd {
+                let shell = preferred_shell()?;
+                Err(Command::new(&shell).current_dir(&local_path).exec())
+                    .map_err(ctx!("executing {shell:?} in {local_path:?}"))?;
+            } else {
+                (|| -> Result<(), std::io::Error> {
+                    let mut out = stdout().lock();
+                    out.write_all(local_path.as_os_str().as_bytes())?;
+                    out.write_all(b"\n")?;
+                    out.flush()
+                })()
+                .map_err(ctx!("stdout"))?;
+            }
+
             Ok(None)
         }
 

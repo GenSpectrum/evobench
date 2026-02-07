@@ -1,4 +1,4 @@
-use std::{borrow::Cow, env, ffi::OsStr, io::stdout, process::exit, sync::Arc, time::SystemTime};
+use std::{borrow::Cow, ffi::OsStr, io::stdout, process::exit, sync::Arc, time::SystemTime};
 
 use anyhow::{Result, anyhow, bail};
 use chj_rustbin::duu::{GetDirDiskUsage, bytes_to_gib_string};
@@ -10,7 +10,10 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use crate::{
     ask::ask_yn,
     ctx, info,
-    io_utils::bash::{bash_export_variable_string, bash_string_from_program_path_and_args},
+    io_utils::{
+        bash::{bash_export_variable_string, bash_string_from_program_path_and_args},
+        shell::preferred_shell,
+    },
     key::{BenchmarkingJobParameters, RunParameters},
     lazyresult,
     lockable_file::{StandaloneExclusiveFileLock, StandaloneFileLockError},
@@ -776,15 +779,7 @@ impl Wd {
                     .map(|(k, v)| bash_export_variable_string(k, &v.to_string_lossy(), "  ", "\n"))
                     .join("");
 
-                let shell = match std::env::var("SHELL") {
-                    Ok(s) => s,
-                    Err(e) => match e {
-                        env::VarError::NotPresent => "bash".into(),
-                        env::VarError::NotUnicode(os_string) => {
-                            bail!("the SHELL environment variable is not in unicode: {os_string:?}")
-                        }
-                    },
-                };
+                let shell = preferred_shell()?;
 
                 // -- Print explanations ----
 

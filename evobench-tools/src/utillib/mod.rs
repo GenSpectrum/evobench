@@ -7,6 +7,7 @@ pub mod home;
 pub mod into_arc_path;
 pub mod invert;
 pub mod logging;
+pub mod path_is_top;
 pub mod path_resolve_home;
 pub mod ref_or_owned;
 pub mod slice_or_box;
