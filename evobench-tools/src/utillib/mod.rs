@@ -5,6 +5,7 @@ pub mod exit_status_ext;
 pub mod fallback;
 pub mod home;
 pub mod into_arc_path;
+pub mod invert;
 pub mod logging;
 pub mod path_resolve_home;
 pub mod ref_or_owned;
