@@ -168,6 +168,7 @@ pub struct InsertBehaviourOpts {
 
 /// Options to set or override job settings from elsewhere
 #[derive(Debug, Clone, clap::Args)]
+#[command(allow_hyphen_values = true)]
 pub struct InsertBenchmarkingJobOpts {
     #[clap(flatten)]
     pub reason: BenchmarkingJobReasonOpt,

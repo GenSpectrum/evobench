@@ -79,6 +79,7 @@ const LOCAL_TIME_DEFAULT: bool = true;
     next_line_help = true,
     styles = clap_styles(),
     term_width = get_terminal_width(4),
+    allow_hyphen_values = true,
     bin_name = "evobench",
 )]
 /// Schedule and query benchmarking jobs.
