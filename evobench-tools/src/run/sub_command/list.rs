@@ -124,6 +124,7 @@ impl ListOpts {
             parameter_view,
         } = self;
 
+        // The base of the path that's used for the `path` view
         let path_base: Option<Arc<Path>> = {
             match parameter_view {
                 ParameterView::Separated => None,
