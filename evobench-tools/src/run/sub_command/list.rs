@@ -1,14 +1,14 @@
 use std::{
     borrow::Cow,
     env,
-    io::{self, IsTerminal, stdout},
+    io::{self, stdout, IsTerminal},
     os::unix::ffi::OsStrExt,
     path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, SystemTime},
 };
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use chrono::{DateTime, Local};
 use lazy_static::lazy_static;
 use yansi::{Color, Style};
@@ -26,9 +26,9 @@ use crate::{
         working_directory::Status,
         working_directory_pool::WorkingDirectoryPoolBaseDir,
     },
-    terminal_table::{TerminalTable, TerminalTableOpts, TerminalTableTitle},
     utillib::{arc::CloneArc, recycle::RecycleVec},
 };
+use crate::output_table::terminal::{TerminalTable, TerminalTableOpts, TerminalTableTitle};
 
 pub const TARGET_NAME_WIDTH: usize = 14;
 

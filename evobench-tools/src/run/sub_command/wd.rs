@@ -1,7 +1,7 @@
 use std::{borrow::Cow, ffi::OsStr, io::stdout, process::exit, sync::Arc, time::SystemTime};
 
-use anyhow::{Result, anyhow, bail};
-use chj_rustbin::duu::{GetDirDiskUsage, bytes_to_gib_string};
+use anyhow::{anyhow, bail, Result};
+use chj_rustbin::duu::{bytes_to_gib_string, GetDirDiskUsage};
 use chj_unix_util::polling_signals::PollingSignals;
 use cj_path_util::path_util::AppendToPath;
 use itertools::Itertools;
@@ -27,15 +27,15 @@ use crate::{
         versioned_dataset_dir::VersionedDatasetDir,
         working_directory::{FetchedTags, Status, WorkingDirectory, WorkingDirectoryStatus},
         working_directory_pool::{
-            WdAllowBareOpt, WorkingDirectoryId, WorkingDirectoryIdOpt, WorkingDirectoryPoolBaseDir,
-            finish_parsing_working_directory_ids,
+            finish_parsing_working_directory_ids, WdAllowBareOpt, WorkingDirectoryId, WorkingDirectoryIdOpt,
+            WorkingDirectoryPoolBaseDir,
         },
     },
     serde::date_and_time::system_time_to_rfc3339,
-    terminal_table::{TerminalTable, TerminalTableOpts, TerminalTableTitle},
     utillib::unix::ToExitCode,
     warn,
 };
+use crate::output_table::terminal::{TerminalTable, TerminalTableOpts, TerminalTableTitle};
 
 pub fn open_working_directory_change_signals(conf: &RunConfig) -> Result<PollingSignals> {
     let signals_path = conf.working_directory_change_signals_path();

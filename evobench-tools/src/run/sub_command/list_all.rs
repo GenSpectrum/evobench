@@ -10,8 +10,8 @@ use crate::{
         sub_command::list::TARGET_NAME_WIDTH,
     },
     serde::date_and_time::system_time_to_rfc3339,
-    terminal_table::{TerminalTable, TerminalTableOpts, TerminalTableTitle},
 };
+use crate::output_table::terminal::{TerminalTable, TerminalTableOpts, TerminalTableTitle};
 
 #[derive(Debug, Clone, clap::Args)]
 pub struct ListAllOpts {
