@@ -27,7 +27,7 @@ use crate::{
         working_directory_pool::WorkingDirectoryPoolBaseDir,
     },
     terminal_table::{TerminalTable, TerminalTableOpts, TerminalTableTitle},
-    utillib::arc::CloneArc,
+    utillib::{arc::CloneArc, recycle::RecycleVec},
 };
 
 pub const TARGET_NAME_WIDTH: usize = 14;
@@ -390,12 +390,7 @@ impl ListOpts {
                     table.print(&format!("{s}\n\n"))?;
                 }
 
-                row = {
-                    row.clear();
-                    // overwrite Vec with a version of itself that
-                    // doesn't hold onto the lifetimes
-                    row.into_iter().map(|_| unreachable!()).collect()
-                };
+                row = row.recycle_vec();
             }
             Ok(table.finish()?)
         };

@@ -9,6 +9,7 @@ pub mod invert;
 pub mod logging;
 pub mod path_is_top;
 pub mod path_resolve_home;
+pub mod recycle;
 pub mod ref_or_owned;
 pub mod slice_or_box;
 pub mod type_name_short;
