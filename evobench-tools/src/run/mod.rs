@@ -10,7 +10,6 @@ pub mod insert_jobs;
 pub mod migrate;
 pub mod output_directory;
 pub mod polling_pool;
-pub mod post_process;
 pub mod run_context;
 pub mod run_job;
 pub mod run_queue;

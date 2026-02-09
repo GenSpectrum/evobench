@@ -34,8 +34,10 @@ use crate::{
         config::RunConfig,
         dataset_dir_env_var::dataset_dir_for,
         env_vars::assert_evobench_env_var,
-        output_directory::structure::{KeyDir, ReplaceBasePath, RunDir, ToPath},
-        post_process::compress_file_as,
+        output_directory::{
+            post_process::compress_file_as,
+            structure::{KeyDir, ReplaceBasePath, RunDir, ToPath},
+        },
         run_queues::RunQueuesData,
         versioned_dataset_dir::VersionedDatasetDir,
         working_directory::{FetchTags, FetchedTags, WorkingDirectory},

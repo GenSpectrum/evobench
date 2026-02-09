@@ -12,8 +12,10 @@ use evobench_tools::{
     run::{
         config::{RunConfig, RunConfigBundle},
         global_app_state_dir::GlobalAppStateDir,
-        output_directory::structure::{KeyDir, RunDir, SubDirs},
-        post_process::compress_file_as,
+        output_directory::{
+            post_process::compress_file_as,
+            structure::{KeyDir, RunDir, SubDirs},
+        },
         working_directory_pool::WorkingDirectoryPoolBaseDir,
     },
     serde::proper_dirname::ProperDirname,
