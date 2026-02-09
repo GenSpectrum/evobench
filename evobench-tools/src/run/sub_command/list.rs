@@ -7,11 +7,9 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use ahtml::HtmlAllocator;
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Local};
 
-use crate::output_table::{CellValue, OutputStyle, OutputTable, OutputTableTitle};
 use crate::{
     config_file::ron_to_string_pretty,
     key_val_fs::key_val::Entry,
@@ -27,11 +25,12 @@ use crate::{
     utillib::{arc::CloneArc, recycle::RecycleVec},
 };
 use crate::{
-    output_table::{
-        html::HtmlTable,
-        terminal::{TerminalTable, TerminalTableOpts},
-    },
+    output_table::terminal::{TerminalTable, TerminalTableOpts},
     utillib::into_arc_path::IntoArcPath,
+};
+use crate::{
+    output_table::{CellValue, OutputStyle, OutputTable, OutputTableTitle},
+    run::output_directory::list::print_list,
 };
 
 pub const TARGET_NAME_WIDTH: usize = 14;
@@ -66,7 +65,7 @@ pub enum ParameterView {
 }
 
 impl ParameterView {
-    fn titles(self) -> Vec<&'static str> {
+    pub fn titles(self) -> Vec<&'static str> {
         let mut titles = vec![
             "Insertion_time",
             "S", // Status
@@ -94,17 +93,17 @@ impl ParameterView {
 pub struct OutputTableOpts {
     /// Show details, not just one item per line
     #[clap(short, long)]
-    verbose: bool,
+    pub verbose: bool,
 
     /// Show all jobs in the extra queues (done and failures); by
     /// default, only the last `view_jobs_max_len` jobs are shown
     /// as stated in the QueuesConfig.
     #[clap(short, long)]
-    all: bool,
+    pub all: bool,
 
     /// How to show the job parameters
     #[clap(subcommand)]
-    parameter_view: ParameterView,
+    pub parameter_view: ParameterView,
 }
 
 /// A text with optional link which is generated only when needed
@@ -517,22 +516,13 @@ impl ListOpts {
         } = self;
 
         if html {
-            let num_columns = output_table_opts.parameter_view.titles().len();
-            let html = HtmlAllocator::new(1000000, Arc::new("list"));
-            let table = HtmlTable::new(num_columns, &html);
-            let body = output_table_opts.output_to_table(
-                table,
+            print_list(
                 conf,
                 working_directory_base_dir,
                 queues,
+                &output_table_opts,
+                stdout().lock(),
             )?;
-            let doc = html.html(
-                [],
-                [html.head([], [])?, html.body([], html.table([], body)?)?],
-            )?;
-            let mut out = stdout().lock();
-            html.print_html_document(doc, &mut out)?;
-            out.flush()?;
         } else {
             let out = stdout().lock();
             let table = make_terminal_table(
