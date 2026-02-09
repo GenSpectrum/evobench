@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fmt::Display, io::stdout, time::SystemTime};
+use std::{borrow::Cow, io::stdout, time::SystemTime};
 
 use anyhow::Result;
 
@@ -87,8 +87,12 @@ impl ListAllOpts {
                 pre_exec_bash_code: _,
             } = &*command;
 
-            let values: &[&dyn Display] =
-                &[&t, &commit_id, &target_name.as_str(), &custom_parameters];
+            let values: &[&dyn AsRef<str>] = &[
+                &t,
+                &commit_id.to_string(),
+                &target_name.as_str(),
+                &custom_parameters.to_string(),
+            ];
             table.write_data_row(values, None)?;
         }
         drop(table.finish()?);

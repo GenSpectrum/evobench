@@ -1,6 +1,5 @@
 use itertools::{EitherOrBoth, Itertools};
 use std::borrow::Cow;
-use std::fmt::Display;
 use yansi::Style;
 pub mod html;
 pub mod terminal;
@@ -13,12 +12,12 @@ pub struct OutputTableTitle<'s> {
     pub span: usize,
 }
 
-pub enum Row<'r, 's, V: Display> {
+pub enum Row<'r, 's, V: AsRef<str>> {
     WithSpans(&'r [OutputTableTitle<'s>]),
     PlainStrings(&'r [V]),
 }
 
-impl<'r, 's, V: Display> Row<'r, 's, V> {
+impl<'r, 's, V: AsRef<str>> Row<'r, 's, V> {
     /// How many columns this Row covers (if it has entries that span
     /// multiple columns, all of those are added)
     fn logical_len(&self) -> usize {
@@ -68,9 +67,9 @@ impl<'r, 's, V: Display> Row<'r, 's, V> {
                 for either_or_both in items.iter().zip_longest(widths) {
                     match either_or_both {
                         EitherOrBoth::Both(val, width) => {
-                            v.push((val.to_string().into(), Some(*width)))
+                            v.push((val.as_ref().into(), Some(*width)))
                         }
-                        EitherOrBoth::Left(val) => v.push((val.to_string().into(), None)),
+                        EitherOrBoth::Left(val) => v.push((val.as_ref().into(), None)),
                         EitherOrBoth::Right(_) => {
                             unreachable!("given row len has been checked against widths len")
                         }
@@ -90,7 +89,7 @@ pub trait OutputTable {
     fn num_columns(&self) -> usize;
 
     /// Normally, use `write_title_row` or `write_data_row` instead!
-    fn write_row<V: Display>(
+    fn write_row<V: AsRef<str>>(
         &mut self,
         row: Row<V>,
         line_style: Option<Style>,
@@ -102,7 +101,7 @@ pub trait OutputTable {
         style: Option<Style>,
     ) -> anyhow::Result<()>;
 
-    fn write_data_row<V: Display>(
+    fn write_data_row<V: AsRef<str>>(
         &mut self,
         data: &[V],
         line_style: Option<Style>,

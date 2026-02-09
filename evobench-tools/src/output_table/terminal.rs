@@ -8,10 +8,7 @@
 //! can print tabs or newlines (or on the terminal even spaces could
 //! make it ambiguous).
 
-use std::{
-    fmt::Display,
-    io::{BufWriter, IsTerminal, Write},
-};
+use std::io::{BufWriter, IsTerminal, Write};
 
 use crate::output_table::{OutputTable, OutputTableTitle, Row};
 use anyhow::{Result, anyhow, bail};
@@ -116,7 +113,7 @@ impl<O: Write + IsTerminal> OutputTable for TerminalTable<O> {
 
     // Not making this an instance method so that we can give mut vs
     // non-mut parts independently
-    fn write_row<V: Display>(&mut self, row: Row<V>, line_style: Option<Style>) -> Result<()> {
+    fn write_row<V: AsRef<str>>(&mut self, row: Row<V>, line_style: Option<Style>) -> Result<()> {
         let (expected_num_columns, row_num_columns) = (self.num_columns(), row.logical_len());
         if expected_num_columns != row_num_columns {
             bail!(
