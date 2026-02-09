@@ -17,7 +17,7 @@ use crate::{
     run::{
         command_log_file::CommandLogFile,
         config::{RunConfig, ScheduleCondition},
-        output_directory_structure::{KeyDir, RunDir, SubDirs, ToPath},
+        output_directory::structure::{KeyDir, RunDir, SubDirs, ToPath},
     },
     serde::{proper_dirname::ProperDirname, proper_filename::ProperFilename},
     utillib::logging::{LogLevel, log_level},

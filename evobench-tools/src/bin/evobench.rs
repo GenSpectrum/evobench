@@ -41,7 +41,7 @@ use evobench_tools::{
         config::{RunConfig, RunConfigBundle, RunConfigOpts},
         global_app_state_dir::GlobalAppStateDir,
         insert_jobs::{DryRunOpt, ForceOpt, QuietOpt, insert_jobs},
-        output_directory_structure::OutputSubdir,
+        output_directory::structure::OutputSubdir,
         run_context::RunContext,
         run_job::JobRunner,
         run_queues::RunQueues,

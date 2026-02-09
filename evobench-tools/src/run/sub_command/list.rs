@@ -18,7 +18,7 @@ use crate::{
     lockable_file::LockStatus,
     run::{
         config::RunConfig,
-        output_directory_structure::{KeyDir, ToPath},
+        output_directory::structure::{KeyDir, ToPath},
         run_queue::RunQueue,
         run_queues::RunQueues,
         working_directory::Status,
