@@ -109,6 +109,10 @@ pub trait OutputTable {
         self.write_row(Row::PlainStrings(data), line_style)
     }
 
+    fn write_thin_bar(&mut self) -> anyhow::Result<()>;
+
+    fn write_thick_bar(&mut self) -> anyhow::Result<()>;
+
     fn print(&mut self, s: &str) -> anyhow::Result<()>;
 
     fn finish(self) -> anyhow::Result<Self::Output>;

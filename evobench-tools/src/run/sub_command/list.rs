@@ -1,23 +1,23 @@
 use std::{
     borrow::Cow,
-    env,
-    io::{self, IsTerminal, stdout},
-    os::unix::ffi::OsStrExt,
+    io::{self, IsTerminal, Write, stdout},
     path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, SystemTime},
 };
 
+use ahtml::HtmlAllocator;
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Local};
-use lazy_static::lazy_static;
 use yansi::{Color, Style};
 
-use crate::output_table::terminal::{TerminalTable, TerminalTableOpts};
 use crate::output_table::{OutputTable, OutputTableTitle};
+use crate::output_table::{
+    html::HtmlTable,
+    terminal::{TerminalTable, TerminalTableOpts},
+};
 use crate::{
     config_file::ron_to_string_pretty,
-    get_terminal_width::get_terminal_width,
     key_val_fs::key_val::Entry,
     lockable_file::LockStatus,
     run::{
@@ -32,16 +32,6 @@ use crate::{
 };
 
 pub const TARGET_NAME_WIDTH: usize = 14;
-
-lazy_static! {
-    static ref UNICODE_IS_FINE: bool = (|| -> Option<bool> {
-        let term = env::var_os("TERM")?;
-        let lang = env::var_os("LANG")?;
-        let lang = lang.to_str()?;
-        Some(term.as_bytes().starts_with(b"xterm") && lang.contains("UTF-8"))
-    })()
-    .unwrap_or(false);
-}
 
 #[derive(Debug, Clone, Copy, clap::Subcommand)]
 pub enum ParameterPathKind {
@@ -72,11 +62,33 @@ pub enum ParameterView {
     },
 }
 
-#[derive(Debug, Clone, clap::Args)]
-pub struct ListOpts {
-    #[clap(flatten)]
-    terminal_table_opts: TerminalTableOpts,
+impl ParameterView {
+    fn titles(self) -> Vec<&'static str> {
+        let mut titles = vec![
+            "Insertion_time",
+            "S", // Status
+            "Prio",
+            "WD",
+            "Reason",
+        ];
+        match self {
+            ParameterView::Separated => {
+                titles.extend_from_slice(&["Commit_id", "Target_name", "Custom_parameters"]);
+            }
+            ParameterView::Path { kind } => {
+                titles.push(match kind.unwrap_or_default() {
+                    ParameterPathKind::Relative => "Output_path",
+                    ParameterPathKind::Full => "Output_path",
+                    ParameterPathKind::Url => "Output_URL",
+                });
+            }
+        }
+        titles
+    }
+}
 
+#[derive(Debug, Clone, clap::Args)]
+pub struct OutputTableOpts {
     /// Show details, not just one item per line
     #[clap(short, long)]
     verbose: bool,
@@ -92,36 +104,15 @@ pub struct ListOpts {
     parameter_view: ParameterView,
 }
 
-fn table_with_titles<O: io::Write + IsTerminal>(
-    titles: &[OutputTableTitle],
-    style: Option<Style>,
-    terminal_table_opts: &TerminalTableOpts,
-    out: O,
-    verbose: bool,
-    view: ParameterView,
-) -> Result<TerminalTable<O>> {
-    let insertion_time_width = if verbose { 82 } else { 37 };
-    let widths =
-    //     t                    R pr WD reason commit target
-        &[insertion_time_width, 3, 6, 5, 25, 42, TARGET_NAME_WIDTH];
-    let widths = match view {
-        ParameterView::Separated => widths,
-        ParameterView::Path { kind: _ } => &widths[0..5],
-    };
-    let mut table = TerminalTable::new(widths, terminal_table_opts.clone(), out)?;
-    table.write_title_row(titles, style)?;
-    Ok(table)
-}
-
-impl ListOpts {
-    pub fn run(
-        self,
+impl OutputTableOpts {
+    pub fn output_to_table<Table: OutputTable>(
+        &self,
+        mut table: Table,
         conf: &RunConfig,
         working_directory_base_dir: &Arc<WorkingDirectoryPoolBaseDir>,
         queues: &RunQueues,
-    ) -> Result<()> {
+    ) -> Result<Table::Output> {
         let Self {
-            terminal_table_opts,
             verbose,
             all,
             parameter_view,
@@ -156,65 +147,30 @@ impl ListOpts {
                 .to_string())
         };
 
-        let mut out = stdout().lock();
+        let lock = working_directory_base_dir.lock("for SubCommand::List show_queue")?;
 
-        let full_span;
         {
-            // Show a table with no data rows, for main titles
-            let titles: Vec<_> = {
-                let mut titles = vec![
-                    "Insertion_time",
-                    "S", // Status
-                    "Prio",
-                    "WD",
-                    "Reason",
-                ];
-                match parameter_view {
-                    ParameterView::Separated => {
-                        titles.extend_from_slice(&[
-                            "Commit_id",
-                            "Target_name",
-                            "Custom_parameters",
-                        ]);
-                    }
-                    ParameterView::Path { kind } => {
-                        titles.push(match kind.unwrap_or_default() {
-                            ParameterPathKind::Relative => "Output_path",
-                            ParameterPathKind::Full => "Output_path",
-                            ParameterPathKind::Url => "Output_URL",
-                        });
-                    }
-                }
+            let titles: Vec<_> = parameter_view
+                .titles()
+                .into_iter()
+                .map(|s| OutputTableTitle {
+                    text: Cow::Borrowed(s),
+                    span: 1,
+                })
+                .collect();
 
-                titles
-                    .into_iter()
-                    .map(|s| OutputTableTitle {
-                        text: Cow::Borrowed(s),
-                        span: 1,
-                    })
-                    .collect()
-            };
-            full_span = titles.len();
-
-            // Somehow have to move `out` in and out, `&mut out`
-            // would not satisfy IsTerminal.
-            let table = table_with_titles(
-                &titles,
+            let style =
                 // Note: in spite of `TERM=xterm-256color`, `watch
                 // --color` still only supports system colors
                 // 0..14!  (Can still not use `.rgb(10, 70, 140)`
                 // nor `.fg(Color::Fixed(30))`, and watch 4.0.2
                 // does not support `TERM=xterm-truecolor`.)
-                Some(Style::new().fg(Color::Fixed(4)).italic().bold()),
-                &terminal_table_opts,
-                out,
-                verbose,
-                parameter_view,
-            )?;
-            out = table.finish()?;
+                Some(Style::new().fg(Color::Fixed(4)).italic().bold());
+
+            table.write_title_row(&titles, style)?;
         }
 
-        let lock = working_directory_base_dir.lock("for SubCommand::List show_queue")?;
+        let full_span = table.num_columns();
 
         let now = SystemTime::now();
 
@@ -223,7 +179,11 @@ impl ListOpts {
         // `pool`, thus that doesn't even matter!
         let opt_current_working_directory = lock.read_current_working_directory()?;
 
-        let show_queue = |i: &str, run_queue: &RunQueue, is_extra_queue: bool, out| -> Result<_> {
+        let show_queue = |i: &str,
+                          run_queue: &RunQueue,
+                          is_extra_queue: bool,
+                          table: &mut Table|
+         -> Result<()> {
             let RunQueue {
                 file_name,
                 schedule_condition,
@@ -244,14 +204,11 @@ impl ListOpts {
                 .into(),
                 span: full_span,
             }];
-            let mut table = table_with_titles(
-                titles,
-                None,
-                &terminal_table_opts,
-                out,
-                verbose,
-                parameter_view,
-            )?;
+
+            // It's OK to call this multiple times on the same table,
+            // <th> are allowed in any table row; not sure about the
+            // semantics, though.
+            table.write_title_row(titles, None)?;
 
             // We want the last view_jobs_max_len items, one more
             // if that's the complete list (the additional entry
@@ -346,7 +303,7 @@ impl ListOpts {
                     let age = now.duration_since(system_time)?;
                     age > Duration::from_secs(3600 * 24)
                 };
-                let time = if verbose {
+                let time = if *verbose {
                     &*format!("{file_name} ({key})")
                 } else {
                     let datetime: DateTime<Local> = system_time.into();
@@ -389,50 +346,131 @@ impl ListOpts {
                         None
                     },
                 )?;
-                if verbose {
+                if *verbose {
                     let s = ron_to_string_pretty(&job)?;
                     table.print(&format!("{s}\n\n"))?;
                 }
 
                 row = row.recycle_vec();
             }
-            Ok(table.finish()?)
-        };
-
-        let width = get_terminal_width(1);
-        let bar_of = |c: &str| c.repeat(width);
-        let (thin_bar, thick_bar) = if *UNICODE_IS_FINE {
-            (bar_of("─"), bar_of("═"))
-        } else {
-            (bar_of("-"), bar_of("="))
+            Ok(())
         };
 
         for (i, run_queue) in queues.pipeline().iter().enumerate() {
-            println!("{thin_bar}");
-            out = show_queue(&(i + 1).to_string(), run_queue, false, out)?;
+            table.write_thin_bar()?;
+            show_queue(&(i + 1).to_string(), run_queue, false, &mut table)?;
         }
-        println!("{thick_bar}");
+        table.write_thick_bar()?;
         let perhaps_show_extra_queue = |queue_name: &str,
                                         queue_field: &str,
                                         run_queue: Option<&RunQueue>,
-                                        mut out|
-         -> Result<_> {
+                                        table: &mut Table|
+         -> Result<()> {
             if let Some(run_queue) = run_queue {
-                out = show_queue(queue_name, run_queue, true, out)?;
+                show_queue(queue_name, run_queue, true, table)?;
             } else {
-                println!("No {queue_field} is configured")
+                table.print(&format!("No {queue_field} is configured"))?;
             }
-            Ok(out)
+            Ok(())
         };
-        out = perhaps_show_extra_queue("done", "done_jobs_queue", queues.done_jobs_queue(), out)?;
-        println!("{thin_bar}");
-        _ = perhaps_show_extra_queue(
+        perhaps_show_extra_queue(
+            "done",
+            "done_jobs_queue",
+            queues.done_jobs_queue(),
+            &mut table,
+        )?;
+        table.write_thin_bar()?;
+        perhaps_show_extra_queue(
             "failures",
             "erroneous_jobs_queue",
             queues.erroneous_jobs_queue(),
-            out,
+            &mut table,
         )?;
-        println!("{thin_bar}");
+        table.write_thin_bar()?;
+
+        table.finish()
+    }
+}
+
+#[derive(Debug, Clone, clap::Args)]
+pub struct ListOpts {
+    #[clap(flatten)]
+    terminal_table_opts: TerminalTableOpts,
+
+    /// Print table as HTML
+    #[clap(long)]
+    html: bool,
+
+    #[clap(flatten)]
+    output_table_opts: OutputTableOpts,
+}
+
+fn make_terminal_table<O: io::Write + IsTerminal>(
+    terminal_table_opts: &TerminalTableOpts,
+    out: O,
+    verbose: bool,
+    view: ParameterView,
+) -> TerminalTable<O> {
+    let insertion_time_width = if verbose { 82 } else { 37 };
+    let widths =
+    //     t                    R pr WD reason commit target
+        &[insertion_time_width, 3, 6, 5, 25, 42, TARGET_NAME_WIDTH];
+    let widths = match view {
+        ParameterView::Separated => widths,
+        ParameterView::Path { kind: _ } => &widths[0..5],
+    };
+    TerminalTable::new(widths, terminal_table_opts.clone(), out)
+}
+
+impl ListOpts {
+    pub fn run(
+        self,
+        conf: &RunConfig,
+        working_directory_base_dir: &Arc<WorkingDirectoryPoolBaseDir>,
+        queues: &RunQueues,
+    ) -> Result<()> {
+        let Self {
+            terminal_table_opts,
+            output_table_opts,
+            html,
+        } = self;
+
+        if html {
+            let num_columns = output_table_opts.parameter_view.titles().len();
+            let html = HtmlAllocator::new(1000000, Arc::new("list"));
+            let table = HtmlTable::new(num_columns, &html);
+            let body = output_table_opts.output_to_table(
+                table,
+                conf,
+                working_directory_base_dir,
+                queues,
+            )?;
+            let doc = html.html(
+                [],
+                [html.head([], [])?, html.body([], html.table([], body)?)?],
+            )?;
+            let mut out = stdout().lock();
+            html.print_html_document(doc, &mut out)?;
+            out.flush()?;
+        } else {
+            let out = stdout().lock();
+            let table = make_terminal_table(
+                &terminal_table_opts,
+                out,
+                output_table_opts.verbose,
+                output_table_opts.parameter_view,
+            );
+
+            let mut out = output_table_opts.output_to_table(
+                table,
+                conf,
+                working_directory_base_dir,
+                queues,
+            )?;
+
+            out.flush()?;
+        }
+
         Ok(())
     }
 }

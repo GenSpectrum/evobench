@@ -47,7 +47,7 @@ impl ListAllOpts {
             &[38, 43, TARGET_NAME_WIDTH],
             terminal_table_opts,
             stdout().lock(),
-        )?;
+        );
         table.write_title_row(
             &[
                 OutputTableTitle {

@@ -8,12 +8,29 @@
 //! can print tabs or newlines (or on the terminal even spaces could
 //! make it ambiguous).
 
-use std::io::{BufWriter, IsTerminal, Write};
+use std::{
+    io::{BufWriter, IsTerminal, Write},
+    os::unix::ffi::OsStrExt,
+};
 
-use crate::output_table::{OutputTable, OutputTableTitle, Row};
+use crate::{
+    get_terminal_width::get_terminal_width,
+    output_table::{OutputTable, OutputTableTitle, Row},
+};
 use anyhow::{Result, anyhow, bail};
+use lazy_static::lazy_static;
 use strum_macros::EnumString;
 use yansi::{Paint, Style};
+
+lazy_static! {
+    static ref UNICODE_IS_FINE: bool = (|| -> Option<bool> {
+        let term = std::env::var_os("TERM")?;
+        let lang = std::env::var_os("LANG")?;
+        let lang = lang.to_str()?;
+        Some(term.as_bytes().starts_with(b"xterm") && lang.contains("UTF-8"))
+    })()
+    .unwrap_or(false);
+}
 
 #[derive(Debug, EnumString, PartialEq, Clone, Copy)]
 #[strum(serialize_all = "kebab_case")]
@@ -71,6 +88,8 @@ struct TerminalTableSettings {
 pub struct TerminalTable<O: Write + IsTerminal> {
     pub opts: TerminalTableOpts,
     settings: TerminalTableSettings,
+    thin_bar: String,
+    thick_bar: String,
     out: BufWriter<O>,
 }
 
@@ -87,11 +106,20 @@ impl<O: Write + IsTerminal> TerminalTable<O> {
     /// anyway. `widths` must include the spacing between the
     /// columns--i.e. make it 2-3 larger than the max. expected width
     /// of the data.
-    pub fn new(widths: &[usize], opts: TerminalTableOpts, out: O) -> Result<Self> {
+    pub fn new(widths: &[usize], opts: TerminalTableOpts, out: O) -> Self {
         let max_width = widths.iter().max().copied().unwrap_or(0);
         let padding = " ".repeat(max_width);
         let is_terminal = out.is_terminal();
-        let slf = Self {
+
+        let width = get_terminal_width(1);
+        let bar_of = |c: &str| c.repeat(width) + "\n";
+        let (thin_bar, thick_bar) = if *UNICODE_IS_FINE {
+            (bar_of("─"), bar_of("═"))
+        } else {
+            (bar_of("-"), bar_of("="))
+        };
+
+        Self {
             settings: TerminalTableSettings {
                 widths: widths.to_owned(),
                 padding,
@@ -99,8 +127,9 @@ impl<O: Write + IsTerminal> TerminalTable<O> {
             },
             opts,
             out: BufWriter::new(out),
-        };
-        Ok(slf)
+            thin_bar,
+            thick_bar,
+        }
     }
 }
 
@@ -169,6 +198,14 @@ impl<O: Write + IsTerminal> OutputTable for TerminalTable<O> {
                 None
             },
         )
+    }
+
+    fn write_thin_bar(&mut self) -> anyhow::Result<()> {
+        Ok(self.out.write_all(self.thin_bar.as_bytes())?)
+    }
+
+    fn write_thick_bar(&mut self) -> anyhow::Result<()> {
+        Ok(self.out.write_all(self.thick_bar.as_bytes())?)
     }
 
     fn print(&mut self, s: &str) -> Result<()> {

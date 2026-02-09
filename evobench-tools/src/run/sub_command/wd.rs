@@ -380,7 +380,7 @@ impl Wd {
                     None
                 } else {
                     let mut table =
-                        TerminalTable::new(&widths, terminal_table_opts, stdout().lock())?;
+                        TerminalTable::new(&widths, terminal_table_opts, stdout().lock());
                     table.write_title_row(&titles, None)?;
                     Some(table)
                 };
