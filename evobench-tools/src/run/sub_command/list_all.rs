@@ -2,6 +2,8 @@ use std::{borrow::Cow, fmt::Display, io::stdout, time::SystemTime};
 
 use anyhow::Result;
 
+use crate::output_table::terminal::{TerminalTable, TerminalTableOpts};
+use crate::output_table::{OutputTable, OutputTableTitle};
 use crate::{
     key::{BenchmarkingJobParameters, RunParameters},
     run::{
@@ -11,7 +13,6 @@ use crate::{
     },
     serde::date_and_time::system_time_to_rfc3339,
 };
-use crate::output_table::terminal::{TerminalTable, TerminalTableOpts, TerminalTableTitle};
 
 #[derive(Debug, Clone, clap::Args)]
 pub struct ListAllOpts {
@@ -42,29 +43,31 @@ impl ListAllOpts {
             }
         }
         flat_jobs.sort_by_key(|v| v.1);
-        let mut table = TerminalTable::start(
+        let mut table = TerminalTable::new(
             &[38, 43, TARGET_NAME_WIDTH],
+            terminal_table_opts,
+            stdout().lock(),
+        )?;
+        table.write_title_row(
             &[
-                TerminalTableTitle {
+                OutputTableTitle {
                     text: Cow::Borrowed("Insertion time"),
                     span: 1,
                 },
-                TerminalTableTitle {
+                OutputTableTitle {
                     text: Cow::Borrowed("Commit id"),
                     span: 1,
                 },
-                TerminalTableTitle {
+                OutputTableTitle {
                     text: Cow::Borrowed("Target name"),
                     span: 1,
                 },
-                TerminalTableTitle {
+                OutputTableTitle {
                     text: Cow::Borrowed("Custom parameters"),
                     span: 1,
                 },
             ],
             None,
-            terminal_table_opts,
-            stdout().lock(),
         )?;
         for (params, insertion_time) in flat_jobs {
             let t = system_time_to_rfc3339(insertion_time, None);

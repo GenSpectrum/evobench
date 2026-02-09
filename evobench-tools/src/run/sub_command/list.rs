@@ -1,18 +1,20 @@
 use std::{
     borrow::Cow,
     env,
-    io::{self, stdout, IsTerminal},
+    io::{self, IsTerminal, stdout},
     os::unix::ffi::OsStrExt,
     path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, SystemTime},
 };
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use chrono::{DateTime, Local};
 use lazy_static::lazy_static;
 use yansi::{Color, Style};
 
+use crate::output_table::terminal::{TerminalTable, TerminalTableOpts};
+use crate::output_table::{OutputTable, OutputTableTitle};
 use crate::{
     config_file::ron_to_string_pretty,
     get_terminal_width::get_terminal_width,
@@ -28,7 +30,6 @@ use crate::{
     },
     utillib::{arc::CloneArc, recycle::RecycleVec},
 };
-use crate::output_table::terminal::{TerminalTable, TerminalTableOpts, TerminalTableTitle};
 
 pub const TARGET_NAME_WIDTH: usize = 14;
 
@@ -91,14 +92,14 @@ pub struct ListOpts {
     parameter_view: ParameterView,
 }
 
-fn table_with_titles<'v, 's, O: io::Write + IsTerminal>(
-    titles: &'s [TerminalTableTitle],
+fn table_with_titles<O: io::Write + IsTerminal>(
+    titles: &[OutputTableTitle],
     style: Option<Style>,
     terminal_table_opts: &TerminalTableOpts,
     out: O,
     verbose: bool,
     view: ParameterView,
-) -> Result<TerminalTable<'v, 's, O>> {
+) -> Result<TerminalTable<O>> {
     let insertion_time_width = if verbose { 82 } else { 37 };
     let widths =
     //     t                    R pr WD reason commit target
@@ -107,7 +108,9 @@ fn table_with_titles<'v, 's, O: io::Write + IsTerminal>(
         ParameterView::Separated => widths,
         ParameterView::Path { kind: _ } => &widths[0..5],
     };
-    TerminalTable::start(widths, titles, style, terminal_table_opts.clone(), out)
+    let mut table = TerminalTable::new(widths, terminal_table_opts.clone(), out)?;
+    table.write_title_row(titles, style)?;
+    Ok(table)
 }
 
 impl ListOpts {
@@ -185,7 +188,7 @@ impl ListOpts {
 
                 titles
                     .into_iter()
-                    .map(|s| TerminalTableTitle {
+                    .map(|s| OutputTableTitle {
                         text: Cow::Borrowed(s),
                         span: 1,
                     })
@@ -233,7 +236,7 @@ impl ListOpts {
             // reason
             // "Commit id"
             // "Custom parameters"
-            let titles = &[TerminalTableTitle {
+            let titles = &[OutputTableTitle {
                 text: format!(
                     "{i}: queue {:?} ({schedule_condition}):",
                     file_name.as_str()

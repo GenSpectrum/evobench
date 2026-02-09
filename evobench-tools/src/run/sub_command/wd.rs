@@ -1,12 +1,14 @@
 use std::{borrow::Cow, ffi::OsStr, io::stdout, process::exit, sync::Arc, time::SystemTime};
 
-use anyhow::{anyhow, bail, Result};
-use chj_rustbin::duu::{bytes_to_gib_string, GetDirDiskUsage};
+use anyhow::{Result, anyhow, bail};
+use chj_rustbin::duu::{GetDirDiskUsage, bytes_to_gib_string};
 use chj_unix_util::polling_signals::PollingSignals;
 use cj_path_util::path_util::AppendToPath;
 use itertools::Itertools;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
+use crate::output_table::terminal::{TerminalTable, TerminalTableOpts};
+use crate::output_table::{OutputTable, OutputTableTitle};
 use crate::{
     ask::ask_yn,
     ctx, info,
@@ -27,15 +29,14 @@ use crate::{
         versioned_dataset_dir::VersionedDatasetDir,
         working_directory::{FetchedTags, Status, WorkingDirectory, WorkingDirectoryStatus},
         working_directory_pool::{
-            finish_parsing_working_directory_ids, WdAllowBareOpt, WorkingDirectoryId, WorkingDirectoryIdOpt,
-            WorkingDirectoryPoolBaseDir,
+            WdAllowBareOpt, WorkingDirectoryId, WorkingDirectoryIdOpt, WorkingDirectoryPoolBaseDir,
+            finish_parsing_working_directory_ids,
         },
     },
     serde::date_and_time::system_time_to_rfc3339,
     utillib::unix::ToExitCode,
     warn,
 };
-use crate::output_table::terminal::{TerminalTable, TerminalTableOpts, TerminalTableTitle};
 
 pub fn open_working_directory_change_signals(conf: &RunConfig) -> Result<PollingSignals> {
     let signals_path = conf.working_directory_change_signals_path();
@@ -357,7 +358,7 @@ impl Wd {
                     widths.pop();
                     widths
                 };
-                let titles: Vec<TerminalTableTitle> = {
+                let titles: Vec<OutputTableTitle> = {
                     let mut titles =
                         vec!["id", "status", "num_runs", "creation_timestamp", "last_use"];
                     if show_commit {
@@ -368,7 +369,7 @@ impl Wd {
                     }
                     titles
                         .into_iter()
-                        .map(|s| TerminalTableTitle {
+                        .map(|s| OutputTableTitle {
                             text: Cow::Borrowed(s),
                             span: 1,
                         })
@@ -378,13 +379,10 @@ impl Wd {
                 let table = if id_only {
                     None
                 } else {
-                    Some(TerminalTable::start(
-                        &widths,
-                        &titles,
-                        None,
-                        terminal_table_opts,
-                        stdout().lock(),
-                    )?)
+                    let mut table =
+                        TerminalTable::new(&widths, terminal_table_opts, stdout().lock())?;
+                    table.write_title_row(&titles, None)?;
+                    Some(table)
                 };
 
                 let all_ids: Vec<_> = {
