@@ -1,6 +1,6 @@
 use itertools::{EitherOrBoth, Itertools};
 use std::borrow::Cow;
-use yansi::Style;
+
 pub mod html;
 pub mod terminal;
 
@@ -81,6 +81,16 @@ impl<'r, 's, V: AsRef<str>> Row<'r, 's, V> {
     }
 }
 
+/// Abstract styling that works for both terminal and HTML
+/// output. `color`, if given, is a ANSI 256-color terminal color.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct OutputStyle {
+    pub faded: bool,
+    pub bold: bool,
+    pub italic: bool,
+    pub color: Option<u8>,
+}
+
 pub trait OutputTable {
     type Output;
 
@@ -92,19 +102,19 @@ pub trait OutputTable {
     fn write_row<V: AsRef<str>>(
         &mut self,
         row: Row<V>,
-        line_style: Option<Style>,
+        line_style: Option<OutputStyle>,
     ) -> anyhow::Result<()>;
 
     fn write_title_row(
         &mut self,
         titles: &[OutputTableTitle],
-        style: Option<Style>,
+        line_style: Option<OutputStyle>,
     ) -> anyhow::Result<()>;
 
     fn write_data_row<V: AsRef<str>>(
         &mut self,
         data: &[V],
-        line_style: Option<Style>,
+        line_style: Option<OutputStyle>,
     ) -> anyhow::Result<()> {
         self.write_row(Row::PlainStrings(data), line_style)
     }

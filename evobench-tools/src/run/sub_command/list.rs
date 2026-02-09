@@ -9,9 +9,8 @@ use std::{
 use ahtml::HtmlAllocator;
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Local};
-use yansi::{Color, Style};
 
-use crate::output_table::{OutputTable, OutputTableTitle};
+use crate::output_table::{OutputStyle, OutputTable, OutputTableTitle};
 use crate::output_table::{
     html::HtmlTable,
     terminal::{TerminalTable, TerminalTableOpts},
@@ -159,13 +158,12 @@ impl OutputTableOpts {
                 })
                 .collect();
 
-            let style =
-                // Note: in spite of `TERM=xterm-256color`, `watch
-                // --color` still only supports system colors
-                // 0..14!  (Can still not use `.rgb(10, 70, 140)`
-                // nor `.fg(Color::Fixed(30))`, and watch 4.0.2
-                // does not support `TERM=xterm-truecolor`.)
-                Some(Style::new().fg(Color::Fixed(4)).italic().bold());
+            let style = Some(OutputStyle {
+                bold: true,
+                italic: true,
+                color: Some(4),
+                ..Default::default()
+            });
 
             table.write_title_row(&titles, style)?;
         }
@@ -338,10 +336,10 @@ impl OutputTableOpts {
                 table.write_data_row(
                     &row,
                     if is_older {
-                        // Note: need `TERM=xterm-256color`
-                        // for `watch --color` to not turn
-                        // this color to black!
-                        Some(Style::new().bright_black())
+                        Some(OutputStyle {
+                            faded: true,
+                            ..Default::default()
+                        })
                     } else {
                         None
                     },

@@ -1,8 +1,57 @@
 use ahtml::{AVec, HtmlAllocator, Node, att, util::SoftPre};
 
-use crate::output_table::OutputTable;
+use crate::{
+    output_table::{OutputStyle, OutputTable},
+    warn,
+};
 
 use super::{OutputTableTitle, Row};
+
+impl OutputStyle {
+    fn to_css_style(self) -> String {
+        let OutputStyle {
+            faded,
+            bold,
+            italic,
+            color,
+        } = self;
+
+        let mut s = String::new();
+
+        if italic {
+            s.push_str("font-style: italic; ");
+        }
+        if bold {
+            s.push_str("font-weight: bold; ");
+        }
+
+        let mut htmlcolor: Option<&str> = None;
+        if let Some(col) = color {
+            match col {
+                4 => htmlcolor = Some("blue"),
+                _ => {
+                    warn!("ignoring unknown color code {col}");
+                }
+            }
+        }
+        if faded {
+            if htmlcolor.is_some() {
+                warn!(
+                    "both 'faded' and 'color' were given, ignoring 'faded' (should it shade color?)"
+                );
+            } else {
+                htmlcolor = Some("gray");
+            }
+        }
+        if let Some(htmlcol) = htmlcolor {
+            s.push_str("color: ");
+            s.push_str(htmlcol);
+            s.push_str("; ");
+        }
+
+        s
+    }
+}
 
 pub struct HtmlTable<'allocator> {
     num_columns: usize,
@@ -30,8 +79,9 @@ impl<'allocator> OutputTable for HtmlTable<'allocator> {
     fn write_row<V: AsRef<str>>(
         &mut self,
         row: Row<V>,
-        line_style: Option<yansi::Style>,
+        line_style: Option<OutputStyle>,
     ) -> anyhow::Result<()> {
+        let htmlstyle = line_style.map(OutputStyle::to_css_style);
         let html = self.table_body.allocator();
         let mut cells = html.new_vec();
         match row {
@@ -39,7 +89,13 @@ impl<'allocator> OutputTable for HtmlTable<'allocator> {
                 for item in items {
                     let OutputTableTitle { text, span } = item;
                     let s: &str = text.as_ref();
-                    cells.push(html.td([att("colspan", *span)], html.text(s)?)?)?;
+                    let text_node = html.text(s)?;
+                    let text = if let Some(style) = &htmlstyle {
+                        html.span([att("style", style)], text_node)?
+                    } else {
+                        text_node
+                    };
+                    cells.push(html.td([att("colspan", *span)], text)?)?;
                 }
             }
             Row::PlainStrings(items) => {
@@ -55,14 +111,21 @@ impl<'allocator> OutputTable for HtmlTable<'allocator> {
     fn write_title_row(
         &mut self,
         titles: &[OutputTableTitle],
-        style: Option<yansi::Style>,
+        line_style: Option<OutputStyle>,
     ) -> anyhow::Result<()> {
+        let htmlstyle = line_style.map(OutputStyle::to_css_style);
         let html = self.table_body.allocator();
         let mut cells = html.new_vec();
         for item in titles {
             let OutputTableTitle { text, span } = item;
             let s: &str = text.as_ref();
-            cells.push(html.th([att("colspan", *span)], html.text(s)?)?)?;
+            let text_node = html.text(s)?;
+            let text = if let Some(style) = &htmlstyle {
+                html.span([att("style", style)], text_node)?
+            } else {
+                text_node
+            };
+            cells.push(html.th([att("colspan", *span)], text)?)?;
         }
         self.table_body.push(html.tr([], cells)?)
     }

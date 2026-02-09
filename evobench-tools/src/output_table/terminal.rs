@@ -15,12 +15,46 @@ use std::{
 
 use crate::{
     get_terminal_width::get_terminal_width,
-    output_table::{OutputTable, OutputTableTitle, Row},
+    output_table::{OutputStyle, OutputTable, OutputTableTitle, Row},
 };
 use anyhow::{Result, anyhow, bail};
 use lazy_static::lazy_static;
 use strum_macros::EnumString;
-use yansi::{Paint, Style};
+use yansi::{Color, Paint, Style};
+
+impl From<OutputStyle> for Style {
+    fn from(value: OutputStyle) -> Self {
+        let OutputStyle {
+            faded,
+            bold,
+            italic,
+            color,
+        } = value;
+        let mut style = Style::new();
+        if faded {
+            // Note: needs `TERM=xterm-256color`
+            // for `watch --color` to not turn
+            // this color to black!
+            style = style.bright_black()
+        }
+        if bold {
+            style = style.bold()
+        }
+        if italic {
+            style = style.italic()
+        }
+        if let Some(col) = color {
+            // Note: in spite of `TERM=xterm-256color`, `watch
+            // --color` still only supports system colors
+            // 0..14!  (Can still not use `.rgb(10, 70, 140)`
+            // nor `.fg(Color::Fixed(30))`, and watch 4.0.2
+            // does not support `TERM=xterm-truecolor`.)
+            style = style.fg(Color::Fixed(col))
+        }
+
+        style
+    }
+}
 
 lazy_static! {
     static ref UNICODE_IS_FINE: bool = (|| -> Option<bool> {
@@ -142,7 +176,11 @@ impl<O: Write + IsTerminal> OutputTable for TerminalTable<O> {
 
     // Not making this an instance method so that we can give mut vs
     // non-mut parts independently
-    fn write_row<V: AsRef<str>>(&mut self, row: Row<V>, line_style: Option<Style>) -> Result<()> {
+    fn write_row<V: AsRef<str>>(
+        &mut self,
+        row: Row<V>,
+        line_style: Option<OutputStyle>,
+    ) -> Result<()> {
         let (expected_num_columns, row_num_columns) = (self.num_columns(), row.logical_len());
         if expected_num_columns != row_num_columns {
             bail!(
@@ -186,9 +224,16 @@ impl<O: Write + IsTerminal> OutputTable for TerminalTable<O> {
         Ok(())
     }
 
-    fn write_title_row(&mut self, titles: &[OutputTableTitle], style: Option<Style>) -> Result<()> {
-        const DEFAULT_STYLE: Style = Style::new().bold().italic();
-        let style = style.unwrap_or(DEFAULT_STYLE);
+    fn write_title_row(
+        &mut self,
+        titles: &[OutputTableTitle],
+        line_style: Option<OutputStyle>,
+    ) -> Result<()> {
+        let style = line_style.unwrap_or(OutputStyle {
+            bold: true,
+            italic: true,
+            ..Default::default()
+        });
 
         self.write_row(
             Row::<&str>::WithSpans(titles),
