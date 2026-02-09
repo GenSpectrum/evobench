@@ -110,17 +110,19 @@ impl<O: Write + IsTerminal> TerminalTable<O> {
 impl<O: Write + IsTerminal> OutputTable for TerminalTable<O> {
     type Output = O;
 
+    fn num_columns(&self) -> usize {
+        self.settings.widths.len() + 1
+    }
+
     // Not making this an instance method so that we can give mut vs
     // non-mut parts independently
     fn write_row<V: Display>(&mut self, row: Row<V>, line_style: Option<Style>) -> Result<()> {
-        let lens = (self.settings.widths.len(), row.logical_len());
-        let (l1, l2) = lens;
-        if l1
-            != l2
-                .checked_sub(1)
-                .ok_or_else(|| anyhow!("need at least 1 column"))?
-        {
-            bail!("widths.len != data.len - 1: {lens:?}")
+        let (expected_num_columns, row_num_columns) = (self.num_columns(), row.logical_len());
+        if expected_num_columns != row_num_columns {
+            bail!(
+                "the row contains {row_num_columns} instead of the expected \
+                 {expected_num_columns} columns"
+            )
         }
 
         let mut is_first = true;

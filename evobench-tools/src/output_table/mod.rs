@@ -85,6 +85,10 @@ impl<'r, 's, V: Display> Row<'r, 's, V> {
 pub trait OutputTable {
     type Output;
 
+    /// How many columns this table has (each row has the same number
+    /// of columns, although cells can span multiple columns)
+    fn num_columns(&self) -> usize;
+
     /// Normally, use `write_title_row` or `write_data_row` instead!
     fn write_row<V: Display>(
         &mut self,
