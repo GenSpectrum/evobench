@@ -1,5 +1,6 @@
 use std::{
     borrow::Cow,
+    cell::OnceCell,
     io::{self, IsTerminal, Write, stdout},
     path::{Path, PathBuf},
     sync::Arc,
@@ -10,11 +11,7 @@ use ahtml::HtmlAllocator;
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Local};
 
-use crate::output_table::{OutputStyle, OutputTable, OutputTableTitle};
-use crate::output_table::{
-    html::HtmlTable,
-    terminal::{TerminalTable, TerminalTableOpts},
-};
+use crate::output_table::{CellValue, OutputStyle, OutputTable, OutputTableTitle};
 use crate::{
     config_file::ron_to_string_pretty,
     key_val_fs::key_val::Entry,
@@ -28,6 +25,13 @@ use crate::{
         working_directory_pool::WorkingDirectoryPoolBaseDir,
     },
     utillib::{arc::CloneArc, recycle::RecycleVec},
+};
+use crate::{
+    output_table::{
+        html::HtmlTable,
+        terminal::{TerminalTable, TerminalTableOpts},
+    },
+    utillib::into_arc_path::IntoArcPath,
 };
 
 pub const TARGET_NAME_WIDTH: usize = 14;
@@ -101,6 +105,40 @@ pub struct OutputTableOpts {
     /// How to show the job parameters
     #[clap(subcommand)]
     parameter_view: ParameterView,
+}
+
+/// A text with optional link which is generated only when needed
+/// (i.e. for HTML output)
+#[derive(Clone, Copy)]
+struct WithUrlOnDemand<'s> {
+    text: &'s str,
+    // dyn because different columns might want different links
+    gen_url: Option<&'s dyn Fn() -> Option<String>>,
+}
+
+impl<'s> From<&'s str> for WithUrlOnDemand<'s> {
+    fn from(text: &'s str) -> Self {
+        WithUrlOnDemand {
+            text,
+            gen_url: None,
+        }
+    }
+}
+
+impl<'s> AsRef<str> for WithUrlOnDemand<'s> {
+    fn as_ref(&self) -> &str {
+        self.text
+    }
+}
+
+impl<'s> CellValue for WithUrlOnDemand<'s> {
+    fn perhaps_url(&self) -> Option<String> {
+        if let Some(gen_url) = self.gen_url {
+            gen_url()
+        } else {
+            None
+        }
+    }
 }
 
 impl OutputTableOpts {
@@ -244,7 +282,7 @@ impl OutputTableOpts {
                 shown_sorted_keys = &all_sorted_keys;
             }
 
-            let mut row = Vec::new();
+            let mut row: Vec<WithUrlOnDemand> = Vec::new();
             for entry in queue.resolve_entries(shown_sorted_keys.into()) {
                 let mut entry = entry?;
                 let file_name = get_filename(&entry)?;
@@ -307,18 +345,54 @@ impl OutputTableOpts {
                     let datetime: DateTime<Local> = system_time.into();
                     &*datetime.to_rfc3339()
                 };
-                row.extend_from_slice(&[time, locking, priority, &*wd, reason]);
+                row.extend_from_slice(&[
+                    time.into(),
+                    locking.into(),
+                    priority.into(),
+                    (&*wd).into(),
+                    reason.into(),
+                ]);
 
                 let commit_id;
                 let custom_parameters;
                 let key_dir;
                 let path;
+                let gen_url_cache: OnceCell<Option<String>> = OnceCell::new();
+                let gen_url = {
+                    || -> Option<String> {
+                        if let Some(url) = &conf.output_dir.url {
+                            gen_url_cache
+                                .get_or_init(|| {
+                                    let key_dir = KeyDir::from_base_target_params(
+                                        url.into_arc_path(),
+                                        job.public.command.target_name.clone(),
+                                        &job.public.run_parameters,
+                                    );
+                                    let url_as_path = key_dir.to_path();
+                                    Some(url_as_path.to_string_lossy().to_string())
+                                })
+                                .clone()
+                        } else {
+                            None
+                        }
+                    }
+                };
                 match parameter_view {
                     ParameterView::Separated => {
                         commit_id = job.public.run_parameters.commit_id.to_string();
                         let target_name = job.public.command.target_name.as_str();
                         custom_parameters = job.public.run_parameters.custom_parameters.to_string();
-                        row.extend_from_slice(&[&*commit_id, target_name, &*custom_parameters]);
+                        row.extend_from_slice(&[
+                            (&*commit_id).into(),
+                            WithUrlOnDemand {
+                                text: &target_name,
+                                gen_url: Some(&gen_url),
+                            },
+                            WithUrlOnDemand {
+                                text: &*custom_parameters,
+                                gen_url: Some(&gen_url),
+                            },
+                        ]);
                     }
                     ParameterView::Path { kind: _ } => {
                         let base = path_base
@@ -330,7 +404,10 @@ impl OutputTableOpts {
                             &job.public.run_parameters,
                         );
                         path = key_dir.to_path().to_string_lossy();
-                        row.push(&path);
+                        row.push(WithUrlOnDemand {
+                            text: &*path,
+                            gen_url: Some(&gen_url),
+                        });
                     }
                 }
                 table.write_data_row(

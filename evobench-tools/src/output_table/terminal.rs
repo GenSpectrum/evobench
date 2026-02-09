@@ -15,7 +15,7 @@ use std::{
 
 use crate::{
     get_terminal_width::get_terminal_width,
-    output_table::{OutputStyle, OutputTable, OutputTableTitle, Row},
+    output_table::{CellValue, OutputStyle, OutputTable, OutputTableTitle, Row},
 };
 use anyhow::{Result, anyhow, bail};
 use lazy_static::lazy_static;
@@ -176,7 +176,7 @@ impl<O: Write + IsTerminal> OutputTable for TerminalTable<O> {
 
     // Not making this an instance method so that we can give mut vs
     // non-mut parts independently
-    fn write_row<V: AsRef<str>>(
+    fn write_row<V: CellValue>(
         &mut self,
         row: Row<V>,
         line_style: Option<OutputStyle>,

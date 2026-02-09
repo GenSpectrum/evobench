@@ -3,7 +3,7 @@ use std::{borrow::Cow, io::stdout, time::SystemTime};
 use anyhow::Result;
 
 use crate::output_table::terminal::{TerminalTable, TerminalTableOpts};
-use crate::output_table::{OutputTable, OutputTableTitle};
+use crate::output_table::{CellValue, OutputTable, OutputTableTitle};
 use crate::{
     key::{BenchmarkingJobParameters, RunParameters},
     run::{
@@ -87,7 +87,7 @@ impl ListAllOpts {
                 pre_exec_bash_code: _,
             } = &*command;
 
-            let values: &[&dyn AsRef<str>] = &[
+            let values: &[&dyn CellValue] = &[
                 &t,
                 &commit_id.to_string(),
                 &target_name.as_str(),

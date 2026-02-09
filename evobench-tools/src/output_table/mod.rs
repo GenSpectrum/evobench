@@ -12,12 +12,41 @@ pub struct OutputTableTitle<'s> {
     pub span: usize,
 }
 
-pub enum Row<'r, 's, V: AsRef<str>> {
+pub trait CellValue: AsRef<str> {
+    /// If appropriate for the type and instance, return a URL value
+    fn perhaps_url(&self) -> Option<String>;
+}
+
+impl CellValue for &str {
+    fn perhaps_url(&self) -> Option<String> {
+        None
+    }
+}
+impl CellValue for String {
+    fn perhaps_url(&self) -> Option<String> {
+        None
+    }
+}
+impl<'t> CellValue for Cow<'t, str> {
+    fn perhaps_url(&self) -> Option<String> {
+        None
+    }
+}
+// Hmm huh.
+impl<'t> CellValue for &dyn CellValue {
+    fn perhaps_url(&self) -> Option<String> {
+        (*self).perhaps_url()
+    }
+}
+
+/// Either something that can have spans; or something that can have
+/// URLs. Assumes that never want to have both.
+pub enum Row<'r, 's, V: CellValue> {
     WithSpans(&'r [OutputTableTitle<'s>]),
     PlainStrings(&'r [V]),
 }
 
-impl<'r, 's, V: AsRef<str>> Row<'r, 's, V> {
+impl<'r, 's, V: CellValue> Row<'r, 's, V> {
     /// How many columns this Row covers (if it has entries that span
     /// multiple columns, all of those are added)
     fn logical_len(&self) -> usize {
@@ -99,7 +128,7 @@ pub trait OutputTable {
     fn num_columns(&self) -> usize;
 
     /// Normally, use `write_title_row` or `write_data_row` instead!
-    fn write_row<V: AsRef<str>>(
+    fn write_row<V: CellValue>(
         &mut self,
         row: Row<V>,
         line_style: Option<OutputStyle>,
@@ -111,7 +140,7 @@ pub trait OutputTable {
         line_style: Option<OutputStyle>,
     ) -> anyhow::Result<()>;
 
-    fn write_data_row<V: AsRef<str>>(
+    fn write_data_row<V: CellValue>(
         &mut self,
         data: &[V],
         line_style: Option<OutputStyle>,

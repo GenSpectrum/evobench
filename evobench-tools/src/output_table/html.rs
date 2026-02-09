@@ -1,7 +1,7 @@
 use ahtml::{AVec, HtmlAllocator, Node, att, util::SoftPre};
 
 use crate::{
-    output_table::{OutputStyle, OutputTable},
+    output_table::{CellValue, OutputStyle, OutputTable},
     warn,
 };
 
@@ -76,7 +76,7 @@ impl<'allocator> OutputTable for HtmlTable<'allocator> {
         self.num_columns
     }
 
-    fn write_row<V: AsRef<str>>(
+    fn write_row<V: CellValue>(
         &mut self,
         row: Row<V>,
         line_style: Option<OutputStyle>,
@@ -101,7 +101,13 @@ impl<'allocator> OutputTable for HtmlTable<'allocator> {
             Row::PlainStrings(items) => {
                 for item in items {
                     let s: &str = item.as_ref();
-                    cells.push(html.td([], html.text(s)?)?)?;
+                    let text = html.text(s)?;
+                    let content = if let Some(url) = item.perhaps_url() {
+                        html.a([att("href", url)], text)?
+                    } else {
+                        text
+                    };
+                    cells.push(html.td([], content)?)?;
                 }
             }
         }
