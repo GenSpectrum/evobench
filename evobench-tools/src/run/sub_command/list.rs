@@ -356,8 +356,14 @@ impl OutputTableOpts {
             Ok(())
         };
 
+        let mut first = true;
         for (i, run_queue) in queues.pipeline().iter().enumerate() {
-            table.write_thin_bar()?;
+            if first {
+                table.write_thick_bar()?;
+                first = false;
+            } else {
+                table.write_thin_bar()?;
+            }
             show_queue(&(i + 1).to_string(), run_queue, false, &mut table)?;
         }
         table.write_thick_bar()?;
