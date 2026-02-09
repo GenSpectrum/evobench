@@ -555,7 +555,7 @@ impl WorkingDirectoryPool {
         self.state.all_entries.get_mut(&working_directory_id)
     }
 
-    pub fn base_dir(&self) -> &WorkingDirectoryPoolBaseDir {
+    pub fn base_dir(&self) -> &Arc<WorkingDirectoryPoolBaseDir> {
         &self.context.base_dir
     }
 

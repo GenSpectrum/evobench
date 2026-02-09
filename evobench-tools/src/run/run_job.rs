@@ -31,10 +31,11 @@ use crate::{
     run::{
         bench_tmp_dir::bench_tmp_dir,
         benchmarking_job::BenchmarkingJob,
-        config::RunConfig,
+        config::{RunConfig, RunConfigBundle},
         dataset_dir_env_var::dataset_dir_for,
         env_vars::assert_evobench_env_var,
         output_directory::{
+            list::regenerate_list,
             post_process::compress_file_as,
             structure::{KeyDir, ReplaceBasePath, RunDir, ToPath},
         },
@@ -90,7 +91,7 @@ pub struct JobRunner<'pool> {
     /// The timestamp for this run.
     pub timestamp: DateTimeWithOffset,
     // Separate lifetime?
-    pub run_config: &'pool RunConfig,
+    pub run_config_bundle: &'pool RunConfigBundle,
     // ditto?
     pub versioned_dataset_dir: &'pool VersionedDatasetDir,
 }
@@ -99,6 +100,10 @@ impl<'pool> JobRunner<'pool> {
     pub fn timestamp_local(&self) -> DateTime<Local> {
         // (A little bit costly.)
         self.timestamp.to_datetime().into()
+    }
+
+    pub fn run_config(&self) -> &'pool RunConfig {
+        &self.run_config_bundle.run_config
     }
 }
 
@@ -177,6 +182,8 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
         let _ = remove_file(evobench_log.path());
         let _ = remove_file(bench_output_log.path());
 
+        let conf = self.job_runner.run_config();
+
         let (log_extraction, cleanup) = self
             .job_runner
             .working_directory_pool
@@ -205,10 +212,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                     let working_directory = working_directory.into_inner().expect("not removed");
 
                     let dataset_dir = dataset_dir_for(
-                        self.job_runner
-                            .run_config
-                            .versioned_datasets_base_dir
-                            .as_deref(),
+                        conf.versioned_datasets_base_dir.as_deref(),
                         &custom_parameters,
                         self.job_runner.versioned_dataset_dir,
                         &working_directory.git_working_dir,
@@ -219,7 +223,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                     let commit_tags = get_commit_tags(
                         &working_directory,
                         &commit_id,
-                        &self.job_runner.run_config.commit_tags_regex,
+                        &conf.commit_tags_regex,
                         fetched_tags,
                     )?;
 
@@ -232,7 +236,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                     } = command.deref();
 
                     let mut command = pre_exec_bash_code
-                        .to_run_with_pre_exec(&self.job_runner.run_config)
+                        .to_run_with_pre_exec(conf)
                         .command(command, arguments);
 
                     let dir = working_directory
@@ -385,7 +389,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             // know what the context is, and allows to go to the
             // parent directory--hence redirect into the run dir, not
             // key dir.  -- Also see "latest" above.
-            if let Some(output_dir_url) = &self.job_runner.run_config.output_dir.url {
+            if let Some(output_dir_url) = &self.job_runner.run_config().output_dir.url {
                 let latest_dir = self.job_runner.output_base_dir.join("latest-redir");
                 let subdir = latest_dir.join(self.job_runner.timestamp.as_str());
                 create_dir_all(&subdir).map_err(ctx!("create_dir_all {subdir:?}"))?;
@@ -454,11 +458,19 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                     // log extraction:
                     target_name,
                     standard_log_tempfile.path(),
-                    &self.job_runner.run_config,
+                    &self.job_runner.run_config(),
                     // Do not omit generation of evobench.log stats
                     false,
                 )?;
             }
+
+            // Update list/index.html already before the costly
+            // summaries generation
+            regenerate_list(
+                &self.job_runner.run_config_bundle,
+                Some(self.job_runner.working_directory_pool.base_dir()),
+                Some(self.job_data.run_queues_data.run_queues()),
+            )?;
 
             // Now that the results for the run are in the right place, we
             // can update the summaries for the key

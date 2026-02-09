@@ -454,6 +454,11 @@ impl RunQueues {
 }
 
 impl<'run_queues> RunQueuesData<'run_queues> {
+    /// For things to be run from e.g. run_job (e.g. `regenerate_list` function)
+    pub fn run_queues(&self) -> &'run_queues RunQueues {
+        self.run_queues
+    }
+
     /// Values are (index in pipeline_data, index within its queue_data)
     pub fn jobs_by_commit_id(&self, commit_id: &GitHash) -> &[(usize, usize)] {
         self.jobs_by_commit_id

@@ -353,7 +353,7 @@ fn run_queues<'ce>(
                 working_directory_pool: &mut working_directory_pool,
                 output_base_dir: &run_config.output_dir.path,
                 timestamp: DateTimeWithOffset::now(None),
-                run_config,
+                run_config_bundle: &run_config_bundle,
                 versioned_dataset_dir: &versioned_dataset_dir,
             },
             &mut run_context,
