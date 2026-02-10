@@ -7,6 +7,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use chj_unix_util::polling_signals::PollingSignalsSender;
 use chrono::{DateTime, Local};
 use genawaiter::rc::Gen;
 use ouroboros::self_referencing;
@@ -311,8 +312,12 @@ fn keyvalerror_from_lock_error<V>(
 }
 
 impl<V: DeserializeOwned + Serialize + 'static> Queue<V> {
-    pub fn open(base_dir: impl AsRef<Path>, config: KeyValConfig) -> Result<Self, KeyValError> {
-        Ok(Queue(KeyVal::open(base_dir, config)?))
+    pub fn open(
+        base_dir: impl AsRef<Path>,
+        config: KeyValConfig,
+        signal_change: Option<PollingSignalsSender>,
+    ) -> Result<Self, KeyValError> {
+        Ok(Queue(KeyVal::open(base_dir, config, signal_change)?))
     }
 
     /// Give access to the underlying key-value database. WARNING: it

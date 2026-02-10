@@ -4,11 +4,11 @@ use anyhow::Result;
 
 use crate::output_table::terminal::{TerminalTable, TerminalTableOpts};
 use crate::output_table::{CellValue, OutputTable, OutputTableTitle};
+use crate::run::config::ShareableConfig;
 use crate::{
     key::{BenchmarkingJobParameters, RunParameters},
     run::{
-        config::{BenchmarkingCommand, RunConfigBundle},
-        insert_jobs::open_already_inserted,
+        config::BenchmarkingCommand, insert_jobs::open_already_inserted,
         sub_command::list::TARGET_NAME_WIDTH,
     },
     serde::date_and_time::system_time_to_rfc3339,
@@ -21,7 +21,7 @@ pub struct ListAllOpts {
 }
 
 impl ListAllOpts {
-    pub fn run(self, run_config_bundle: &RunConfigBundle) -> Result<()> {
+    pub fn run(self, run_config_bundle: &ShareableConfig) -> Result<()> {
         let Self {
             terminal_table_opts,
         } = self;

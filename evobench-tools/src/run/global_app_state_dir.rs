@@ -37,6 +37,10 @@ impl GlobalAppStateDir {
         self.subdir("queues")
     }
 
+    pub fn run_queue_signal_change_path(&self) -> PathBuf {
+        self.base_dir.join(".queues_change.signals")
+    }
+
     /// The pool of project clones which are used for building and benchmarking
     pub fn working_directory_pool_base(&self) -> Result<PathBuf> {
         self.subdir("working_directory_pool")

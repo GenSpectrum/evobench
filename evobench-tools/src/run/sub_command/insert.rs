@@ -17,7 +17,7 @@ use crate::{
             BenchmarkingJob, BenchmarkingJobOpts, BenchmarkingJobReasonOpt,
             BenchmarkingJobSettingsOpts,
         },
-        config::{JobTemplate, RunConfigBundle},
+        config::{JobTemplate, RunConfigBundle, ShareableConfig},
         insert_jobs::{DryRunOpt, ForceOpt, QuietOpt, insert_jobs},
         polling_pool::PollingPool,
         run_queues::RunQueues,
@@ -69,7 +69,7 @@ impl LocalOrRemote {
         }
     }
 
-    pub fn load(self, run_config_bundle: &RunConfigBundle) -> Result<LocalOrRemoteGitWorkingDir> {
+    pub fn load(self, run_config_bundle: &ShareableConfig) -> Result<LocalOrRemoteGitWorkingDir> {
         match self {
             LocalOrRemote::Local => {
                 let git_working_dir = GitWorkingDir {
@@ -322,7 +322,7 @@ pub enum Insert {
 }
 
 fn insert_templates_with_references(
-    run_config_bundle: &RunConfigBundle,
+    run_config_bundle: &ShareableConfig,
     insert_opts: InsertOpts,
     queues: &RunQueues,
     mut gwd: LocalOrRemoteGitWorkingDir,
@@ -376,7 +376,7 @@ impl Insert {
         run_config_bundle: &RunConfigBundle,
         queues: &RunQueues,
     ) -> Result<usize> {
-        let conf = &run_config_bundle.run_config;
+        let conf = &run_config_bundle.shareable.run_config;
 
         match self {
             Insert::Templates {
@@ -403,9 +403,9 @@ impl Insert {
                     .reason
                     .get_or_insert(format!("T {job_template_lists_name}"));
 
-                let gwd = local_or_remote.load(run_config_bundle)?;
+                let gwd = local_or_remote.load(&run_config_bundle.shareable)?;
                 insert_templates_with_references(
-                    run_config_bundle,
+                    &run_config_bundle.shareable,
                     insert_opts,
                     queues,
                     gwd,
@@ -440,9 +440,9 @@ impl Insert {
                     .reason
                     .get_or_insert(format!("{} {branch_name}", local_or_remote.as_char()));
 
-                let gwd = local_or_remote.load(run_config_bundle)?;
+                let gwd = local_or_remote.load(&run_config_bundle.shareable)?;
                 insert_templates_with_references(
-                    run_config_bundle,
+                    &run_config_bundle.shareable,
                     insert_opts,
                     queues,
                     gwd,
@@ -456,7 +456,7 @@ impl Insert {
                 branch_name,
                 more_reference_names,
             } => {
-                let mut gwd = local_or_remote.load(run_config_bundle)?;
+                let mut gwd = local_or_remote.load(&run_config_bundle.shareable)?;
                 let branch_name = if let Some(branch_name) = branch_name {
                     branch_name
                 } else {
@@ -489,7 +489,7 @@ impl Insert {
                     .get_or_insert(format!("{} {branch_name}", local_or_remote.as_char()));
 
                 insert_templates_with_references(
-                    run_config_bundle,
+                    &run_config_bundle.shareable,
                     insert_opts,
                     queues,
                     gwd,
@@ -533,7 +533,7 @@ impl Insert {
 
                 insert_jobs(
                     benchmarking_jobs,
-                    run_config_bundle,
+                    &run_config_bundle.shareable,
                     dry_run_opt,
                     force_opt,
                     quiet_opt,

@@ -7,7 +7,7 @@ use crate::{
     config_file::ron_to_string_pretty,
     key::{BenchmarkingJobParameters, BenchmarkingJobParametersHash},
     key_val_fs::key_val::{KeyVal, KeyValSync},
-    run::{config::RunConfigBundle, sub_command::open_polling_pool},
+    run::{config::ShareableConfig, sub_command::open_polling_pool},
     serde::date_and_time::system_time_to_rfc3339,
 };
 
@@ -16,6 +16,7 @@ use super::{
     run_queues::RunQueues,
 };
 
+/// Open the table of the already-inserted jobs
 pub fn open_already_inserted(
     global_app_state_dir: &GlobalAppStateDir,
 ) -> Result<KeyVal<BenchmarkingJobParametersHash, (BenchmarkingJobParameters, Vec<SystemTime>)>> {
@@ -26,6 +27,9 @@ pub fn open_already_inserted(
             // already created anyway
             create_dir_if_not_exists: false,
         },
+        // Do not currently send signals for that, nothing is
+        // currently listening.
+        None,
     )?)
 }
 
@@ -64,7 +68,7 @@ pub struct DryRunOpt {
 /// inserting any jobs.
 pub fn insert_jobs(
     benchmarking_jobs: Vec<BenchmarkingJob>,
-    config: &RunConfigBundle,
+    config: &ShareableConfig,
     dry_run_opt: DryRunOpt,
     force_opt: ForceOpt,
     quiet_opt: QuietOpt,

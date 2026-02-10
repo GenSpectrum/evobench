@@ -7,6 +7,7 @@ use std::{
 };
 
 use anyhow::{Result, bail};
+use chj_unix_util::polling_signals::PollingSignalsSender;
 use chrono::{DateTime, Local};
 use cj_path_util::path_util::AppendToPath;
 use genawaiter::rc::Gen;
@@ -387,6 +388,7 @@ impl RunQueues {
         config: Arc<QueuesConfig>,
         create_dirs_if_not_exist: bool,
         global_app_state_dir: &GlobalAppStateDir,
+        signal_change: Option<PollingSignalsSender>,
     ) -> Result<Self> {
         let run_queues_basedir =
             config.run_queues_basedir(create_dirs_if_not_exist, global_app_state_dir)?;
@@ -395,6 +397,7 @@ impl RunQueues {
             (filename, schedule_condition): &'this (ProperFilename, ScheduleCondition),
             run_queues_basedir: &PathBuf,
             create_dirs_if_not_exist: bool,
+            signal_change: Option<PollingSignalsSender>,
         ) -> Result<RunQueue<'this>> {
             let run_queue_path = (&run_queues_basedir).append(filename.as_str());
             Ok(RunQueue {
@@ -406,6 +409,7 @@ impl RunQueues {
                         sync: KeyValSync::All,
                         create_dir_if_not_exists: create_dirs_if_not_exist,
                     },
+                    signal_change,
                 )?,
             })
         }
@@ -417,7 +421,14 @@ impl RunQueues {
                 let queues = config
                     .pipeline
                     .iter()
-                    .map(|cfg| make_run_queue(cfg, &run_queues_basedir, create_dirs_if_not_exist))
+                    .map(|cfg| {
+                        make_run_queue(
+                            cfg,
+                            &run_queues_basedir,
+                            create_dirs_if_not_exist,
+                            signal_change.clone(),
+                        )
+                    })
                     .collect::<Result<_>>()?;
                 Ok(queues)
             },
@@ -428,6 +439,7 @@ impl RunQueues {
                         cfg,
                         &run_queues_basedir,
                         create_dirs_if_not_exist,
+                        signal_change.clone(),
                     )?))
                 } else {
                     Ok(None)
@@ -440,6 +452,7 @@ impl RunQueues {
                         cfg,
                         &run_queues_basedir,
                         create_dirs_if_not_exist,
+                        signal_change.clone(),
                     )?))
                 } else {
                     Ok(None)

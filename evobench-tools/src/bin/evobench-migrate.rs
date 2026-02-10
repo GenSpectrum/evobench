@@ -11,12 +11,9 @@ use evobench_tools::{
         global_app_state_dir::GlobalAppStateDir,
         insert_jobs::open_already_inserted,
         migrate::{migrate_already_inserted, migrate_queue},
-        run_queues::RunQueues,
+        open_run_queues::open_run_queues,
     },
-    utillib::{
-        arc::CloneArc,
-        logging::{LogLevelOpts, set_log_level},
-    },
+    utillib::logging::{LogLevelOpts, set_log_level},
 };
 
 #[derive(clap::Parser, Debug)]
@@ -68,15 +65,10 @@ fn main() -> Result<()> {
                 |msg| bail!("can't load config: {msg}"),
                 GlobalAppStateDir::new()?,
             )?;
-            let run_config = &run_config_bundle.run_config;
 
             info!("migrating the queues");
             {
-                let queues = RunQueues::open(
-                    run_config.queues.clone_arc(),
-                    true,
-                    &run_config_bundle.global_app_state_dir,
-                )?;
+                let queues = open_run_queues(&run_config_bundle.shareable)?;
                 for queue in queues.all_queues() {
                     info!("migrating queue {:?}", queue.file_name.as_str());
                     let n = migrate_queue(queue)?;
@@ -85,7 +77,8 @@ fn main() -> Result<()> {
             }
 
             info!("migrating the already_inserted table");
-            let already_inserted = open_already_inserted(&run_config_bundle.global_app_state_dir)?;
+            let already_inserted =
+                open_already_inserted(&run_config_bundle.shareable.global_app_state_dir)?;
             let n = migrate_already_inserted(&already_inserted)?;
             info!("migrated {n} items in the already_inserted table");
         }

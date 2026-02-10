@@ -41,6 +41,7 @@ use evobench_tools::{
         config::{RunConfig, RunConfigBundle, RunConfigOpts},
         global_app_state_dir::GlobalAppStateDir,
         insert_jobs::{DryRunOpt, ForceOpt, QuietOpt, insert_jobs},
+        open_run_queues::open_run_queues,
         output_directory::structure::OutputSubdir,
         run_context::RunContext,
         run_job::JobRunner,
@@ -267,15 +268,14 @@ fn run_queues<'ce>(
     once: bool,
     daemon_check_exit: Option<CheckExit<'ce>>,
 ) -> Result<RunResult> {
-    let _run_lock = get_run_lock(&run_config_bundle.run_config)?;
+    let conf = &run_config_bundle.shareable.run_config;
+    let _run_lock = get_run_lock(conf)?;
 
     let mut run_context = RunContext::default();
     let versioned_dataset_dir = VersionedDatasetDir::new();
 
     // Test-run
-    if let Some(versioned_dataset_base_dir) =
-        &run_config_bundle.run_config.versioned_datasets_base_dir
-    {
+    if let Some(versioned_dataset_base_dir) = &conf.versioned_datasets_base_dir {
         debug!("Test-running versioned dataset search");
 
         let working_directory_id;
@@ -338,22 +338,19 @@ fn run_queues<'ce>(
         working_directory_pool.working_directory_cleanup(token)?;
     }
 
-    let mut working_directory_change_signals =
-        open_working_directory_change_signals(&run_config_bundle.run_config)?;
+    let mut working_directory_change_signals = open_working_directory_change_signals(conf)?;
 
     loop {
         // XX handle errors without exiting? Or do that above
-
-        let run_config = &run_config_bundle.run_config;
 
         let queues_data = queues.data()?;
 
         let ran = queues_data.run_next_job(
             JobRunner {
                 working_directory_pool: &mut working_directory_pool,
-                output_base_dir: &run_config.output_dir.path,
+                output_base_dir: &conf.output_dir.path,
                 timestamp: DateTimeWithOffset::now(None),
-                run_config_bundle: &run_config_bundle,
+                run_config_bundle: &run_config_bundle.shareable,
                 versioned_dataset_dir: &versioned_dataset_dir,
             },
             &mut run_context,
@@ -375,7 +372,6 @@ fn run_queues<'ce>(
         // Do we need to re-initialize the working directory pool?
         if working_directory_change_signals.get_number_of_signals() > 0 {
             info!("the working directory pool was updated outside the app, reload it");
-            let conf = &run_config_bundle.run_config;
             working_directory_pool =
                 open_working_directory_pool(conf, working_directory_base_dir.clone_arc(), false)?
                     .into_inner();
@@ -495,26 +491,20 @@ fn run() -> Result<Option<ExecutionResult>> {
         GlobalAppStateDir::new()?,
     )?;
 
-    let conf = &run_config_bundle.run_config;
+    let conf = &run_config_bundle.shareable.run_config;
 
     let working_directory_base_dir = Arc::new(WorkingDirectoryPoolBaseDir::new(
         conf.working_directory_pool.base_dir.clone(),
         &|| {
             run_config_bundle
+                .shareable
                 .global_app_state_dir
                 .working_directory_pool_base()
         },
     )?);
 
-    let open_queues = |run_config_bundle: &RunConfigBundle| -> Result<RunQueues> {
-        RunQueues::open(
-            run_config_bundle.run_config.queues.clone_arc(),
-            true,
-            &run_config_bundle.global_app_state_dir,
-        )
-    };
     let mut queues = lazyresult! {
-        open_queues(&run_config_bundle)
+        open_run_queues(&run_config_bundle.shareable)
     };
 
     match subcommand {
@@ -526,7 +516,7 @@ fn run() -> Result<Option<ExecutionResult>> {
         }
 
         SubCommand::ListAll { opts } => {
-            opts.run(&run_config_bundle)?;
+            opts.run(&run_config_bundle.shareable)?;
             Ok(None)
         }
 
@@ -554,7 +544,7 @@ fn run() -> Result<Option<ExecutionResult>> {
             let mut try_run_poll = |daemon_check_exit: Option<CheckExit>| -> Result<bool> {
                 loop {
                     let (commits, non_resolving) = {
-                        let mut polling_pool = open_polling_pool(&run_config_bundle)?;
+                        let mut polling_pool = open_polling_pool(&run_config_bundle.shareable)?;
 
                         let working_directory_id = polling_pool.updated_working_dir()?;
                         polling_pool.resolve_branch_names(
@@ -585,7 +575,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                     let queues = queues.force()?;
                     let n = insert_jobs(
                         benchmarking_jobs,
-                        &run_config_bundle,
+                        &run_config_bundle.shareable,
                         dry_run_opt.clone(),
                         ForceOpt { force },
                         // Must use quiet so that it can try to insert *all*
@@ -670,8 +660,7 @@ fn run() -> Result<Option<ExecutionResult>> {
             match mode {
                 RunMode::One { false_if_none } => {
                     let queues = queues.into_value()?;
-                    let working_directory_pool =
-                        open_working_directory_pool(&run_config_bundle.run_config)?;
+                    let working_directory_pool = open_working_directory_pool(conf)?;
                     match run_queues(
                         run_config_bundle,
                         queues,
@@ -701,9 +690,9 @@ fn run() -> Result<Option<ExecutionResult>> {
                     let config_file = run_config_bundle.config_file.clone_arc();
                     // The code that runs in the daemon and executes the jobs
                     let inner_run = |daemon_check_exit: CheckExit| -> Result<()> {
-                        let queues = open_queues(&run_config_bundle)?;
-                        let working_directory_pool =
-                            open_working_directory_pool(&run_config_bundle.run_config)?;
+                        let queues = open_run_queues(&run_config_bundle.shareable)?;
+                        let conf = &run_config_bundle.shareable.run_config;
+                        let working_directory_pool = open_working_directory_pool(conf)?;
                         run_queues(
                             run_config_bundle,
                             queues,
@@ -817,7 +806,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                 &mut out,
                 "               Queues: {:?}",
                 conf.queues
-                    .run_queues_basedir(false, &run_config_bundle.global_app_state_dir)?
+                    .run_queues_basedir(false, &run_config_bundle.shareable.global_app_state_dir)?
             )?;
             writeln!(
                 &mut out,

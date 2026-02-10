@@ -143,6 +143,8 @@ fn main() -> Result<()> {
                 create_dir_if_not_exists,
                 ..KeyValConfig::default()
             },
+            // No need for signalling?
+            None,
         )?)
     };
     match subcommand {

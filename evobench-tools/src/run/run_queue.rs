@@ -6,7 +6,7 @@ use crate::{
     config_file::ron_to_string_pretty,
     ctx, info,
     key_val_fs::{
-        key_val::KeyValError,
+        key_val::{KeyVal, KeyValError},
         queue::{Queue, QueueGetItemOptions, QueueItem, QueueIterationOptions, TimeKey},
     },
     run::{benchmarking_job::BenchmarkingJobState, run_job::JobRunnerWithJob},
@@ -82,6 +82,13 @@ pub enum TerminationReason {
 impl<'conf> RunQueue<'conf> {
     pub fn push_front(&self, job: &BenchmarkingJob) -> Result<(), KeyValError> {
         self.queue.push_front(job)
+    }
+
+    // XX OK? see warning on queue.key_val() method! -- and does that
+    // allow to mutate the queue, bypassing the use of
+    // signal_queues_change?
+    pub fn key_val(&self) -> &KeyVal<TimeKey, BenchmarkingJob> {
+        self.queue.key_val()
     }
 
     pub fn data<'run_queue>(&'run_queue self) -> Result<RunQueueData<'conf, 'run_queue>> {

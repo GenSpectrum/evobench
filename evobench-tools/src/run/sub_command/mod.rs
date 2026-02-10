@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 
 use crate::run::{
-    config::{RunConfig, RunConfigBundle},
+    config::{RunConfig, ShareableConfig},
     polling_pool::PollingPool,
     working_directory_pool::{
         WorkingDirectoryPool, WorkingDirectoryPoolAndLock, WorkingDirectoryPoolBaseDir,
@@ -53,7 +53,7 @@ pub fn open_working_directory_pool(
     )
 }
 
-pub fn open_polling_pool(config: &RunConfigBundle) -> Result<PollingPool> {
+pub fn open_polling_pool(config: &ShareableConfig) -> Result<PollingPool> {
     PollingPool::open(
         config.run_config.remote_repository.url.clone(),
         config

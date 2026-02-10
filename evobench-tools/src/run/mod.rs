@@ -8,6 +8,7 @@ pub mod env_vars;
 pub mod global_app_state_dir;
 pub mod insert_jobs;
 pub mod migrate;
+pub mod open_run_queues;
 pub mod output_directory;
 pub mod polling_pool;
 pub mod run_context;

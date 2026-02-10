@@ -31,7 +31,7 @@ use crate::{
     run::{
         bench_tmp_dir::bench_tmp_dir,
         benchmarking_job::BenchmarkingJob,
-        config::{RunConfig, RunConfigBundle},
+        config::{RunConfig, ShareableConfig},
         dataset_dir_env_var::dataset_dir_for,
         env_vars::assert_evobench_env_var,
         output_directory::{
@@ -91,7 +91,7 @@ pub struct JobRunner<'pool> {
     /// The timestamp for this run.
     pub timestamp: DateTimeWithOffset,
     // Separate lifetime?
-    pub run_config_bundle: &'pool RunConfigBundle,
+    pub run_config_bundle: &'pool ShareableConfig,
     // ditto?
     pub versioned_dataset_dir: &'pool VersionedDatasetDir,
 }

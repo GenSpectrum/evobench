@@ -17,7 +17,7 @@ use crate::{
     io_utils::tempfile_utils::TempfileOptions,
     output_table::html::HtmlTable,
     run::{
-        config::{RunConfig, RunConfigBundle},
+        config::{RunConfig, ShareableConfig},
         run_queues::RunQueues,
         sub_command::list::{OutputTableOpts, ParameterView},
         working_directory_pool::WorkingDirectoryPoolBaseDir,
@@ -55,7 +55,7 @@ pub fn print_list(
 /// tempfile-rename) with external values at least from now. For
 /// savings, pass the optional values if you can.
 pub fn regenerate_list(
-    run_config_bundle: &RunConfigBundle,
+    run_config_bundle: &ShareableConfig,
     working_directory_base_dir: Option<&Arc<WorkingDirectoryPoolBaseDir>>,
     queues: Option<&RunQueues>,
 ) -> Result<()> {
@@ -86,6 +86,8 @@ pub fn regenerate_list(
             run_config_bundle.run_config.queues.clone_arc(),
             true,
             &run_config_bundle.global_app_state_dir,
+            // No need to signal changes, not going to mutate anything
+            None,
         )?;
         &tmp2
     };

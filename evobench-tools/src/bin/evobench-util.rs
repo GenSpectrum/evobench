@@ -230,7 +230,7 @@ fn main() -> Result<()> {
                 |msg| bail!("can't load config: {msg}"),
                 GlobalAppStateDir::new()?,
             )?;
-            let run_config = &run_config_bundle.run_config;
+            let run_config = &run_config_bundle.shareable.run_config;
 
             let run_dir = RunDir::try_from(run_dir.into_arc_path())?;
 
@@ -248,7 +248,7 @@ fn main() -> Result<()> {
                 |msg| bail!("can't load config: {msg}"),
                 GlobalAppStateDir::new()?,
             )?;
-            let run_config = &run_config_bundle.run_config;
+            let run_config = &run_config_bundle.shareable.run_config;
 
             let key_dir: Arc<_> = KeyDir::try_from(key_dir.into_arc_path())?.into();
 

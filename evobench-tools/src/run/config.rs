@@ -778,14 +778,20 @@ impl RunConfigOpts {
     }
 }
 
+/// Shareable across threads
+#[derive(Clone)]
+pub struct ShareableConfig {
+    pub run_config: Arc<RunConfig>,
+    pub global_app_state_dir: Arc<GlobalAppStateDir>,
+}
+
 /// Keep the original ConfigFile around so that we can check whether
 /// it needs reloading (in `Daemon`, passed to daemon run procedures
 /// via `DaemonCheckExit`). Also, need the `GlobalAppStateDir` for
 /// further path operations, too.
 pub struct RunConfigBundle {
     pub config_file: Arc<ConfigFile<RunConfigOpts>>,
-    pub run_config: RunConfig,
-    pub global_app_state_dir: Arc<GlobalAppStateDir>,
+    pub shareable: ShareableConfig,
 }
 
 impl RunConfigBundle {
@@ -794,12 +800,17 @@ impl RunConfigBundle {
         or_else: impl FnOnce(&str) -> Result<RunConfigOpts>,
         global_app_state_dir: GlobalAppStateDir,
     ) -> Result<Self> {
-        let config_file = ConfigFile::<RunConfigOpts>::load_config(provided_path, or_else)?;
-        let run_config = config_file.check(&global_app_state_dir)?;
+        let config_file = Arc::new(ConfigFile::<RunConfigOpts>::load_config(
+            provided_path,
+            or_else,
+        )?);
+        let run_config = config_file.check(&global_app_state_dir)?.into();
         Ok(Self {
-            config_file: config_file.into(),
-            run_config,
-            global_app_state_dir: global_app_state_dir.into(),
+            config_file,
+            shareable: ShareableConfig {
+                run_config,
+                global_app_state_dir: global_app_state_dir.into(),
+            },
         })
     }
 }

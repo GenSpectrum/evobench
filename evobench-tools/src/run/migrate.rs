@@ -138,7 +138,7 @@ fn migrate_key_val<K: AsKey + Debug + Clone + PartialEq + Ord, T: FromStrMigrati
 /// Migrate a queue. Returns how many items were migrated.
 pub fn migrate_queue(run_queue: &RunQueue) -> Result<usize> {
     migrate_key_val(
-        run_queue.queue.key_val(),
+        run_queue.key_val(),
         // The key (a `TimeKey`) remains the same
         |k, _v| k.clone(),
         // Conflicts can't happen since we never change the key

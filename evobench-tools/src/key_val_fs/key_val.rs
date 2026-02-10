@@ -9,6 +9,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+use chj_unix_util::polling_signals::PollingSignalsSender;
 use cj_path_util::path_util::AppendToPath;
 use serde::{Serialize, de::DeserializeOwned};
 
@@ -73,6 +74,7 @@ pub struct Entry<'p, K: AsKey, V: DeserializeOwned + Serialize> {
     target_path: PathBuf,
     // Becoming None when calling `take_lockable_file`
     value_file: Option<File>,
+    signal_change: Option<&'p PollingSignalsSender>,
 }
 
 impl<'p, K: AsKey, V: DeserializeOwned + Serialize> PartialEq for Entry<'p, K, V> {
@@ -142,7 +144,12 @@ impl<'p, K: AsKey, V: DeserializeOwned + Serialize> Entry<'p, K, V> {
     /// `exists`.
     pub fn delete(&self) -> Result<bool, KeyValError> {
         match std::fs::remove_file(&self.target_path) {
-            Ok(()) => Ok(true),
+            Ok(()) => {
+                if let Some(signal) = &self.signal_change {
+                    signal.send_signal();
+                }
+                Ok(true)
+            }
             Err(error) => match error.kind() {
                 std::io::ErrorKind::NotFound => Ok(false),
                 _ => Err(KeyValError::IO {
@@ -302,6 +309,8 @@ pub struct KeyVal<K: AsKey, V: DeserializeOwned + Serialize> {
     // Filehandle to the directory again, for sync, since the one
     // above is wrapped
     dir_file: File,
+    // An optional signalling handle for changes
+    signal_change: Option<PollingSignalsSender>,
 }
 
 // Just for testing
@@ -312,7 +321,11 @@ impl<K: AsKey, V: DeserializeOwned + Serialize> PartialEq for KeyVal<K, V> {
 }
 
 impl<K: AsKey, V: DeserializeOwned + Serialize> KeyVal<K, V> {
-    pub fn open(base_dir: impl AsRef<Path>, config: KeyValConfig) -> Result<Self, KeyValError> {
+    pub fn open(
+        base_dir: impl AsRef<Path>,
+        config: KeyValConfig,
+        signal_change: Option<PollingSignalsSender>,
+    ) -> Result<Self, KeyValError> {
         let base_dir = base_dir.as_ref().to_owned();
         let dir_needs_sync;
         if config.create_dir_if_not_exists {
@@ -362,6 +375,7 @@ impl<K: AsKey, V: DeserializeOwned + Serialize> KeyVal<K, V> {
             base_dir,
             lock_file,
             dir_file,
+            signal_change,
         })
     }
 
@@ -428,6 +442,9 @@ impl<K: AsKey, V: DeserializeOwned + Serialize> KeyVal<K, V> {
         self.config
             .sync
             .perhaps_sync_dir(&self.dir_file, &self.base_dir)?;
+        if let Some(signal) = &self.signal_change {
+            signal.send_signal();
+        }
         Ok(())
     }
 
@@ -437,7 +454,12 @@ impl<K: AsKey, V: DeserializeOwned + Serialize> KeyVal<K, V> {
         let key_filename = key.verified_as_filename_str();
         let target_path = (&self.base_dir).append(key_filename.as_ref());
         match std::fs::remove_file(&target_path) {
-            Ok(()) => Ok(true),
+            Ok(()) => {
+                if let Some(signal) = &self.signal_change {
+                    signal.send_signal();
+                }
+                Ok(true)
+            }
             Err(error) => match error.kind() {
                 std::io::ErrorKind::NotFound => Ok(false),
                 _ => Err(KeyValError::IO {
@@ -463,6 +485,7 @@ impl<K: AsKey, V: DeserializeOwned + Serialize> KeyVal<K, V> {
                 base_dir: &self.base_dir,
                 target_path,
                 value_file: Some(value_file),
+                signal_change: self.signal_change.as_ref(),
             })),
             Err(error) => match error.kind() {
                 std::io::ErrorKind::NotFound => Ok(None),
