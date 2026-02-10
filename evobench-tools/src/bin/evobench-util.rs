@@ -13,6 +13,7 @@ use evobench_tools::{
         config::{RunConfig, RunConfigBundle},
         global_app_state_dir::GlobalAppStateDir,
         output_directory::{
+            index_files::regenerate_index_files,
             post_process::compress_file_as,
             structure::{KeyDir, RunDir, SubDirs},
         },
@@ -129,6 +130,19 @@ enum SubCommand {
         /// commit id
         key_dir: PathBuf,
     },
+
+    /// Development commands; these are meant for app development, not
+    /// for users. Only use when you know what you're doing. .
+    Dev {
+        #[clap(subcommand)]
+        subcommand: DevSubCommand,
+    },
+}
+
+#[derive(clap::Subcommand, Debug)]
+enum DevSubCommand {
+    /// Regenerate index files
+    RegenerateIndexFiles,
 }
 
 fn post_process_single(run_dir: &RunDir, run_config: &RunConfig, no_stats: bool) -> Result<()> {
@@ -209,7 +223,16 @@ fn main() -> Result<()> {
 
     set_log_level(log_level.try_into()?);
 
-    let config = config.map(Into::into);
+    let get_config = {
+        move || -> Result<RunConfigBundle> {
+            let config = config.map(Into::into);
+            Ok(RunConfigBundle::load(
+                config,
+                |msg| bail!("can't load config: {msg}"),
+                GlobalAppStateDir::new()?,
+            )?)
+        }
+    };
 
     match subcommand {
         SubCommand::GrepDiff {
@@ -223,43 +246,39 @@ fn main() -> Result<()> {
             let grep_diff_region = GrepDiffRegion::from_strings(&regex_start, &regex_end)?;
             grep_diff_region.grep_diff(logfiles, commit, target, params)?;
         }
-
         SubCommand::PostProcessSingle { run_dir, no_stats } => {
-            let run_config_bundle = RunConfigBundle::load(
-                config,
-                |msg| bail!("can't load config: {msg}"),
-                GlobalAppStateDir::new()?,
-            )?;
-            let run_config = &run_config_bundle.shareable.run_config;
+            let run_config_bundle = get_config()?;
+            let conf = &run_config_bundle.shareable.run_config;
 
             let run_dir = RunDir::try_from(run_dir.into_arc_path())?;
 
-            post_process_single(&run_dir, run_config, no_stats)?;
+            post_process_single(&run_dir, conf, no_stats)?;
         }
-
         SubCommand::PostProcessSummary {
             single,
             key_dir,
             no_single_stats,
             no_summary_stats,
         } => {
-            let run_config_bundle = RunConfigBundle::load(
-                config,
-                |msg| bail!("can't load config: {msg}"),
-                GlobalAppStateDir::new()?,
-            )?;
-            let run_config = &run_config_bundle.shareable.run_config;
+            let run_config_bundle = get_config()?;
+            let conf = &run_config_bundle.shareable.run_config;
 
             let key_dir: Arc<_> = KeyDir::try_from(key_dir.into_arc_path())?.into();
 
             if single {
                 for run_dir in key_dir.sub_dirs()? {
-                    post_process_single(&run_dir, run_config, no_single_stats)?;
+                    post_process_single(&run_dir, conf, no_single_stats)?;
                 }
             }
 
             key_dir.generate_summaries_for_key_dir(no_summary_stats)?;
         }
+        SubCommand::Dev { subcommand } => match subcommand {
+            DevSubCommand::RegenerateIndexFiles => {
+                let run_config_bundle = get_config()?;
+                regenerate_index_files(&run_config_bundle.shareable, None, None)?;
+            }
+        },
     }
 
     Ok(())
