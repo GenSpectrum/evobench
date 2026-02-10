@@ -10,13 +10,14 @@ use std::{
 
 use anyhow::{Result, anyhow, bail};
 use cj_path_util::path_util::AppendToPath;
+use derive_more::From;
 use kstring::KString;
 
 use crate::{
     clone, ctx,
     git::GitHash,
     key::{CustomParameters, ExtendPath, RunParameters, UncheckedCustomParameters},
-    run::env_vars::AllowableCustomEnvVar,
+    run::{config::JobTemplate, env_vars::AllowableCustomEnvVar},
     serde::{
         allowed_env_var::AllowedEnvVar, date_and_time::DateTimeWithOffset,
         proper_dirname::ProperDirname, proper_filename::ProperFilename,
@@ -106,10 +107,10 @@ where
 /// config. But allow to represent both. Do this at runtime for
 /// ~simplicity. (Maybe this should be moved to where the contained
 /// types are defined, which maybe shouldn't all be in `key.rs`.)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, From)]
 pub enum CheckedOrUncheckedCustomParameters {
-    UncheckedCustomParameters(Arc<UncheckedCustomParameters>),
-    CustomParameters(Arc<CustomParameters>),
+    UncheckedCustomParameters(#[from] Arc<UncheckedCustomParameters>),
+    CustomParameters(#[from] Arc<CustomParameters>),
 }
 
 impl CheckedOrUncheckedCustomParameters {
@@ -282,6 +283,14 @@ impl ReplaceBasePath for ParametersDir {
     }
 }
 
+// (There's not impl JobTemplate yet, also JobTemplate is not in its
+// own dir but config.rs, so, just put this here.)
+impl JobTemplate {
+    pub fn to_parameters_dir(&self, base_path: Arc<Path>) -> ParametersDir {
+        ParametersDir::from_job_template(base_path, self)
+    }
+}
+
 impl ParametersDir {
     pub fn base_path(&self) -> &Arc<Path> {
         &self.base_path
@@ -291,6 +300,23 @@ impl ParametersDir {
     }
     pub fn custom_parameters(&self) -> &CheckedOrUncheckedCustomParameters {
         &self.custom_parameters
+    }
+
+    pub fn from_job_template(base_path: Arc<Path>, job_template: &JobTemplate) -> Self {
+        let JobTemplate {
+            priority: _,
+            initial_boost: _,
+            command,
+            custom_parameters,
+        } = job_template;
+        let target_name = command.target_name.clone();
+        let custom_parameters = custom_parameters.clone_arc().into();
+        Self {
+            base_path,
+            target_name,
+            custom_parameters,
+            path_cache: Default::default(),
+        }
     }
 }
 
