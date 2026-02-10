@@ -101,6 +101,12 @@ pub struct OutputTableOpts {
     #[clap(short, long)]
     pub all: bool,
 
+    /// When `--all` is not given, how many jobs to show in the extra
+    /// queues (overrides the `view_jobs_max_len` setting from the
+    /// config file)
+    #[clap(short, long)]
+    pub n: Option<usize>,
+
     /// How to show the job parameters
     #[clap(subcommand)]
     pub parameter_view: ParameterView,
@@ -151,6 +157,7 @@ impl OutputTableOpts {
         let Self {
             verbose,
             all,
+            n,
             parameter_view,
         } = self;
 
@@ -263,11 +270,12 @@ impl OutputTableOpts {
             // because items can vanish between getting
             // sorted_keys and resolve_entries. But that is really
             // no big deal.
+            let view_jobs_max_len = n.unwrap_or(conf.queues.view_jobs_max_len);
             let limit = if is_extra_queue && !all {
                 // Get 2 more since showing "skipped 1 entry" is
                 // not economic, and we just look at number 0
                 // after subtracting, i.e. include the equal case.
-                conf.queues.view_jobs_max_len + 2
+                view_jobs_max_len + 2
             } else {
                 usize::MAX
             };

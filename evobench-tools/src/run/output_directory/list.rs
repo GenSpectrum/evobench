@@ -97,6 +97,7 @@ pub fn regenerate_list(
     let output_table_opts = OutputTableOpts {
         verbose: false,
         all: false,
+        n: Some(50),
         parameter_view: ParameterView::Separated,
     };
 
