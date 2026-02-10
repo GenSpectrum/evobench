@@ -29,6 +29,7 @@ impl From<OutputStyle> for Style {
             bold,
             italic,
             color,
+            font_size: _,
         } = value;
         let mut style = Style::new();
         if faded {

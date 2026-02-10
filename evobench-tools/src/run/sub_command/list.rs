@@ -14,6 +14,7 @@ use crate::{
     config_file::ron_to_string_pretty,
     key_val_fs::key_val::Entry,
     lockable_file::LockStatus,
+    output_table::FontSize,
     run::{
         config::RunConfig,
         output_directory::structure::{KeyDir, ToPath},
@@ -206,6 +207,7 @@ impl OutputTableOpts {
                 bold: true,
                 italic: true,
                 color: Some(4),
+                font_size: Some(FontSize::Large),
                 ..Default::default()
             });
 

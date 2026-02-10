@@ -14,6 +14,7 @@ impl OutputStyle {
             bold,
             italic,
             color,
+            font_size,
         } = self;
 
         let mut s = String::new();
@@ -52,6 +53,12 @@ impl OutputStyle {
         if let Some(htmlcol) = htmlcolor {
             s.push_str("color: ");
             s.push_str(htmlcol);
+            s.push_str("; ");
+        }
+
+        if let Some(fs) = font_size {
+            s.push_str("font-size: ");
+            s.push_str(fs.as_ref());
             s.push_str("; ");
         }
 
@@ -125,6 +132,9 @@ impl<'allocator> OutputTable for HtmlTable<'allocator> {
         self.table_body.push(html.tr([], cells)?)
     }
 
+    /// You might want to give an OutputStyle with a font_size that is
+    /// larger (otherwise it is the default which is the same as the
+    /// body text?).
     fn write_title_row(
         &mut self,
         titles: &[OutputTableTitle],

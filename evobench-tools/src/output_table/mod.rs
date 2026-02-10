@@ -110,6 +110,31 @@ impl<'r, 's, V: CellValue> Row<'r, 's, V> {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum FontSize {
+    XxSmall,
+    XSmall,
+    Small,
+    Medium,
+    Large,
+    XLarge,
+    XxLarge,
+}
+
+impl AsRef<str> for FontSize {
+    fn as_ref(&self) -> &str {
+        match self {
+            FontSize::XxSmall => "xx-small",
+            FontSize::XSmall => "x-small",
+            FontSize::Small => "small",
+            FontSize::Medium => "medium",
+            FontSize::Large => "large",
+            FontSize::XLarge => "x-large",
+            FontSize::XxLarge => "xx-large",
+        }
+    }
+}
+
 /// Abstract styling that works for both terminal and HTML
 /// output. `color`, if given, is a ANSI 256-color terminal color.
 #[derive(Debug, Clone, Copy, Default)]
@@ -117,6 +142,8 @@ pub struct OutputStyle {
     pub faded: bool,
     pub bold: bool,
     pub italic: bool,
+    /// Only for HTML, ignored by the terminal backend.
+    pub font_size: Option<FontSize>,
     pub color: Option<u8>,
 }
 
