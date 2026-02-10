@@ -28,7 +28,13 @@ impl OutputStyle {
         let mut htmlcolor: Option<&str> = None;
         if let Some(col) = color {
             match col {
-                4 => htmlcolor = Some("blue"),
+                4 => {
+                    htmlcolor = {
+                        // terminal color 4 is blue, but choose something
+                        // else to differentiate from links
+                        Some("#e46000")
+                    }
+                }
                 _ => {
                     warn!("ignoring unknown color code {col}");
                 }
