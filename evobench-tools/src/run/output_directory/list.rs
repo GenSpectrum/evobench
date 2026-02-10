@@ -1,16 +1,15 @@
-//! Generate the `list/index.html` file for accessing the output
+//! Generate the `list.html` file for accessing the output
 //! directory. This uses the same code as the `evobench list`
 //! subcommand.
 
 use std::{
-    fs::{File, create_dir_all},
+    fs::File,
     io::{BufWriter, Write},
     sync::Arc,
 };
 
 use ahtml::HtmlAllocator;
 use anyhow::Result;
-use cj_path_util::path_util::AppendToPath;
 
 use crate::{
     ctx,
@@ -101,10 +100,7 @@ pub fn regenerate_list(
         parameter_view: ParameterView::Separated,
     };
 
-    let list_dir = conf.output_dir.path.append("list");
-    create_dir_all(&list_dir).map_err(ctx!("creating dir {list_dir:?}"))?;
-
-    let target_path = list_dir.join("index.html");
+    let target_path = conf.output_dir.path.join("list.html");
     let tmp_file = TempfileOptions {
         target_path,
         retain_tempfile: false,
