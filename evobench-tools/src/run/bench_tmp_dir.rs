@@ -1,9 +1,16 @@
 use std::{
-    fs::File, io::Write, ops::Deref, os::unix::fs::MetadataExt, path::Path, sync::Arc,
+    collections::{HashMap, hash_map::Entry},
+    fs::File,
+    io::Write,
+    ops::Deref,
+    os::unix::fs::MetadataExt,
+    path::Path,
+    sync::{Arc, Mutex},
+    thread::JoinHandle,
     time::Duration,
 };
 
-use anyhow::{Result, bail};
+use anyhow::{Result, anyhow, bail};
 use cj_path_util::path_util::AppendToPath;
 use nix::unistd::{getpid, getuid};
 use rand::Rng;
@@ -36,7 +43,7 @@ impl Deref for BenchTmpDir {
     }
 }
 
-fn start_daemon(path: Arc<Path>) -> Result<()> {
+fn _start_daemon(path: Arc<Path>) -> Result<JoinHandle<()>, std::io::Error> {
     let th = std::thread::Builder::new().name("tmp-keep-alive".into());
     th.spawn(move || {
         let pid = getpid();
@@ -67,8 +74,22 @@ fn start_daemon(path: Arc<Path>) -> Result<()> {
             }
             std::thread::sleep(Duration::from_secs(1));
         }
-    })?;
-    Ok(())
+    })
+}
+
+static DAEMONS: Mutex<Option<HashMap<Arc<Path>, Result<JoinHandle<()>, std::io::Error>>>> =
+    Mutex::new(None);
+
+fn start_daemon(path: Arc<Path>) -> Result<()> {
+    let mut daemons = DAEMONS.lock().expect("no panics in this scope");
+    let m = daemons.get_or_insert_with(|| HashMap::new());
+    let r = match m.entry(path.clone()) {
+        Entry::Occupied(occupied_entry) => occupied_entry.into_mut(),
+        Entry::Vacant(vacant_entry) => vacant_entry.insert(_start_daemon(path)),
+    };
+    r.as_ref()
+        .map(|_| ())
+        .map_err(|e| anyhow!("start_daemon: {e:#}"))
 }
 
 /// Returns the path to a temporary directory, creating it if
