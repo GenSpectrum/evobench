@@ -183,3 +183,37 @@ pub trait OutputTable {
 
     fn finish(self) -> anyhow::Result<Self::Output>;
 }
+
+/// A text with optional link which is generated only when needed
+/// (i.e. for HTML output)
+#[derive(Clone, Copy)]
+pub struct WithUrlOnDemand<'s> {
+    pub text: &'s str,
+    // dyn because different columns might want different links
+    pub gen_url: Option<&'s dyn Fn() -> Option<String>>,
+}
+
+impl<'s> From<&'s str> for WithUrlOnDemand<'s> {
+    fn from(text: &'s str) -> Self {
+        WithUrlOnDemand {
+            text,
+            gen_url: None,
+        }
+    }
+}
+
+impl<'s> AsRef<str> for WithUrlOnDemand<'s> {
+    fn as_ref(&self) -> &str {
+        self.text
+    }
+}
+
+impl<'s> CellValue for WithUrlOnDemand<'s> {
+    fn perhaps_url(&self) -> Option<String> {
+        if let Some(gen_url) = self.gen_url {
+            gen_url()
+        } else {
+            None
+        }
+    }
+}

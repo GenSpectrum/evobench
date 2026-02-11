@@ -14,7 +14,7 @@ use crate::{
     config_file::ron_to_string_pretty,
     key_val_fs::key_val::Entry,
     lockable_file::LockStatus,
-    output_table::FontSize,
+    output_table::{FontSize, WithUrlOnDemand},
     run::{
         config::RunConfig,
         output_directory::structure::{KeyDir, ToPath},
@@ -30,7 +30,7 @@ use crate::{
     utillib::into_arc_path::IntoArcPath,
 };
 use crate::{
-    output_table::{CellValue, OutputStyle, OutputTable, OutputTableTitle},
+    output_table::{OutputStyle, OutputTable, OutputTableTitle},
     run::output_directory::index_files::print_list,
 };
 
@@ -111,40 +111,6 @@ pub struct OutputTableOpts {
     /// How to show the job parameters
     #[clap(subcommand)]
     pub parameter_view: ParameterView,
-}
-
-/// A text with optional link which is generated only when needed
-/// (i.e. for HTML output)
-#[derive(Clone, Copy)]
-struct WithUrlOnDemand<'s> {
-    text: &'s str,
-    // dyn because different columns might want different links
-    gen_url: Option<&'s dyn Fn() -> Option<String>>,
-}
-
-impl<'s> From<&'s str> for WithUrlOnDemand<'s> {
-    fn from(text: &'s str) -> Self {
-        WithUrlOnDemand {
-            text,
-            gen_url: None,
-        }
-    }
-}
-
-impl<'s> AsRef<str> for WithUrlOnDemand<'s> {
-    fn as_ref(&self) -> &str {
-        self.text
-    }
-}
-
-impl<'s> CellValue for WithUrlOnDemand<'s> {
-    fn perhaps_url(&self) -> Option<String> {
-        if let Some(gen_url) = self.gen_url {
-            gen_url()
-        } else {
-            None
-        }
-    }
 }
 
 impl OutputTableOpts {
