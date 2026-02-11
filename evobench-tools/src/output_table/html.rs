@@ -101,7 +101,12 @@ impl<'allocator> OutputTable for HtmlTable<'allocator> {
             Row::PlainStrings(items) => {
                 for item in items {
                     let s: &str = item.as_ref();
-                    let text = html.text(s)?;
+                    let text_node = html.text(s)?;
+                    let text = if let Some(style) = &htmlstyle {
+                        html.span([att("style", style)], text_node)?
+                    } else {
+                        text_node
+                    };
                     let content = if let Some(url) = item.perhaps_url() {
                         html.a([att("href", url)], text)?
                     } else {
