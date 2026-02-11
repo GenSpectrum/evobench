@@ -1,8 +1,11 @@
-use std::{fs::File, ops::Deref, os::unix::fs::MetadataExt, path::Path, sync::Arc, time::Duration};
+use std::{
+    fs::File, io::Write, ops::Deref, os::unix::fs::MetadataExt, path::Path, sync::Arc,
+    time::Duration,
+};
 
 use anyhow::{Result, bail};
 use cj_path_util::path_util::AppendToPath;
-use nix::unistd::getuid;
+use nix::unistd::{getpid, getuid};
 use rand::Rng;
 
 use crate::{
@@ -36,15 +39,31 @@ impl Deref for BenchTmpDir {
 fn start_daemon(path: Arc<Path>) -> Result<()> {
     let th = std::thread::Builder::new().name("tmp-keep-alive".into());
     th.spawn(move || {
+        let pid = getpid();
+        {
+            let file_path = path.append(format!(".{pid}-stay.tmp-keep-alive-dir"));
+            if let Ok(mut f) = File::create(&file_path) {
+                _ = f.write_all("This file stays to ensure there is always a file\n".as_bytes());
+            } else {
+                info!("could not create touch file {file_path:?}");
+            }
+        }
+        let file_path = path.append(format!(".{pid}.tmp-keep-alive-dir"));
         let mut rnd = rand::thread_rng();
         while Arc::strong_count(&path) > 1 {
-            // eprintln!("Helloworld");
-            let n = rnd.gen_range(0..10000000);
-            let path = path.append(format!(".{n}.tmp-keep-alive-dir"));
-            if let Ok(_) = File::create_new(&path) {
-                _ = std::fs::remove_file(&path);
+            if let Ok(mut f) = File::create(&file_path) {
+                for _ in 0..30 {
+                    let n = rnd.gen_range(0..10000000);
+                    use std::io::Write;
+                    if let Err(e) = write!(&mut f, "{n}\n") {
+                        info!("could not write to touch file {file_path:?}: {e:#}");
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_secs(1));
+                }
+                _ = std::fs::remove_file(&file_path);
             } else {
-                info!("could not create touch file {path:?}");
+                info!("could not create touch file {file_path:?}");
             }
             std::thread::sleep(Duration::from_secs(1));
         }
