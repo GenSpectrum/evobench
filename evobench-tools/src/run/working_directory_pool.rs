@@ -19,6 +19,7 @@ use std::{
 };
 
 use anyhow::{Result, anyhow, bail};
+use chj_unix_util::polling_signals::PollingSignalsSender;
 use cj_path_util::path_util::AppendToPath;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
@@ -78,6 +79,14 @@ pub struct WorkingDirectoryPoolContext {
     pub auto_clean: Option<WorkingDirectoryAutoCleanOpts>,
     pub remote_repository_url: GitUrl,
     pub base_dir: Arc<WorkingDirectoryPoolBaseDir>,
+    /// Where to signal changes with the "current" link or working
+    /// directory status files. (Do *not* pass the
+    /// `working_directory_change_signals` here, those are for
+    /// signalling changes to the daemon to reload working directory
+    /// state; whereas the changes that are to be sent here
+    /// *originate* from the same daemon; the daemon would be
+    /// signalling itself.)
+    pub signal_change: Option<PollingSignalsSender>,
 }
 
 /// A precursor of `WorkingDirectoryId` that allows both `D123` and
@@ -491,6 +500,7 @@ impl WorkingDirectoryPool {
                         &context.remote_repository_url,
                         &guard,
                         omit_check,
+                        context.signal_change.clone(),
                     )?;
                     Ok((id, wd))
                 },
@@ -790,6 +800,7 @@ impl<'pool> WorkingDirectoryPoolGuardMut<'pool> {
             &id.to_directory_file_name(),
             self.pool.git_url(),
             &self.shared(),
+            self.pool.context.signal_change.clone(),
         )?;
         self.pool.state.all_entries.insert(id, dir);
         Ok(id)
@@ -962,6 +973,9 @@ impl<'pool> WorkingDirectoryPoolGuardMut<'pool> {
                 _ => Err(e).map_err(ctx!("removing symlink {path:?}"))?,
             }
         }
+        if let Some(signal_change) = &self.pool.context.signal_change {
+            signal_change.send_signal();
+        }
         Ok(())
     }
 
@@ -977,6 +991,10 @@ impl<'pool> WorkingDirectoryPoolGuardMut<'pool> {
             .current_working_directory_symlink_path();
         std::os::unix::fs::symlink(&source_path, &target_path).map_err(ctx!(
             "creating symlink at {target_path:?} to {source_path:?}"
-        ))
+        ))?;
+        if let Some(signal_change) = &self.pool.context.signal_change {
+            signal_change.send_signal();
+        }
+        Ok(())
     }
 }

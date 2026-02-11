@@ -12,6 +12,7 @@ use std::{
 };
 
 use anyhow::{Result, anyhow, bail};
+use chj_unix_util::polling_signals::PollingSignalsSender;
 use run_git::{
     git::{GitResetMode, GitWorkingDir, git_clone},
     path_util::add_extension,
@@ -251,6 +252,9 @@ pub struct WorkingDirectory {
     working_directory_status_needs_saving: bool,
     /// last use time: mtime of the .status file
     pub last_use: SystemTime,
+    // To signal changes in working directory status files. Note the
+    // warning in WorkingDirectoryPool!
+    signal_change: Option<PollingSignalsSender>,
 }
 
 pub struct WorkingDirectoryWithPoolLock<'guard> {
@@ -349,12 +353,14 @@ impl WorkingDirectory {
     /// about the same target project, hence they share commits, hence
     /// deleting and re-cloning the working dir is not necessary or
     /// desired, just changing that url so that the newest changes can
-    /// be retrieved. `omit_check` disables that check.
+    /// be retrieved. `omit_check` disables that check. (For
+    /// `signal_change`, see the docs on the field.)
     pub fn open<'pool>(
         path: PathBuf,
         url: &GitUrl,
         guard: &WorkingDirectoryPoolGuard<'pool>,
         omit_check: bool,
+        signal_change: Option<PollingSignalsSender>,
     ) -> Result<Self> {
         // let quiet = false;
 
@@ -411,6 +417,7 @@ impl WorkingDirectory {
             working_directory_status,
             working_directory_status_needs_saving,
             last_use: mtime,
+            signal_change,
         };
         let mut slf_lck = guard.locked_working_directory_mut(&mut slf);
         // XX chaos: Do not change the status if it already
@@ -424,6 +431,7 @@ impl WorkingDirectory {
         dir_file_name: &str,
         url: &GitUrl,
         guard: &WorkingDirectoryPoolGuard<'pool>,
+        signal_change: Option<PollingSignalsSender>,
     ) -> Result<Self> {
         let quiet = false;
         let git_working_dir = git_clone(&base_dir, [], url.as_str(), dir_file_name, quiet)?;
@@ -437,6 +445,7 @@ impl WorkingDirectory {
             working_directory_status: status,
             working_directory_status_needs_saving: true,
             last_use: mtime,
+            signal_change,
         };
         let mut slf_lck = guard.locked_working_directory_mut(&mut slf);
         slf_lck.set_and_save_status(Status::CheckedOut)?;
@@ -622,6 +631,9 @@ impl<'guard> WorkingDirectoryWithPoolLockMut<'guard> {
                 // in dir listings on the command line.
                 std::fs::set_permissions(&path, Permissions::from_mode(0o755))
                     .map_err(ctx!("setting executable permission on file {path:?}"))?;
+            }
+            if let Some(signal_change) = &self.signal_change {
+                signal_change.send_signal();
             }
             debug!(
                 "{:?} set_and_save_status({status:?}): file saved",

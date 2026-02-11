@@ -2,13 +2,15 @@ use std::{borrow::Cow, ffi::OsStr, io::stdout, process::exit, sync::Arc, time::S
 
 use anyhow::{Result, anyhow, bail};
 use chj_rustbin::duu::{GetDirDiskUsage, bytes_to_gib_string};
-use chj_unix_util::polling_signals::PollingSignals;
+use chj_unix_util::polling_signals::{PollingSignals, PollingSignalsSender};
 use cj_path_util::path_util::AppendToPath;
 use itertools::Itertools;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::output_table::terminal::{TerminalTable, TerminalTableOpts};
 use crate::output_table::{OutputTable, OutputTableTitle};
+use crate::run::config::ShareableConfig;
+use crate::run::global_app_state_dir::GlobalAppStateDir;
 use crate::{
     ask::ask_yn,
     ctx, info,
@@ -38,8 +40,22 @@ use crate::{
     warn,
 };
 
+/// This PollingSignals instance is used to signal changes to the
+/// daemon from user action.
 pub fn open_working_directory_change_signals(conf: &RunConfig) -> Result<PollingSignals> {
     let signals_path = conf.working_directory_change_signals_path();
+    PollingSignals::open(&signals_path, 0).map_err(ctx!("opening signals path {signals_path:?}"))
+}
+
+/// This instance is used to signal changes from the run daemon to the
+/// part(s) that regenerate output status files (HTML files)
+/// (currently also within the run daemon, but might
+/// change). Everything relevant to generate the `evobench list` view
+/// is sent to this.
+pub fn open_queue_change_signals(
+    global_app_state_dir: &GlobalAppStateDir,
+) -> Result<PollingSignals> {
+    let signals_path = global_app_state_dir.run_queue_signal_change_path();
     PollingSignals::open(&signals_path, 0).map_err(ctx!("opening signals path {signals_path:?}"))
 }
 
@@ -245,17 +261,24 @@ pub enum WdCleanupMode {
 impl Wd {
     pub fn run(
         self,
-        conf: &RunConfig,
+        shareable_config: &ShareableConfig,
         working_directory_base_dir: &Arc<WorkingDirectoryPoolBaseDir>,
+        queue_change_signals: PollingSignalsSender,
     ) -> Result<()> {
         // For all cases, the Wd utilities should never change the
         // upstream URL, OK?
         let omit_check = true;
 
-        let mut working_directory_pool =
-            open_working_directory_pool(conf, working_directory_base_dir.clone(), omit_check)?
-                // XX might we want to hold onto the lock?
-                .into_inner();
+        let conf = &shareable_config.run_config;
+
+        let mut working_directory_pool = open_working_directory_pool(
+            conf,
+            working_directory_base_dir.clone(),
+            omit_check,
+            Some(queue_change_signals),
+        )?
+        // XX might we want to hold onto the lock?
+        .into_inner();
 
         let check_original_status =
             |wd: &WorkingDirectory, allowed_statuses: &str| -> Result<Status> {

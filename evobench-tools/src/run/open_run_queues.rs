@@ -4,23 +4,21 @@
 use std::{thread, time::Duration};
 
 use anyhow::Result;
-use chj_unix_util::polling_signals::PollingSignals;
 
 use crate::{
     clone,
     run::{
         config::ShareableConfig, output_directory::index_files::regenerate_index_files,
-        run_queues::RunQueues,
+        run_queues::RunQueues, sub_command::wd::open_queue_change_signals,
     },
     utillib::arc::CloneArc,
     warn,
 };
 
 pub fn open_run_queues(shareable_config: &ShareableConfig) -> Result<RunQueues> {
-    let run_queue_signal_change_path = shareable_config
-        .global_app_state_dir
-        .run_queue_signal_change_path();
-    let mut signal_change = PollingSignals::open(&run_queue_signal_change_path, 0)?;
+    // Get as argument? But there's really no harm done by multiple
+    // mappings, OK?
+    let mut signal_change = open_queue_change_signals(&shareable_config.global_app_state_dir)?;
     let signal_change_sender = signal_change.sender();
 
     thread::spawn({

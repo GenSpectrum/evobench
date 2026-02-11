@@ -62,6 +62,7 @@ impl PollingPool {
                 },
                 remote_repository_url,
                 base_dir,
+                signal_change: None,
             },
             true,
             false,

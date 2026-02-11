@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use chj_unix_util::polling_signals::PollingSignalsSender;
 
 use crate::run::{
     config::{RunConfig, ShareableConfig},
@@ -30,6 +31,7 @@ pub fn open_working_directory_pool(
     conf: &RunConfig,
     base_dir: Arc<WorkingDirectoryPoolBaseDir>,
     omit_check: bool,
+    signal_change: Option<PollingSignalsSender>,
 ) -> Result<WorkingDirectoryPoolAndLock> {
     let create_dir_if_not_exists = true;
 
@@ -47,6 +49,7 @@ pub fn open_working_directory_pool(
             auto_clean: auto_clean.clone(),
             remote_repository_url: conf.remote_repository.url.clone(),
             base_dir,
+            signal_change,
         },
         create_dir_if_not_exists,
         omit_check,

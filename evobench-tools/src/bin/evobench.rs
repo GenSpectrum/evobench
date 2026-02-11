@@ -9,6 +9,7 @@ use chj_unix_util::{
         },
     },
     logging::{TimestampMode, TimestampOpts},
+    polling_signals::PollingSignalsSender,
     timestamp_formatter::TimestampFormatter,
 };
 use clap::{CommandFactory, Parser};
@@ -51,7 +52,9 @@ use evobench_tools::{
             list::ListOpts,
             list_all::ListAllOpts,
             open_polling_pool, open_working_directory_pool,
-            wd::{Wd, get_run_lock, open_working_directory_change_signals},
+            wd::{
+                Wd, get_run_lock, open_queue_change_signals, open_working_directory_change_signals,
+            },
         },
         versioned_dataset_dir::VersionedDatasetDir,
         working_directory_pool::{WorkingDirectoryPool, WorkingDirectoryPoolBaseDir},
@@ -267,6 +270,7 @@ fn run_queues<'ce>(
     mut working_directory_pool: WorkingDirectoryPool,
     once: bool,
     daemon_check_exit: Option<CheckExit<'ce>>,
+    queue_change_signals: PollingSignalsSender,
 ) -> Result<RunResult> {
     let conf = &run_config_bundle.shareable.run_config;
     let _run_lock = get_run_lock(conf)?;
@@ -370,11 +374,15 @@ fn run_queues<'ce>(
         }
 
         // Do we need to re-initialize the working directory pool?
-        if working_directory_change_signals.get_number_of_signals() > 0 {
+        if working_directory_change_signals.got_signals() {
             info!("the working directory pool was updated outside the app, reload it");
-            working_directory_pool =
-                open_working_directory_pool(conf, working_directory_base_dir.clone_arc(), false)?
-                    .into_inner();
+            working_directory_pool = open_working_directory_pool(
+                conf,
+                working_directory_base_dir.clone_arc(),
+                false,
+                Some(queue_change_signals.clone()),
+            )?
+            .into_inner();
         }
     }
 }
@@ -505,6 +513,12 @@ fn run() -> Result<Option<ExecutionResult>> {
 
     let queues = lazyresult! {
         open_run_queues(&run_config_bundle.shareable)
+    };
+    // Do not attempt to pass those to `open_run_queues` above; maybe
+    // they are needed without needing the queues?
+    let queue_change_signals = {
+        let gasd = run_config_bundle.shareable.global_app_state_dir.clone();
+        lazyresult!(move open_queue_change_signals(&gasd).map(|s| s.sender()))
     };
 
     match subcommand {
@@ -651,10 +665,13 @@ fn run() -> Result<Option<ExecutionResult>> {
 
         SubCommand::Run { mode } => {
             let open_working_directory_pool = |conf: &RunConfig| -> Result<_> {
-                Ok(
-                    open_working_directory_pool(conf, working_directory_base_dir.clone(), false)?
-                        .into_inner(),
-                )
+                Ok(open_working_directory_pool(
+                    conf,
+                    working_directory_base_dir.clone(),
+                    false,
+                    Some(queue_change_signals.force()?.clone()),
+                )?
+                .into_inner())
             };
 
             match mode {
@@ -668,6 +685,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                         working_directory_pool,
                         true,
                         None,
+                        queue_change_signals.force()?.clone(),
                     )? {
                         RunResult::OnceResult(ran) => {
                             if false_if_none {
@@ -700,6 +718,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                             working_directory_pool,
                             false,
                             Some(daemon_check_exit.clone()),
+                            queue_change_signals.force()?.clone(),
                         )?;
                         Ok(())
                     };
@@ -720,7 +739,11 @@ fn run() -> Result<Option<ExecutionResult>> {
         }
 
         SubCommand::Wd { subcommand } => {
-            subcommand.run(conf, &working_directory_base_dir)?;
+            subcommand.run(
+                &run_config_bundle.shareable,
+                &working_directory_base_dir,
+                queue_change_signals.force()?.clone(),
+            )?;
             Ok(None)
         }
 
