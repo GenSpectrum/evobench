@@ -15,19 +15,19 @@ use crate::{
     warn,
 };
 
-pub fn open_run_queues(run_config_bundle: &ShareableConfig) -> Result<RunQueues> {
-    let run_queue_signal_change_path = run_config_bundle
+pub fn open_run_queues(shareable_config: &ShareableConfig) -> Result<RunQueues> {
+    let run_queue_signal_change_path = shareable_config
         .global_app_state_dir
         .run_queue_signal_change_path();
     let mut signal_change = PollingSignals::open(&run_queue_signal_change_path, 0)?;
     let signal_change_sender = signal_change.sender();
 
     thread::spawn({
-        clone!(run_config_bundle);
+        clone!(shareable_config);
         move || {
             loop {
                 if signal_change.got_signals() {
-                    if let Err(e) = regenerate_list(&run_config_bundle, None, None) {
+                    if let Err(e) = regenerate_list(&shareable_config, None, None) {
                         // XX backoff
                         warn!("error: regenerate_list: {e:#}");
                     }
@@ -38,9 +38,9 @@ pub fn open_run_queues(run_config_bundle: &ShareableConfig) -> Result<RunQueues>
     });
 
     RunQueues::open(
-        run_config_bundle.run_config.queues.clone_arc(),
+        shareable_config.run_config.queues.clone_arc(),
         true,
-        &run_config_bundle.global_app_state_dir,
+        &shareable_config.global_app_state_dir,
         Some(signal_change_sender.clone()),
     )
 }

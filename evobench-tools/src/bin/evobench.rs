@@ -350,7 +350,7 @@ fn run_queues<'ce>(
                 working_directory_pool: &mut working_directory_pool,
                 output_base_dir: &conf.output_dir.path,
                 timestamp: DateTimeWithOffset::now(None),
-                run_config_bundle: &run_config_bundle.shareable,
+                shareable_config: &run_config_bundle.shareable,
                 versioned_dataset_dir: &versioned_dataset_dir,
             },
             &mut run_context,

@@ -91,7 +91,7 @@ pub struct JobRunner<'pool> {
     /// The timestamp for this run.
     pub timestamp: DateTimeWithOffset,
     // Separate lifetime?
-    pub run_config_bundle: &'pool ShareableConfig,
+    pub shareable_config: &'pool ShareableConfig,
     // ditto?
     pub versioned_dataset_dir: &'pool VersionedDatasetDir,
 }
@@ -103,7 +103,7 @@ impl<'pool> JobRunner<'pool> {
     }
 
     pub fn run_config(&self) -> &'pool RunConfig {
-        &self.run_config_bundle.run_config
+        &self.shareable_config.run_config
     }
 }
 
@@ -467,7 +467,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             // Update list/index.html already before the costly
             // summaries generation
             regenerate_list(
-                &self.job_runner.run_config_bundle,
+                &self.job_runner.shareable_config,
                 Some(self.job_runner.working_directory_pool.base_dir()),
                 Some(self.job_data.run_queues_data.run_queues()),
             )?;

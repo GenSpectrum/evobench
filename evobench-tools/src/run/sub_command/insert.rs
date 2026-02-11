@@ -69,7 +69,7 @@ impl LocalOrRemote {
         }
     }
 
-    pub fn load(self, run_config_bundle: &ShareableConfig) -> Result<LocalOrRemoteGitWorkingDir> {
+    pub fn load(self, shareable_config: &ShareableConfig) -> Result<LocalOrRemoteGitWorkingDir> {
         match self {
             LocalOrRemote::Local => {
                 let git_working_dir = GitWorkingDir {
@@ -78,7 +78,7 @@ impl LocalOrRemote {
                 Ok(LocalOrRemoteGitWorkingDir::Local { git_working_dir })
             }
             LocalOrRemote::Remote => {
-                let polling_pool = open_polling_pool(run_config_bundle)?;
+                let polling_pool = open_polling_pool(shareable_config)?;
                 Ok(LocalOrRemoteGitWorkingDir::Remote { polling_pool })
             }
         }
@@ -322,7 +322,7 @@ pub enum Insert {
 }
 
 fn insert_templates_with_references(
-    run_config_bundle: &ShareableConfig,
+    shareable_config: &ShareableConfig,
     insert_opts: InsertOpts,
     queues: &RunQueues,
     mut gwd: LocalOrRemoteGitWorkingDir,
@@ -342,7 +342,7 @@ fn insert_templates_with_references(
     // Do not forget to use the config entries! (XX how to improve the
     // code to enforce this?)
     let insert_benchmarking_job_opts = insert_benchmarking_job_opts
-        .complete_with(&run_config_bundle.run_config.benchmarking_job_settings);
+        .complete_with(&shareable_config.run_config.benchmarking_job_settings);
 
     let commits: Vec<Option<GitHash>> = gwd.resolve_references(reference_names)?;
     let commits: BTreeSet<GitHash> = commits.into_iter().filter_map(|v| v).collect();
@@ -361,7 +361,7 @@ fn insert_templates_with_references(
 
     insert_jobs(
         benchmarking_jobs,
-        run_config_bundle,
+        shareable_config,
         dry_run_opt,
         force_opt,
         quiet_opt,

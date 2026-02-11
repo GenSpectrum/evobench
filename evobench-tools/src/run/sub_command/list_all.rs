@@ -21,12 +21,12 @@ pub struct ListAllOpts {
 }
 
 impl ListAllOpts {
-    pub fn run(self, run_config_bundle: &ShareableConfig) -> Result<()> {
+    pub fn run(self, shareable_config: &ShareableConfig) -> Result<()> {
         let Self {
             terminal_table_opts,
         } = self;
 
-        let already_inserted = open_already_inserted(&run_config_bundle.global_app_state_dir)?;
+        let already_inserted = open_already_inserted(&shareable_config.global_app_state_dir)?;
 
         let mut flat_jobs: Vec<(BenchmarkingJobParameters, SystemTime)> = Vec::new();
         for job in already_inserted
