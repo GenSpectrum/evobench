@@ -35,7 +35,6 @@ use crate::{
         dataset_dir_env_var::dataset_dir_for,
         env_vars::assert_evobench_env_var,
         output_directory::{
-            index_files::regenerate_index_files,
             post_process::compress_file_as,
             structure::{KeyDir, ReplaceBasePath, RunDir, ToPath},
         },
@@ -463,14 +462,6 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                     false,
                 )?;
             }
-
-            // Update list/index.html already before the costly
-            // summaries generation
-            regenerate_index_files(
-                &self.job_runner.shareable_config,
-                Some(self.job_runner.working_directory_pool.base_dir()),
-                Some(self.job_data.run_queues_data.run_queues()),
-            )?;
 
             // Now that the results for the run are in the right place, we
             // can update the summaries for the key
