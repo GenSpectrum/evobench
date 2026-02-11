@@ -706,9 +706,10 @@ fn run() -> Result<Option<ExecutionResult>> {
                 } => {
                     let paths = conf.run_jobs_daemon.clone();
                     let config_file = run_config_bundle.config_file.clone_arc();
+                    let queues = queues.into_value()?;
+
                     // The code that runs in the daemon and executes the jobs
                     let inner_run = |daemon_check_exit: CheckExit| -> Result<()> {
-                        let queues = open_run_queues(&run_config_bundle.shareable)?;
                         let conf = &run_config_bundle.shareable.run_config;
                         let working_directory_pool = open_working_directory_pool(conf)?;
                         run_queues(
