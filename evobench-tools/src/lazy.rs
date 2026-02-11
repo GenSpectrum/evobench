@@ -160,7 +160,7 @@ impl<T: fmt::Debug, F: FnOnce() -> T> fmt::Debug for Lazy<T, F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut d = f.debug_tuple("Lazy");
         match self {
-            Self::Thunk(_) => d.field(&format_args!("<uninit>")),
+            Self::Thunk(_) => d.field(&format_args!("<unforced>")),
             Self::Poisoned => d.field(&format_args!("<poisoned>")),
             Self::Value(v) => d.field(v),
         };
@@ -172,7 +172,7 @@ impl<T: fmt::Debug, E, F: FnOnce() -> Result<T, E>> fmt::Debug for LazyResult<T,
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut d = f.debug_tuple("LazyResult");
         match self {
-            Self::Thunk(_) => d.field(&format_args!("<uninit>")),
+            Self::Thunk(_) => d.field(&format_args!("<unforced>")),
             Self::Poisoned => d.field(&format_args!("<poisoned>")),
             Self::Value(v) => d.field(v),
         };
