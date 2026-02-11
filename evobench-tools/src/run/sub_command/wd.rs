@@ -2,7 +2,7 @@ use std::{borrow::Cow, ffi::OsStr, io::stdout, process::exit, sync::Arc, time::S
 
 use anyhow::{Result, anyhow, bail};
 use chj_rustbin::duu::{GetDirDiskUsage, bytes_to_gib_string};
-use chj_unix_util::polling_signals::{PollingSignals, PollingSignalsSender};
+use chj_unix_util::polling_signals::{PollingSignals, PollingSignalsSender, SharedPollingSignals};
 use cj_path_util::path_util::AppendToPath;
 use itertools::Itertools;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
@@ -54,9 +54,11 @@ pub fn open_working_directory_change_signals(conf: &RunConfig) -> Result<Polling
 /// is sent to this.
 pub fn open_queue_change_signals(
     global_app_state_dir: &GlobalAppStateDir,
-) -> Result<PollingSignals> {
+) -> Result<SharedPollingSignals> {
     let signals_path = global_app_state_dir.run_queue_signal_change_path();
-    PollingSignals::open(&signals_path, 0).map_err(ctx!("opening signals path {signals_path:?}"))
+    let done_path = global_app_state_dir.run_queue_change_done_path();
+    SharedPollingSignals::open(&signals_path, &done_path, 0)
+        .map_err(ctx!("open_queue_change_signals"))
 }
 
 #[derive(Debug, thiserror::Error)]

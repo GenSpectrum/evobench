@@ -1,9 +1,13 @@
 //! Does not belong in run_queues.rs? But must be accessible for utils
 //! other than evobench.rs, too, thus this module.
 
-use std::{thread, time::Duration};
+use std::{
+    thread::{self, JoinHandle},
+    time::Duration,
+};
 
 use anyhow::Result;
+use chj_unix_util::polling_signals::SharedPollingSignals;
 
 use crate::{
     clone,
@@ -15,31 +19,57 @@ use crate::{
     warn,
 };
 
-pub fn open_run_queues(shareable_config: &ShareableConfig) -> Result<RunQueues> {
-    // Get as argument? But there's really no harm done by multiple
-    // mappings, OK?
-    let mut signal_change = open_queue_change_signals(&shareable_config.global_app_state_dir)?;
-    let signal_change_sender = signal_change.sender();
+#[must_use]
+pub struct RegenerateIndexFiles {
+    signal_change: SharedPollingSignals,
+    shareable_config: ShareableConfig,
+}
 
-    thread::spawn({
-        clone!(shareable_config);
-        move || {
-            loop {
-                if signal_change.got_signals() {
-                    if let Err(e) = regenerate_index_files(&shareable_config, None, None) {
-                        // XX backoff
-                        warn!("error: regenerate_index_files: {e:#}");
-                    }
-                }
-                thread::sleep(Duration::from_millis(500));
+impl RegenerateIndexFiles {
+    pub fn run_one(&self) {
+        if let Some(signal) = self.signal_change.get_latest_signal() {
+            if let Err(e) = regenerate_index_files(&self.shareable_config, None, None) {
+                signal.ignore();
+                // XX backoff
+                warn!("error: regenerate_index_files: {e:#}");
+            } else {
+                signal.confirm();
             }
         }
-    });
+    }
 
-    RunQueues::open(
-        shareable_config.run_config.queues.clone_arc(),
-        true,
-        &shareable_config.global_app_state_dir,
-        Some(signal_change_sender.clone()),
-    )
+    pub fn spawn_runner_thread(self) -> std::io::Result<JoinHandle<()>> {
+        thread::Builder::new()
+            .name("regen-index-files".into())
+            .spawn({
+                move || {
+                    loop {
+                        self.run_one();
+                        thread::sleep(Duration::from_millis(500));
+                    }
+                }
+            })
+    }
+}
+
+pub fn open_run_queues(
+    shareable_config: &ShareableConfig,
+) -> Result<(RunQueues, RegenerateIndexFiles)> {
+    // Get `signal_change` as argument? But there's really no harm
+    // done by multiple mappings, OK?
+    let signal_change = open_queue_change_signals(&shareable_config.global_app_state_dir)?;
+    let signal_change_sender = signal_change.sender();
+    clone!(shareable_config);
+    Ok((
+        RunQueues::open(
+            shareable_config.run_config.queues.clone_arc(),
+            true,
+            &shareable_config.global_app_state_dir,
+            Some(signal_change_sender),
+        )?,
+        RegenerateIndexFiles {
+            signal_change,
+            shareable_config,
+        },
+    ))
 }

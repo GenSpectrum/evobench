@@ -535,15 +535,17 @@ fn run() -> Result<Option<ExecutionResult>> {
         }
 
         SubCommand::List { opts } => {
-            let queues = queues.force()?;
+            let (queues, regenerate_index_files) = queues.force()?;
             opts.run(conf, &working_directory_base_dir, queues)?;
+            regenerate_index_files.run_one();
             Ok(None)
         }
 
         SubCommand::Insert { opts, method } => {
-            let queues = queues.force()?;
+            let (queues, regenerate_index_files) = queues.force()?;
             let n = method.run(opts, &run_config_bundle, &queues)?;
             println!("Inserted {n} jobs.");
+            regenerate_index_files.run_one();
             Ok(None)
         }
 
@@ -586,7 +588,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                     }
 
                     let n_original = benchmarking_jobs.len();
-                    let queues = queues.force()?;
+                    let (queues, regenerate_index_files) = queues.force()?;
                     let n = insert_jobs(
                         benchmarking_jobs,
                         &run_config_bundle.shareable,
@@ -598,6 +600,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                         QuietOpt { quiet: true },
                         &queues,
                     )?;
+                    regenerate_index_files.run_one();
 
                     if non_resolving.is_empty() || !fail {
                         if !quiet {
@@ -676,9 +679,9 @@ fn run() -> Result<Option<ExecutionResult>> {
 
             match mode {
                 RunMode::One { false_if_none } => {
-                    let queues = queues.into_value()?;
+                    let (queues, regenerate_index_files) = queues.into_value()?;
                     let working_directory_pool = open_working_directory_pool(conf)?;
-                    match run_queues(
+                    let r = run_queues(
                         run_config_bundle,
                         queues,
                         working_directory_base_dir,
@@ -686,7 +689,9 @@ fn run() -> Result<Option<ExecutionResult>> {
                         true,
                         None,
                         queue_change_signals.force()?.clone(),
-                    )? {
+                    );
+                    regenerate_index_files.run_one();
+                    match r? {
                         RunResult::OnceResult(ran) => {
                             if false_if_none {
                                 exit(if ran { 0 } else { 1 })
@@ -706,10 +711,12 @@ fn run() -> Result<Option<ExecutionResult>> {
                 } => {
                     let paths = conf.run_jobs_daemon.clone();
                     let config_file = run_config_bundle.config_file.clone_arc();
-                    let queues = queues.into_value()?;
+                    let (queues, regenerate_index_files) = queues.into_value()?;
 
                     // The code that runs in the daemon and executes the jobs
                     let inner_run = |daemon_check_exit: CheckExit| -> Result<()> {
+                        regenerate_index_files.spawn_runner_thread()?;
+
                         let conf = &run_config_bundle.shareable.run_config;
                         let working_directory_pool = open_working_directory_pool(conf)?;
                         run_queues(

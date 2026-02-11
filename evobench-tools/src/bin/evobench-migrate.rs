@@ -68,12 +68,14 @@ fn main() -> Result<()> {
 
             info!("migrating the queues");
             {
-                let queues = open_run_queues(&run_config_bundle.shareable)?;
+                let (queues, regenerate_index_files) =
+                    open_run_queues(&run_config_bundle.shareable)?;
                 for queue in queues.all_queues() {
                     info!("migrating queue {:?}", queue.file_name.as_str());
                     let n = migrate_queue(queue)?;
                     info!("migrated {n} items in queue {:?}", queue.file_name.as_str());
                 }
+                regenerate_index_files.run_one();
             }
 
             info!("migrating the already_inserted table");

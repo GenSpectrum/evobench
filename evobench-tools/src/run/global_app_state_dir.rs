@@ -37,8 +37,15 @@ impl GlobalAppStateDir {
         self.subdir("queues")
     }
 
+    /// Signals written to this file indicate the need to (e.g.,
+    /// currently) regenerate the top-level HTML files for the output
+    /// directory
     pub fn run_queue_signal_change_path(&self) -> PathBuf {
         self.base_dir.join(".queues_change.signals")
+    }
+    /// Record of reactions to signals on ".queues_change.signals"
+    pub fn run_queue_change_done_path(&self) -> PathBuf {
+        self.base_dir.join(".queues_change.done")
     }
 
     /// The pool of project clones which are used for building and benchmarking
