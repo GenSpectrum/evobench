@@ -9,7 +9,8 @@ use chj_unix_util::polling_signals::PollingSignals;
 use crate::{
     clone,
     run::{
-        config::ShareableConfig, output_directory::list::regenerate_list, run_queues::RunQueues,
+        config::ShareableConfig, output_directory::index_files::regenerate_index_files,
+        run_queues::RunQueues,
     },
     utillib::arc::CloneArc,
     warn,
@@ -27,9 +28,9 @@ pub fn open_run_queues(shareable_config: &ShareableConfig) -> Result<RunQueues> 
         move || {
             loop {
                 if signal_change.got_signals() {
-                    if let Err(e) = regenerate_list(&shareable_config, None, None) {
+                    if let Err(e) = regenerate_index_files(&shareable_config, None, None) {
                         // XX backoff
-                        warn!("error: regenerate_list: {e:#}");
+                        warn!("error: regenerate_index_files: {e:#}");
                     }
                 }
                 thread::sleep(Duration::from_millis(500));

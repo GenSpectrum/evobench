@@ -467,7 +467,8 @@ impl RunQueues {
 }
 
 impl<'run_queues> RunQueuesData<'run_queues> {
-    /// For things to be run from e.g. run_job (e.g. `regenerate_list` function)
+    /// For things to be run from e.g. run_job
+    /// (e.g. `regenerate_index_files` function)
     pub fn run_queues(&self) -> &'run_queues RunQueues {
         self.run_queues
     }

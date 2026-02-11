@@ -53,7 +53,7 @@ pub fn print_list(
 /// Does not take a lock: just regenerates the file (via
 /// tempfile-rename) with external values at least from now. For
 /// savings, pass the optional values if you can.
-pub fn regenerate_list(
+pub fn regenerate_index_files(
     run_config_bundle: &ShareableConfig,
     working_directory_base_dir: Option<&Arc<WorkingDirectoryPoolBaseDir>>,
     queues: Option<&RunQueues>,
