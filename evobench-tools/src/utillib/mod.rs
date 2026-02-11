@@ -6,6 +6,7 @@ pub mod fallback;
 pub mod home;
 pub mod into_arc_path;
 pub mod invert;
+pub mod invert_index;
 pub mod logging;
 pub mod path_is_top;
 pub mod path_resolve_home;

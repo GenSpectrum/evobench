@@ -1,28 +1,43 @@
-//! Generate the `list.html` file for accessing the output
-//! directory. This uses the same code as the `evobench list`
-//! subcommand.
+//! Generate the HTML files at the top of the output directory for
+//! easy access of the outputs. This uses the same code as the
+//! `evobench list` subcommand, and some more.
 
 use std::{
-    fs::File,
-    io::{BufWriter, Write},
+    collections::{BTreeMap, BTreeSet, btree_map::Entry},
+    io::Write,
     sync::Arc,
 };
 
-use ahtml::HtmlAllocator;
+use ahtml::{ASlice, HtmlAllocator, Node};
 use anyhow::Result;
+use kstring::KString;
 
 use crate::{
-    ctx,
-    io_utils::tempfile_utils::TempfileOptions,
-    output_table::html::HtmlTable,
+    io_utils::tempfile_utils::tempfile,
+    output_table::{CellValue, OutputTable, OutputTableTitle, html::HtmlTable},
     run::{
         config::{RunConfig, ShareableConfig},
+        output_directory::structure::{ParametersDir, ToPath},
         run_queues::RunQueues,
         sub_command::list::{OutputTableOpts, ParameterView},
         working_directory_pool::WorkingDirectoryPoolBaseDir,
     },
-    utillib::arc::CloneArc,
+    utillib::{arc::CloneArc, into_arc_path::IntoArcPath, invert_index::invert_index_by_ref},
 };
+
+fn print_html_document(
+    body: ASlice<Node>,
+    html: &HtmlAllocator,
+    mut out: impl Write,
+) -> Result<()> {
+    let doc = html.html(
+        [],
+        [html.head([], [])?, html.body([], html.table([], body)?)?],
+    )?;
+    html.print_html_document(doc, &mut out)?;
+    out.flush()?;
+    Ok(())
+}
 
 // It's a bit of a mess: creating the table is in sub_command/list.rs,
 // we get the OutputTableOpts and associated creation op from
@@ -34,31 +49,130 @@ pub fn print_list(
     working_directory_base_dir: &Arc<WorkingDirectoryPoolBaseDir>,
     queues: &RunQueues,
     output_table_opts: &OutputTableOpts,
-    mut out: impl Write,
+    html: Option<&HtmlAllocator>,
+    out: impl Write,
 ) -> Result<()> {
+    let tmp;
+    let html = if let Some(html) = html {
+        html
+    } else {
+        tmp = HtmlAllocator::new(1000000, Arc::new("list"));
+        &tmp
+    };
     let num_columns = output_table_opts.parameter_view.titles().len();
-    let html = HtmlAllocator::new(1000000, Arc::new("list"));
     let table = HtmlTable::new(num_columns, &html);
     let body =
         output_table_opts.output_to_table(table, conf, working_directory_base_dir, queues)?;
-    let doc = html.html(
-        [],
-        [html.head([], [])?, html.body([], html.table([], body)?)?],
-    )?;
-    html.print_html_document(doc, &mut out)?;
-    out.flush()?;
+    print_html_document(body.as_slice(), html, out)
+}
+
+fn write_2_column_table_file<T1: CellValue, T2: CellValue>(
+    file_name: &str,
+    titles: &[&str],
+    index: &BTreeMap<T1, BTreeSet<T2>>,
+    conf: &RunConfig,
+    html: &HtmlAllocator,
+) -> Result<()> {
+    // let title_style = Some(OutputStyle {
+    //     font_size: Some(FontSize::Large),
+    //     ..Default::default()
+    // });
+
+    let titles: Vec<_> = titles
+        .iter()
+        .map(|title| OutputTableTitle {
+            text: (*title).into(),
+            span: 1,
+        })
+        .collect();
+
+    let (tmp_file, out) = tempfile(conf.output_dir.path.join(file_name), false)?;
+    let num_columns = titles.len();
+    let mut table = HtmlTable::new(num_columns, &html);
+    table.write_title_row(&titles, None)?;
+
+    for (k, vs) in index {
+        // let mut items = html.new_vec();
+        // for v in vs {
+        //     items.push(html.text(v.as_ref())?)?;
+        //     items.push(html.br([],[])?)?;
+        // }
+
+        // Show k once only, with the first v
+        let mut vs = vs.iter();
+        let v = vs
+            .next()
+            .expect("only adding BtreeSet with a value and never removing values");
+        let row: &[&dyn CellValue] = &[k, v];
+        table.write_data_row(row, None)?;
+
+        for v in vs {
+            let row: &[&dyn CellValue] = &[&"", v];
+            table.write_data_row(row, None)?;
+        }
+    }
+
+    print_html_document(table.finish()?.as_slice(), &html, out)?;
+    tmp_file.finish()?;
     Ok(())
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+struct ParametersCellValue {
+    dir: ParametersDir,
+    s: String,
+}
+
+impl From<ParametersDir> for ParametersCellValue {
+    fn from(dir: ParametersDir) -> Self {
+        let s = format!(
+            "{} -> {}",
+            dir.target_name().as_str(),
+            dir.custom_parameters()
+        );
+        Self { dir, s }
+    }
+}
+
+impl AsRef<str> for ParametersCellValue {
+    fn as_ref(&self) -> &str {
+        &self.s
+    }
+}
+
+impl CellValue for ParametersCellValue {
+    fn perhaps_url(&self) -> Option<String> {
+        Some(self.dir.to_path().to_string_lossy().into_owned())
+    }
+}
+
+impl CellValue for &ParametersCellValue {
+    fn perhaps_url(&self) -> Option<String> {
+        Some(self.dir.to_path().to_string_lossy().into_owned())
+    }
+}
+
+impl CellValue for KString {
+    fn perhaps_url(&self) -> Option<String> {
+        None
+    }
+}
+
+impl CellValue for &KString {
+    fn perhaps_url(&self) -> Option<String> {
+        None
+    }
 }
 
 /// Does not take a lock: just regenerates the file (via
 /// tempfile-rename) with external values at least from now. For
 /// savings, pass the optional values if you can.
 pub fn regenerate_index_files(
-    run_config_bundle: &ShareableConfig,
+    shareable_config: &ShareableConfig,
     working_directory_base_dir: Option<&Arc<WorkingDirectoryPoolBaseDir>>,
     queues: Option<&RunQueues>,
 ) -> Result<()> {
-    let conf = &run_config_bundle.run_config;
+    let conf = &shareable_config.run_config;
 
     // Copies from src/bin/evobench.rs; hacky.
 
@@ -69,7 +183,7 @@ pub fn regenerate_index_files(
         tmp = Arc::new(WorkingDirectoryPoolBaseDir::new(
             conf.working_directory_pool.base_dir.clone(),
             &|| {
-                run_config_bundle
+                shareable_config
                     .global_app_state_dir
                     .working_directory_pool_base()
             },
@@ -82,9 +196,9 @@ pub fn regenerate_index_files(
         q
     } else {
         tmp2 = RunQueues::open(
-            run_config_bundle.run_config.queues.clone_arc(),
+            shareable_config.run_config.queues.clone_arc(),
             true,
-            &run_config_bundle.global_app_state_dir,
+            &shareable_config.global_app_state_dir,
             // No need to signal changes, not going to mutate anything
             None,
         )?;
@@ -93,32 +207,76 @@ pub fn regenerate_index_files(
 
     // / setup
 
-    let output_table_opts = OutputTableOpts {
-        verbose: false,
-        all: false,
-        n: Some(50),
-        parameter_view: ParameterView::Separated,
-    };
+    let mut html = HtmlAllocator::new(1000000, Arc::new("regenerate_index_files"));
 
-    let target_path = conf.output_dir.path.join("list.html");
-    let tmp_file = TempfileOptions {
-        target_path,
-        retain_tempfile: false,
-        migrate_access: false,
+    // list.html
+    {
+        let output_table_opts = OutputTableOpts {
+            verbose: false,
+            all: false,
+            n: Some(50),
+            parameter_view: ParameterView::Separated,
+        };
+
+        let (tmp_file, out) = tempfile(conf.output_dir.path.join("list.html"), false)?;
+
+        print_list(
+            conf,
+            working_directory_base_dir,
+            queues,
+            &output_table_opts,
+            Some(&html),
+            out,
+        )?;
+
+        tmp_file.finish()?;
     }
-    .tempfile()?;
-    let temp_path = &tmp_file.temp_path;
-    let out = BufWriter::new(File::create(temp_path).map_err(ctx!("creating file {temp_path:?}"))?);
 
-    print_list(
-        conf,
-        working_directory_base_dir,
-        queues,
-        &output_table_opts,
-        out,
-    )?;
+    html.clear();
 
-    tmp_file.finish()?;
+    // parameter lists
+    if let Some(base_url) = &conf.output_dir.url {
+        let paths_with_names = {
+            let mut paths_with_names = BTreeMap::new();
+            for (name, templates) in &conf.job_template_lists {
+                for template in &**templates {
+                    let dir = ParametersCellValue::from(
+                        template.to_parameters_dir(base_url.into_arc_path()),
+                    );
+                    match paths_with_names.entry(dir) {
+                        Entry::Vacant(vacant_entry) => {
+                            let mut m = BTreeSet::new();
+                            m.insert(name.clone());
+                            vacant_entry.insert(m);
+                        }
+                        Entry::Occupied(mut occupied_entry) => {
+                            occupied_entry.get_mut().insert(name.clone());
+                        }
+                    }
+                }
+            }
+            paths_with_names
+        };
+
+        write_2_column_table_file(
+            "by_parameters.html",
+            &["Parameter", "Templates names"],
+            &paths_with_names,
+            conf,
+            &html,
+        )?;
+        html.clear();
+
+        let names_with_paths = invert_index_by_ref(&paths_with_names);
+        write_2_column_table_file(
+            "by_templates_name.html",
+            &["Templates name", "Parameters"],
+            &names_with_paths,
+            conf,
+            &html,
+        )?;
+        html.clear();
+    }
 
     Ok(())
 }

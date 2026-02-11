@@ -133,6 +133,15 @@ impl CheckedOrUncheckedCustomParameters {
     }
 }
 
+impl Display for CheckedOrUncheckedCustomParameters {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CheckedOrUncheckedCustomParameters::UncheckedCustomParameters(v) => v.fmt(f),
+            CheckedOrUncheckedCustomParameters::CustomParameters(v) => v.fmt(f),
+        }
+    }
+}
+
 // --- The types ----------------------------------------------------------------
 
 /// The dir representing all of a key except for the commit id
@@ -179,6 +188,25 @@ pub enum OutputSubdir {
 }
 
 // --- Their implementations ----------------------------------------------------
+
+impl PartialEq for ParametersDir {
+    fn eq(&self, other: &Self) -> bool {
+        self.to_path().eq(other.to_path())
+    }
+}
+impl Eq for ParametersDir {}
+
+impl PartialOrd for ParametersDir {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.to_path().partial_cmp(other.to_path())
+    }
+}
+
+impl Ord for ParametersDir {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.to_path().cmp(other.to_path())
+    }
+}
 
 impl ToPath for ParametersDir {
     fn to_path(&self) -> &Arc<Path> {

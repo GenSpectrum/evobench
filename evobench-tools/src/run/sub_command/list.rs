@@ -497,6 +497,7 @@ impl ListOpts {
                 working_directory_base_dir,
                 queues,
                 &output_table_opts,
+                None,
                 stdout().lock(),
             )?;
         } else {

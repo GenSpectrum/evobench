@@ -2,7 +2,7 @@
 
 use std::{
     fs::File,
-    io::Write,
+    io::{BufWriter, Write},
     os::unix::fs::{MetadataExt, PermissionsExt},
     path::{Path, PathBuf},
 };
@@ -154,6 +154,26 @@ impl Drop for Tempfile {
             }
         }
     }
+}
+
+/// Usage of Tempfile made easier: opens a file handle to the
+/// temporary file and hands it back, too
+pub fn tempfile(
+    target_path: PathBuf,
+    migrate_access: bool,
+) -> Result<(Tempfile, BufWriter<File>), TempfileError> {
+    let tmp_file = TempfileOptions {
+        target_path,
+        retain_tempfile: false,
+        migrate_access,
+    }
+    .tempfile()?;
+    let temp_path = &tmp_file.temp_path;
+    let out = BufWriter::new(
+        File::create(temp_path)
+            .map_err(|e| TempfileError::IOError("creating temporary file", e))?,
+    );
+    Ok((tmp_file, out))
 }
 
 // XX todo?

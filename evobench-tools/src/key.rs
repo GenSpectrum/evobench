@@ -227,17 +227,32 @@ impl CustomParameters {
     }
 }
 
+fn display_for_btreemap<S: AsRef<str>>(
+    slf: &BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, S>,
+    f: &mut std::fmt::Formatter<'_>,
+) -> std::fmt::Result {
+    let mut is_first = true;
+    for (k, custom_parameter_value) in slf {
+        let v = (*custom_parameter_value).as_ref();
+        write!(f, "{}{k}={v}", if is_first { "" } else { "," })?;
+        is_first = false;
+    }
+    Ok(())
+}
+
 impl Display for CustomParameters {
     /// Nice view for humans with commas, used in "evobench list
     /// separated"
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut is_first = true;
-        for (k, custom_parameter_value) in self.btree_map().iter() {
-            let v = custom_parameter_value.as_str();
-            write!(f, "{}{k}={v}", if is_first { "" } else { "," })?;
-            is_first = false;
-        }
-        Ok(())
+        display_for_btreemap(self.btree_map(), f)
+    }
+}
+
+impl Display for UncheckedCustomParameters {
+    /// Nice view for humans with commas, used in "evobench list
+    /// separated"
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        display_for_btreemap(self.btree_map(), f)
     }
 }
 
