@@ -6,8 +6,14 @@
 // unwrap the value from the Result). Given that methods are now
 // unambiguous, make `force` and the other accessors normal methods.
 
-use std::fmt;
+// Want to avoid `force` to require &mut, hence need a cell type.
+// Because something needs to be stored from the start, OnceCell
+// doesn't work. RefCell would work but stores an additional flag. Go
+// unsafe.
 
+use std::{cell::UnsafeCell, fmt};
+
+/// TODO: update to use UnsafeCell like LazyResult
 pub enum Lazy<T, F: FnOnce() -> T> {
     Thunk(F),
     Poisoned,
@@ -84,22 +90,24 @@ impl<T, F: FnOnce() -> T> Lazy<T, F> {
 /// promise, so that Result or E do not need to support clone yet
 /// errors can still be propagated. It is at odds with FnOnce,
 /// though.
-pub enum LazyResult<T, E, F: FnOnce() -> Result<T, E>> {
+enum InnerLazyResult<T, E, F: FnOnce() -> Result<T, E>> {
     Thunk(F),
     Poisoned,
     Value(T),
 }
 
+pub struct LazyResult<T, E, F: FnOnce() -> Result<T, E>>(UnsafeCell<InnerLazyResult<T, E, F>>);
+
 impl<T, E, F: FnOnce() -> Result<T, E>> LazyResult<T, E, F> {
     pub fn new(f: F) -> Self {
-        Self::Thunk(f)
+        Self(UnsafeCell::new(InnerLazyResult::Thunk(f)))
     }
 
     pub fn into_inner(self) -> Result<T, F> {
-        match self {
-            Self::Value(v) => Ok(v),
-            Self::Thunk(f) => Err(f),
-            Self::Poisoned => panic!("Lazy instance has previously been poisoned"),
+        match self.0.into_inner() {
+            InnerLazyResult::Value(v) => Ok(v),
+            InnerLazyResult::Thunk(f) => Err(f),
+            InnerLazyResult::Poisoned => panic!("Lazy instance has previously been poisoned"),
         }
     }
 
@@ -111,47 +119,55 @@ impl<T, E, F: FnOnce() -> Result<T, E>> LazyResult<T, E, F> {
         }
     }
 
-    pub fn force(&mut self) -> Result<&T, E> {
-        match self {
-            Self::Thunk(_) => {
-                let mut thunk = Self::Poisoned;
-                std::mem::swap(self, &mut thunk);
+    pub fn force(&self) -> Result<&T, E> {
+        let rf = unsafe {
+            // Safe because access is private, Self is not Sync or
+            // Send, it is initialized, and swapped. Drop still runs
+            // on the UnsafeCell contents, as verified by the test
+            // further down.
+            &mut *self.0.get()
+        };
+        match rf {
+            InnerLazyResult::Thunk(_) => {
+                let mut thunk = InnerLazyResult::Poisoned;
+                std::mem::swap(rf, &mut thunk);
                 match thunk {
-                    Self::Thunk(t) => {
-                        let mut new: Self = Self::Value(t()?);
-                        std::mem::swap(self, &mut new);
-                        match self {
-                            Self::Value(v) => Ok(v),
+                    InnerLazyResult::Thunk(t) => {
+                        let mut new = InnerLazyResult::Value(t()?);
+                        std::mem::swap(rf, &mut new);
+                        match rf {
+                            InnerLazyResult::Value(v) => Ok(v),
                             _ => panic!(),
                         }
                     }
                     _ => panic!(),
                 }
             }
-            Self::Value(v) => Ok(v),
-            Self::Poisoned => panic!("Lazy instance has previously been poisoned"),
+            InnerLazyResult::Value(v) => Ok(v),
+            InnerLazyResult::Poisoned => panic!("Lazy instance has previously been poisoned"),
         }
     }
 
     pub fn force_mut(&mut self) -> Result<&mut T, E> {
-        match self {
-            Self::Thunk(_) => {
-                let mut thunk = Self::Poisoned;
-                std::mem::swap(self, &mut thunk);
+        let rf = self.0.get_mut();
+        match rf {
+            InnerLazyResult::Thunk(_) => {
+                let mut thunk = InnerLazyResult::Poisoned;
+                std::mem::swap(rf, &mut thunk);
                 match thunk {
-                    Self::Thunk(t) => {
-                        let mut new: Self = Self::Value(t()?);
-                        std::mem::swap(self, &mut new);
-                        match self {
-                            Self::Value(v) => Ok(v),
+                    InnerLazyResult::Thunk(t) => {
+                        let mut new = InnerLazyResult::Value(t()?);
+                        std::mem::swap(rf, &mut new);
+                        match rf {
+                            InnerLazyResult::Value(v) => Ok(v),
                             _ => panic!(),
                         }
                     }
                     _ => panic!(),
                 }
             }
-            Self::Value(v) => Ok(v),
-            Self::Poisoned => panic!("Lazy instance has previously been poisoned"),
+            InnerLazyResult::Value(v) => Ok(v),
+            InnerLazyResult::Poisoned => panic!("Lazy instance has previously been poisoned"),
         }
     }
 }
@@ -171,12 +187,58 @@ impl<T: fmt::Debug, F: FnOnce() -> T> fmt::Debug for Lazy<T, F> {
 impl<T: fmt::Debug, E, F: FnOnce() -> Result<T, E>> fmt::Debug for LazyResult<T, E, F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut d = f.debug_tuple("LazyResult");
-        match self {
-            Self::Thunk(_) => d.field(&format_args!("<unforced>")),
-            Self::Poisoned => d.field(&format_args!("<poisoned>")),
-            Self::Value(v) => d.field(v),
+        let rf = unsafe {
+            // See notes above, also, self is not called recursively
+            &*self.0.get()
+        };
+        match rf {
+            InnerLazyResult::Thunk(_) => d.field(&format_args!("<unforced>")),
+            InnerLazyResult::Poisoned => d.field(&format_args!("<poisoned>")),
+            InnerLazyResult::Value(v) => d.field(v),
         };
         d.finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::Cell;
+
+    use anyhow::Result;
+
+    use crate::lazyresult;
+
+    struct Foo<'t>(&'t Cell<i32>);
+
+    impl<'t> Drop for Foo<'t> {
+        fn drop(&mut self) {
+            self.0.set(self.0.get() + 1);
+        }
+    }
+
+    #[test]
+    fn t_() -> Result<()> {
+        let counter = Cell::new(0);
+        let l = lazyresult! {
+            anyhow::Ok(Foo(&counter))
+        };
+        // This must not compile:
+        // {
+        //     let (write, read) = std::sync::mpsc::channel();
+        //     let other_thread = std::thread::spawn(|| {
+        //         for msg in read {
+        //             dbg!("uh");
+        //         }
+        //     });
+        //     write.send(l);
+        // }
+        assert_eq!(counter.get(), 0);
+        let foo = l.force()?;
+        assert_eq!(foo.0.get(), 0);
+        drop(l);
+        assert_eq!(counter.get(), 1);
+
+        Ok(())
     }
 }
 

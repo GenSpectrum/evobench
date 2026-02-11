@@ -503,7 +503,7 @@ fn run() -> Result<Option<ExecutionResult>> {
         },
     )?);
 
-    let mut queues = lazyresult! {
+    let queues = lazyresult! {
         open_run_queues(&run_config_bundle.shareable)
     };
 
@@ -541,7 +541,7 @@ fn run() -> Result<Option<ExecutionResult>> {
             mode,
         } => {
             // Returns whether at least 1 job was inserted
-            let mut try_run_poll = |daemon_check_exit: Option<CheckExit>| -> Result<bool> {
+            let try_run_poll = |daemon_check_exit: Option<CheckExit>| -> Result<bool> {
                 loop {
                     let (commits, non_resolving) = {
                         let mut polling_pool = open_polling_pool(&run_config_bundle.shareable)?;
