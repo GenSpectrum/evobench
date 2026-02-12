@@ -272,9 +272,9 @@ macro_rules! lazy {
 #[macro_export]
 macro_rules! lazyresult {
     { move $($body:tt)* } => {
-        $crate::lazy::LazyResult::new(move || { $($body)* })
+        $crate::utillib::lazy::LazyResult::new(move || { $($body)* })
     };
     { $($body:tt)* } => {
-        $crate::lazy::LazyResult::new(|| { $($body)* })
+        $crate::utillib::lazy::LazyResult::new(|| { $($body)* })
     }
 }

@@ -10,6 +10,7 @@ pub mod integers;
 pub mod into_arc_path;
 pub mod invert;
 pub mod invert_index;
+pub mod lazy;
 pub mod linear;
 pub mod logging;
 pub mod path_is_top;
