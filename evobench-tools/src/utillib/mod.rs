@@ -3,6 +3,7 @@ pub mod ask;
 pub mod bool_env;
 pub mod clone;
 pub mod conslist;
+pub mod crypto_hash;
 pub mod ctx;
 pub mod exit_status_ext;
 pub mod fallback;
