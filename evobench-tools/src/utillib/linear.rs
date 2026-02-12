@@ -95,11 +95,11 @@ impl<T, IN> Drop for UndroppableWithin<T, IN> {
 macro_rules! def_linear {
     { $T:tt in $FOR:ty } => {
         #[must_use]
-        struct $T($crate::linear::UndroppableWithin<$T, $FOR>);
+        struct $T($crate::utillib::linear::UndroppableWithin<$T, $FOR>);
 
         impl $T {
             fn new(fatal: bool) -> Self {
-                Self($crate::linear::UndroppableWithin::new(fatal))
+                Self($crate::utillib::linear::UndroppableWithin::new(fatal))
             }
 
             pub fn bury(self) {
