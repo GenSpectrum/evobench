@@ -18,13 +18,13 @@ inherits = "release"
 debug = true
 
 [dependencies]
-chj-unix-util = { path = "../../../XMLHUB/xmlhub-indexer/libs/chj-unix-util/" }
-chj-rustbin = { path = "../../../chj-rustbin/" }
-cj-path-util = { version = "0.1.0", features = [ "unix" ] }
-ahtml = { path = "../../../website/libs/ahtml/", version = "0.8.0" }
-run-git  = "0.1.0"
+chj-unix-util = { path = "../../xmlhub-indexer/libs/chj-unix-util/" }
+chj-rustbin = { path = "../../chj-rustbin/" }
+cj-path-util = { version = "0.1.0", features = ["unix"] }
+ahtml = { version = "0.8.0" }
+run-git = "0.1.0"
 
-anyhow = { version = "1.0.65", features = ["backtrace"]}
+anyhow = { version = "1.0.65", features = ["backtrace"] }
 clap = { version = "4", features = ["derive", "wrap_help"] }
 terminal_size = "0.2"
 clap_complete_command = { version = "0.6", default-features = false, features = [] }
@@ -33,7 +33,7 @@ anstyle = "1.0.7"
 strum = "0.20.0"
 strum_macros = "0.20.1"
 enumn = "0.1.9"
-derive_more = { version = "2.0.1", features = [ "from", "from_str" ] }
+derive_more = { version = "2.0.1", features = ["from", "from_str"] }
 
 lazy_static = "1.4"
 itertools = "0.11.0"
@@ -41,7 +41,7 @@ thiserror = "1.0.37"
 rayon = "1.5.3"
 
 serde = { version = "1.0.154", features = ["derive", "rc"] }
-serde_json= "1.0"
+serde_json = "1.0"
 serde_path_to_error = "0.1.11"
 ron = "0.8.1"
 serde_json5 = "0.2.1"
