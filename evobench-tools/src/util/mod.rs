@@ -1,4 +1,3 @@
-//! The implementation of the `evobench-util` program.
+//! Things that could be independent from evobench but not so clearly.
 
 pub mod grep_diff;
-pub mod integers;

@@ -5,6 +5,7 @@ pub mod clone;
 pub mod exit_status_ext;
 pub mod fallback;
 pub mod home;
+pub mod integers;
 pub mod into_arc_path;
 pub mod invert;
 pub mod invert_index;

@@ -18,9 +18,9 @@ use evobench_tools::{
     serde::{allowed_env_var::AllowedEnvVar, priority::Priority},
     serde_util::CanonicalJson,
     silo::query::Query,
-    util::integers::rounding_integer_division,
     utillib::{
         arc::CloneArc,
+        integers::rounding_integer_division,
         logging::{LogLevelOpts, set_log_level},
     },
     warn,
