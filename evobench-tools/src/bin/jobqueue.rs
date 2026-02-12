@@ -13,8 +13,7 @@ use evobench_tools::{
         key_val::{Entry, KeyValConfig},
         queue::{Queue, QueueGetItemOptions, QueueIterationOptions},
     },
-    safe_string::SafeString,
-    utillib::get_terminal_width::get_terminal_width,
+    utillib::{get_terminal_width::get_terminal_width, safe_string::SafeString},
 };
 
 #[derive(clap::Parser, Debug)]

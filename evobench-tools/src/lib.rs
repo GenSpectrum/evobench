@@ -17,7 +17,6 @@ pub mod rayon_util;
 pub mod resolution_unit;
 pub mod run;
 pub mod run_with_pre_exec;
-pub mod safe_string;
 pub mod serde_types;
 pub mod serde_util;
 pub mod silo;
