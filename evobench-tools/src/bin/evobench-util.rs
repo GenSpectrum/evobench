@@ -6,7 +6,6 @@ use clap::Parser;
 
 use evobench_tools::{
     ctx,
-    get_terminal_width::get_terminal_width,
     git::GitHash,
     info,
     run::{
@@ -21,6 +20,7 @@ use evobench_tools::{
     },
     serde_types::proper_dirname::ProperDirname,
     util::grep_diff::GrepDiffRegion,
+    utillib::get_terminal_width::get_terminal_width,
     utillib::{
         into_arc_path::IntoArcPath,
         logging::{LogLevelOpts, set_log_level},

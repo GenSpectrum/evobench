@@ -32,7 +32,6 @@ use kstring::KString;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    crypto_hash::crypto_hash,
     ctx,
     git::GitHash,
     io_utils::bash::bash_export_variable_string,
@@ -43,6 +42,7 @@ use crate::{
         env_vars::AllowableCustomEnvVar,
     },
     serde_types::allowed_env_var::AllowedEnvVar,
+    utillib::crypto_hash::crypto_hash,
 };
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]

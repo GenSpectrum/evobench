@@ -31,7 +31,6 @@ use evobench_tools::{
     clap_styles::clap_styles,
     config_file::{self, ConfigFile, save_config_file},
     ctx, debug,
-    get_terminal_width::get_terminal_width,
     git::GitHash,
     info,
     io_utils::shell::preferred_shell,
@@ -60,6 +59,7 @@ use evobench_tools::{
         working_directory_pool::{WorkingDirectoryPool, WorkingDirectoryPoolBaseDir},
     },
     serde_types::date_and_time::{DateTimeWithOffset, LOCAL_TIME},
+    utillib::get_terminal_width::get_terminal_width,
     utillib::{
         arc::CloneArc,
         into_arc_path::IntoArcPath,

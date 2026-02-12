@@ -10,8 +10,8 @@ use evobench_tools::evaluator::options::{
     CheckedOutputOptions, EvaluationAndOutputOpts, FieldSelectorDimension3Opt,
     FieldSelectorDimension4Opt, FlameFieldOpt,
 };
-use evobench_tools::get_terminal_width::get_terminal_width;
 use evobench_tools::stats::StatsField;
+use evobench_tools::utillib::get_terminal_width::get_terminal_width;
 use evobench_tools::utillib::logging::{LogLevelOpts, set_log_level};
 use mimalloc::MiMalloc;
 

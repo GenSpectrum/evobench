@@ -4,7 +4,6 @@ use clap::Parser;
 use evobench_tools::{
     config_file::backend_from_path,
     ctx,
-    get_terminal_width::get_terminal_width,
     git::GitHash,
     io_utils::div::create_dir_if_not_exists,
     key::RunParameters,
@@ -17,6 +16,7 @@ use evobench_tools::{
     serde_types::{allowed_env_var::AllowedEnvVar, priority::Priority},
     serde_util::CanonicalJson,
     silo::query::Query,
+    utillib::get_terminal_width::get_terminal_width,
     utillib::{
         arc::CloneArc,
         conslist::{List, cons},

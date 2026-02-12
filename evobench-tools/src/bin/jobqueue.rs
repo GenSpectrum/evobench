@@ -8,13 +8,13 @@ use anyhow::{Context, Result, anyhow, bail};
 use clap::Parser;
 
 use evobench_tools::{
-    get_terminal_width::get_terminal_width,
     info_if,
     key_val_fs::{
         key_val::{Entry, KeyValConfig},
         queue::{Queue, QueueGetItemOptions, QueueIterationOptions},
     },
     safe_string::SafeString,
+    utillib::get_terminal_width::get_terminal_width,
 };
 
 #[derive(clap::Parser, Debug)]

@@ -14,8 +14,8 @@ use std::{
 };
 
 use crate::{
-    get_terminal_width::get_terminal_width,
     output_table::{CellValue, OutputStyle, OutputTable, OutputTableTitle, Row},
+    utillib::get_terminal_width::get_terminal_width,
 };
 use anyhow::{Result, anyhow, bail};
 use lazy_static::lazy_static;

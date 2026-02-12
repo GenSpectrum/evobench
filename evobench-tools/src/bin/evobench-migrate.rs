@@ -4,7 +4,6 @@ use anyhow::{Result, bail};
 use clap::Parser;
 
 use evobench_tools::{
-    get_terminal_width::get_terminal_width,
     info,
     run::{
         config::RunConfigBundle,
@@ -13,6 +12,7 @@ use evobench_tools::{
         migrate::{migrate_already_inserted, migrate_queue},
         open_run_queues::open_run_queues,
     },
+    utillib::get_terminal_width::get_terminal_width,
     utillib::logging::{LogLevelOpts, set_log_level},
 };
 

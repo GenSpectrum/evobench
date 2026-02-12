@@ -4,7 +4,6 @@ pub mod date_and_time;
 pub mod digit_num;
 pub mod dynamic_typing;
 pub mod evaluator;
-pub mod get_terminal_width;
 pub mod git;
 pub mod git_ext;
 pub mod git_tags;
