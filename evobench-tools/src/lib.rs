@@ -12,7 +12,6 @@ pub mod git_tags;
 pub mod html_files;
 pub mod io_utils;
 pub mod join;
-pub mod json5_from_str;
 pub mod key;
 pub mod key_val_fs;
 pub mod lockable_file;
