@@ -14,13 +14,13 @@ use crate::run::global_app_state_dir::GlobalAppStateDir;
 use crate::utillib::ask::ask_yn;
 use crate::{
     ctx, info,
+    io_utils::lockable_file::{StandaloneExclusiveFileLock, StandaloneFileLockError},
     io_utils::{
         bash::{bash_export_variable_string, bash_string_from_program_path_and_args},
         shell::preferred_shell,
     },
     key::{BenchmarkingJobParameters, RunParameters},
     lazyresult,
-    lockable_file::{StandaloneExclusiveFileLock, StandaloneFileLockError},
     run::{
         command_log_file::CommandLogFile,
         config::{BenchmarkingCommand, RunConfig},

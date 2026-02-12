@@ -6,7 +6,7 @@ use std::{fs::File, ops::Deref, path::Path, sync::Arc};
 use fs2::{FileExt, lock_contended_error};
 use lazy_static::lazy_static;
 
-use crate::lockable_file::{HELD_LOCKS, LockStatus};
+use crate::io_utils::lockable_file::{HELD_LOCKS, LockStatus};
 
 // -----------------------------------------------------------------------------
 

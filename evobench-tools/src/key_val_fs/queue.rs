@@ -15,7 +15,7 @@ use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
     info_if,
-    lockable_file::{ExclusiveFileLock, LockableFile, SharedFileLock},
+    io_utils::lockable_file::{ExclusiveFileLock, LockableFile, SharedFileLock},
     utillib::slice_or_box::SliceOrBox,
 };
 

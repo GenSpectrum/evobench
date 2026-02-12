@@ -12,8 +12,8 @@ use chrono::{DateTime, Local};
 
 use crate::{
     config_file::ron_to_string_pretty,
+    io_utils::lockable_file::LockStatus,
     key_val_fs::key_val::Entry,
-    lockable_file::LockStatus,
     output_table::{FontSize, WithUrlOnDemand},
     run::{
         config::RunConfig,

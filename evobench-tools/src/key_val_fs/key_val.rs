@@ -13,7 +13,7 @@ use chj_unix_util::polling_signals::PollingSignalsSender;
 use cj_path_util::path_util::AppendToPath;
 use serde::{Serialize, de::DeserializeOwned};
 
-use crate::lockable_file::{ExclusiveFileLock, LockableFile, SharedFileLock};
+use crate::io_utils::lockable_file::{ExclusiveFileLock, LockableFile, SharedFileLock};
 
 use super::as_key::AsKey;
 

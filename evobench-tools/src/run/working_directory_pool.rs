@@ -29,8 +29,8 @@ use crate::{
     ctx, debug, def_linear,
     git::GitHash,
     info, io_utils,
+    io_utils::owning_lockable_file::{OwningExclusiveFileLock, OwningLockableFile},
     key::{BenchmarkingJobParameters, RunParameters},
-    owning_lockable_file::{OwningExclusiveFileLock, OwningLockableFile},
     run::working_directory::{
         WorkingDirectoryAutoCleanOpts, WorkingDirectoryPath, WorkingDirectoryWithPoolLock,
         WorkingDirectoryWithPoolLockMut, WorkingDirectoryWithPoolMut,
