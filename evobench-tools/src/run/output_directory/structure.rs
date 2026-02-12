@@ -28,6 +28,54 @@ use crate::{
     },
 };
 
+// --- The types ----------------------------------------------------------------
+
+/// The dir representing all of a key except for the commit id
+/// (i.e. custom parameters and target name--note that this is *not*
+/// the same info as `RunParameters` contains!).
+///
+/// Note that it contains env vars that may *not* be checked against
+/// the config. They are still guaranteed to follow the general
+/// requirements for env var names (as per
+/// `AllowedEnvVar<AllowableCustomEnvVar>::from_str`). Similarly,
+/// `target_name` may not be checked against anything (other than
+/// being a directory name).
+#[derive(Debug)]
+pub struct ParametersDir {
+    base_path: Arc<Path>,
+    target_name: ProperDirname,
+    custom_parameters: CheckedOrUncheckedCustomParameters,
+    path_cache: OnceLock<Arc<Path>>,
+}
+
+/// Dir representing all of the key, including commit id at the
+/// end. I.e. one level below a `RunParametersDir`.
+#[derive(Debug, Clone)]
+pub struct KeyDir {
+    parent: Arc<ParametersDir>,
+    commit_id: GitHash,
+    path_cache: OnceLock<Arc<Path>>,
+}
+
+/// Dir with the results for an individual benchmarking run. I.e. one
+/// level below a `KeyDir`.
+#[derive(Debug, Clone)]
+pub struct RunDir {
+    parent: Arc<KeyDir>,
+    timestamp: DateTimeWithOffset,
+    path_cache: OnceLock<Arc<Path>>,
+}
+
+/// Any kind of *Dir
+#[derive(derive_more::From)]
+pub enum OutputSubdir {
+    ParametersDir(Arc<ParametersDir>),
+    KeyDir(Arc<KeyDir>),
+    RunDir(Arc<RunDir>),
+}
+
+// --- Their implementations ----------------------------------------------------
+
 pub trait ToPath {
     /// May be slightly costly on first run but then cached in those
     /// cases
@@ -141,53 +189,6 @@ impl Display for CheckedOrUncheckedCustomParameters {
         }
     }
 }
-
-// --- The types ----------------------------------------------------------------
-
-/// The dir representing all of a key except for the commit id
-/// (i.e. custom parameters and target name--note that this is *not*
-/// the same info as `RunParameters` contains!).
-///
-/// Note that it contains env vars that may *not* be checked against
-/// the config. They are still guaranteed to follow the general
-/// requirements for env var names (as per
-/// `AllowedEnvVar<AllowableCustomEnvVar>::from_str`). Similarly,
-/// `target_name` may not be checked against anything (other than
-/// being a directory name).
-#[derive(Debug)]
-pub struct ParametersDir {
-    base_path: Arc<Path>,
-    target_name: ProperDirname,
-    custom_parameters: CheckedOrUncheckedCustomParameters,
-    path_cache: OnceLock<Arc<Path>>,
-}
-
-/// Dir representing all of the key, including commit id at the
-/// end. I.e. one level below a `RunParametersDir`.
-#[derive(Debug, Clone)]
-pub struct KeyDir {
-    parent: Arc<ParametersDir>,
-    commit_id: GitHash,
-    path_cache: OnceLock<Arc<Path>>,
-}
-
-/// Dir with the results for an individual benchmarking run. I.e. one
-/// level below a `KeyDir`.
-#[derive(Debug, Clone)]
-pub struct RunDir {
-    parent: Arc<KeyDir>,
-    timestamp: DateTimeWithOffset,
-    path_cache: OnceLock<Arc<Path>>,
-}
-
-#[derive(derive_more::From)]
-pub enum OutputSubdir {
-    ParametersDir(Arc<ParametersDir>),
-    KeyDir(Arc<KeyDir>),
-    RunDir(Arc<RunDir>),
-}
-
-// --- Their implementations ----------------------------------------------------
 
 impl PartialEq for ParametersDir {
     fn eq(&self, other: &Self) -> bool {
