@@ -23,7 +23,7 @@ use crate::{
         queue::{Queue, QueueGetItemOptions, QueueItem, TimeKey},
     },
     run::run_job::{JobRunnerJobData, JobRunnerWithJob},
-    serde::{priority::Priority, proper_filename::ProperFilename},
+    serde_types::{priority::Priority, proper_filename::ProperFilename},
     utillib::logging::{LogLevel, log_level},
 };
 

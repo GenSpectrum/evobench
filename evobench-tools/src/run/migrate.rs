@@ -25,7 +25,7 @@ use crate::{
         config::{BenchmarkingCommand, PreExecLevel2},
         run_queue::RunQueue,
     },
-    serde::{priority::Priority, proper_dirname::ProperDirname},
+    serde_types::{priority::Priority, proper_dirname::ProperDirname},
     util::grep_diff::LogExtract,
     utillib::type_name_short::type_name_short,
     warn,

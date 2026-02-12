@@ -28,7 +28,7 @@ use crate::{
     run::working_directory_pool::{
         WorkingDirectoryId, WorkingDirectoryPoolGuard, WorkingDirectoryPoolGuardMut,
     },
-    serde::{date_and_time::DateTimeWithOffset, git_url::GitUrl},
+    serde_types::{date_and_time::DateTimeWithOffset, git_url::GitUrl},
     utillib::arc::CloneArc,
     warn,
 };

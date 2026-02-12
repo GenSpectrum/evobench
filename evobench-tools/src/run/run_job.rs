@@ -42,7 +42,7 @@ use crate::{
         versioned_dataset_dir::VersionedDatasetDir,
         working_directory::{FetchTags, FetchedTags, WorkingDirectory},
     },
-    serde::{date_and_time::DateTimeWithOffset, proper_dirname::ProperDirname},
+    serde_types::{date_and_time::DateTimeWithOffset, proper_dirname::ProperDirname},
     utillib::{
         arc::CloneArc,
         into_arc_path::IntoArcPath,

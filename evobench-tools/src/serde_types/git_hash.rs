@@ -6,7 +6,7 @@ use std::{
 use anyhow::{Result, bail};
 use serde::de::Visitor;
 
-use crate::serde::git_reference::GitReference;
+use crate::serde_types::git_reference::GitReference;
 
 fn decode_hex_digit(b: u8) -> Result<u8> {
     if b >= b'0' && b <= b'9' {

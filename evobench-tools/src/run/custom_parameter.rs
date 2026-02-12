@@ -5,7 +5,7 @@ use kstring::KString;
 
 use crate::{
     run::env_vars::AllowableCustomEnvVar,
-    serde::{
+    serde_types::{
         allowed_env_var::AllowEnvVar, proper_dirname::ProperDirname,
         proper_filename::ProperFilename,
     },

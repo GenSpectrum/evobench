@@ -5,7 +5,9 @@ use std::str::FromStr;
 use anyhow::{Result, bail};
 use run_git::git::GitWorkingDir;
 
-use crate::serde::{git_branch_name::GitBranchName, git_reference::GitReference, git_url::GitUrl};
+use crate::serde_types::{
+    git_branch_name::GitBranchName, git_reference::GitReference, git_url::GitUrl,
+};
 
 pub trait MoreGitWorkingDir {
     fn get_url(&self, remote_name: &str) -> Result<String>;

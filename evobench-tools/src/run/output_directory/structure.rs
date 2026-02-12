@@ -18,7 +18,7 @@ use crate::{
     git::GitHash,
     key::{CustomParameters, ExtendPath, RunParameters, UncheckedCustomParameters},
     run::{config::JobTemplate, env_vars::AllowableCustomEnvVar},
-    serde::{
+    serde_types::{
         allowed_env_var::AllowedEnvVar, date_and_time::DateTimeWithOffset,
         proper_dirname::ProperDirname, proper_filename::ProperFilename,
     },

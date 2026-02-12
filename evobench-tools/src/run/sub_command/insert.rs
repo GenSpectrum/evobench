@@ -23,7 +23,7 @@ use crate::{
         run_queues::RunQueues,
         sub_command::open_polling_pool,
     },
-    serde::{
+    serde_types::{
         date_and_time::DateTimeWithOffset, git_branch_name::GitBranchName,
         git_reference::GitReference, priority::Priority,
     },

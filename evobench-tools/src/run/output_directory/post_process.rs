@@ -19,7 +19,7 @@ use crate::{
         config::{RunConfig, ScheduleCondition},
         output_directory::structure::{KeyDir, RunDir, SubDirs, ToPath},
     },
-    serde::{proper_dirname::ProperDirname, proper_filename::ProperFilename},
+    serde_types::{proper_dirname::ProperDirname, proper_filename::ProperFilename},
     utillib::logging::{LogLevel, log_level},
     zstd_file::compress_file,
 };

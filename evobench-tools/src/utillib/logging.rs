@@ -11,7 +11,7 @@ use anyhow::{Result, bail};
 use strum::VariantNames;
 use strum_macros::EnumVariantNames;
 
-use crate::serde::date_and_time::DateTimeWithOffset;
+use crate::serde_types::date_and_time::DateTimeWithOffset;
 
 pub fn write_time(file: &str, line: u32, column: u32) -> BufWriter<StderrLock<'static>> {
     // Costs an allocation.

@@ -10,7 +10,7 @@ use crate::{
         queue::{Queue, QueueGetItemOptions, QueueItem, QueueIterationOptions, TimeKey},
     },
     run::{benchmarking_job::BenchmarkingJobState, run_job::JobRunnerWithJob},
-    serde::{priority::Priority, proper_filename::ProperFilename},
+    serde_types::{priority::Priority, proper_filename::ProperFilename},
     utillib::logging::{LogLevel, log_level},
 };
 

@@ -3,7 +3,7 @@
 
 use std::{fmt::Display, ops::Deref, time::SystemTime};
 
-use crate::serde::date_and_time::system_time_to_rfc3339;
+use crate::serde_types::date_and_time::system_time_to_rfc3339;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SystemTimeWithDisplay(pub SystemTime);

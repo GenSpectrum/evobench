@@ -59,7 +59,7 @@ use evobench_tools::{
         versioned_dataset_dir::VersionedDatasetDir,
         working_directory_pool::{WorkingDirectoryPool, WorkingDirectoryPoolBaseDir},
     },
-    serde::date_and_time::{DateTimeWithOffset, LOCAL_TIME},
+    serde_types::date_and_time::{DateTimeWithOffset, LOCAL_TIME},
     utillib::{
         arc::CloneArc,
         into_arc_path::IntoArcPath,

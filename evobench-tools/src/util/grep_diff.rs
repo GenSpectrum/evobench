@@ -15,7 +15,7 @@ use crate::{
         command_log_file::{CommandLog, CommandLogFile, ParseCommandLogError},
         env_vars::AllowableCustomEnvVar,
     },
-    serde::{
+    serde_types::{
         allowed_env_var::AllowedEnvVar, proper_dirname::ProperDirname,
         proper_filename::ProperFilename,
     },

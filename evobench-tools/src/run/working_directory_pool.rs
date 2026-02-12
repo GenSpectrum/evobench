@@ -35,7 +35,7 @@ use crate::{
         WorkingDirectoryAutoCleanOpts, WorkingDirectoryPath, WorkingDirectoryWithPoolLock,
         WorkingDirectoryWithPoolLockMut, WorkingDirectoryWithPoolMut,
     },
-    serde::{date_and_time::DateTimeWithOffset, git_url::GitUrl},
+    serde_types::{date_and_time::DateTimeWithOffset, git_url::GitUrl},
     utillib::arc::CloneArc,
 };
 

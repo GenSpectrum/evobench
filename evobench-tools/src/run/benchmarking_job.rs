@@ -10,7 +10,7 @@ use crate::{
         config::RunConfig,
         sub_command::insert::{ForceInvalidOpt, InsertBenchmarkingJobOpts},
     },
-    serde::priority::{NonComparableNumber, Priority},
+    serde_types::priority::{NonComparableNumber, Priority},
     utillib::{arc::CloneArc, fallback::FallingBackTo},
 };
 

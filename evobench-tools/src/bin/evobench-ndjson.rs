@@ -14,7 +14,7 @@ use evobench_tools::{
         custom_parameter::{CustomParameterType, CustomParameterValue},
         env_vars::AllowableCustomEnvVar,
     },
-    serde::{allowed_env_var::AllowedEnvVar, priority::Priority},
+    serde_types::{allowed_env_var::AllowedEnvVar, priority::Priority},
     serde_util::CanonicalJson,
     silo::query::Query,
     utillib::{

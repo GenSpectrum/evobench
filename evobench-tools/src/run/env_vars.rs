@@ -1,4 +1,4 @@
-use crate::serde::allowed_env_var::AllowEnvVar;
+use crate::serde_types::allowed_env_var::AllowEnvVar;
 
 pub const EVOBENCH_ENV_VARS: &[&str] = &[
     "EVOBENCH_LOG",
@@ -36,7 +36,7 @@ impl AllowEnvVar for AllowableCustomEnvVar {
 mod tests {
     use std::str::FromStr;
 
-    use crate::serde::allowed_env_var::AllowedEnvVar;
+    use crate::serde_types::allowed_env_var::AllowedEnvVar;
 
     use super::*;
 

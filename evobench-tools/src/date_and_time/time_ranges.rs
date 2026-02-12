@@ -6,7 +6,7 @@ use std::{fmt::Display, str::FromStr};
 use anyhow::{anyhow, bail};
 use chrono::{DateTime, Days, Local, NaiveDate, TimeZone};
 
-use crate::{debug, serde::date_and_time::LocalNaiveTime};
+use crate::{debug, serde_types::date_and_time::LocalNaiveTime};
 
 pub struct LocalNaiveTimeRange {
     pub from: LocalNaiveTime,

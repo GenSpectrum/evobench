@@ -13,7 +13,7 @@ use kstring::KString;
 use smallvec::SmallVec;
 
 use crate::date_and_time::unixtime::Unixtime;
-pub use crate::serde::git_hash::GitHash;
+pub use crate::serde_types::git_hash::GitHash;
 
 #[derive(Debug)]
 pub struct GitCommit<RefType> {

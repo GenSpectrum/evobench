@@ -22,7 +22,7 @@ use crate::{
     ctx, debug,
     io_utils::tempfile_utils::TempfileOptions,
     json5_from_str::{Json5FromStrError, json5_from_str},
-    serde::proper_filename::ProperFilename,
+    serde_types::proper_filename::ProperFilename,
     utillib::{
         arc::CloneArc,
         home::{HomeError, home_dir},

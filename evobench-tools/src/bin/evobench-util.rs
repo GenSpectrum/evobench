@@ -19,7 +19,7 @@ use evobench_tools::{
         },
         working_directory_pool::WorkingDirectoryPoolBaseDir,
     },
-    serde::proper_dirname::ProperDirname,
+    serde_types::proper_dirname::ProperDirname,
     util::grep_diff::GrepDiffRegion,
     utillib::{
         into_arc_path::IntoArcPath,

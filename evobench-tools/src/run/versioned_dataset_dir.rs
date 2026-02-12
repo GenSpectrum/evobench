@@ -13,7 +13,7 @@ use run_git::git::GitWorkingDir;
 use crate::{
     ctx, debug,
     git::{GitGraph, GitGraphData, GitHash},
-    serde::proper_filename::ProperFilename,
+    serde_types::proper_filename::ProperFilename,
     warn,
 };
 

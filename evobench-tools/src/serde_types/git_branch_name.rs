@@ -4,7 +4,7 @@ use serde::de::Visitor;
 
 use crate::{
     git::GitHash,
-    serde::git_reference::{GitReference, GitReferenceError, check_git_reference_string},
+    serde_types::git_reference::{GitReference, GitReferenceError, check_git_reference_string},
 };
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, serde::Serialize)]

@@ -23,7 +23,7 @@ pub mod resolution_unit;
 pub mod run;
 pub mod run_with_pre_exec;
 pub mod safe_string;
-pub mod serde;
+pub mod serde_types;
 pub mod serde_util;
 pub mod silo;
 pub mod stats;

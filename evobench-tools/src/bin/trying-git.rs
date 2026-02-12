@@ -10,7 +10,7 @@ use clap::Parser;
 use evobench_tools::get_terminal_width::get_terminal_width;
 use evobench_tools::git::GitGraph;
 use evobench_tools::git_tags::GitTags;
-use evobench_tools::serde::git_reference::GitReference;
+use evobench_tools::serde_types::git_reference::GitReference;
 use evobench_tools::utillib::logging::LogLevelOpts;
 use evobench_tools::utillib::logging::set_log_level;
 use itertools::Itertools;

@@ -11,7 +11,7 @@ use crate::{
         config::BenchmarkingCommand, insert_jobs::open_already_inserted,
         sub_command::list::TARGET_NAME_WIDTH,
     },
-    serde::date_and_time::system_time_to_rfc3339,
+    serde_types::date_and_time::system_time_to_rfc3339,
 };
 
 #[derive(Debug, Clone, clap::Args)]

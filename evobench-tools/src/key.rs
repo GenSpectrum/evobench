@@ -42,7 +42,7 @@ use crate::{
         custom_parameter::{AllowedCustomParameter, CustomParameterValue},
         env_vars::AllowableCustomEnvVar,
     },
-    serde::allowed_env_var::AllowedEnvVar,
+    serde_types::allowed_env_var::AllowedEnvVar,
 };
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]

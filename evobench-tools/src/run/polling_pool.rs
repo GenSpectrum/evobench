@@ -15,7 +15,7 @@ use crate::{
         },
         working_directory_pool::WorkingDirectoryPoolContext,
     },
-    serde::{
+    serde_types::{
         date_and_time::DateTimeWithOffset, git_branch_name::GitBranchName,
         git_reference::GitReference, git_url::GitUrl,
     },
