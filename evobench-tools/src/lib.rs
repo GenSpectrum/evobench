@@ -1,6 +1,5 @@
 pub mod clap_styles;
 pub mod config_file;
-pub mod conslist;
 pub mod crypto_hash;
 pub mod date_and_time;
 pub mod digit_num;

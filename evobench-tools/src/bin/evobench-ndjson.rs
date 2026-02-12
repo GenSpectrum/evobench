@@ -3,7 +3,6 @@ use cj_path_util::{path_util::AppendToPath, unix::polyfill::add_extension};
 use clap::Parser;
 use evobench_tools::{
     config_file::backend_from_path,
-    conslist::{List, cons},
     ctx,
     get_terminal_width::get_terminal_width,
     git::GitHash,
@@ -20,6 +19,7 @@ use evobench_tools::{
     silo::query::Query,
     utillib::{
         arc::CloneArc,
+        conslist::{List, cons},
         integers::rounding_integer_division,
         logging::{LogLevelOpts, set_log_level},
     },
