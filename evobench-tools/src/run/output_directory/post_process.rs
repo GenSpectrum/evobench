@@ -14,6 +14,7 @@ use cj_path_util::{path_util::AppendToPath, unix::polyfill::add_extension};
 
 use crate::{
     ctx, info,
+    io_utils::zstd_file::compress_file,
     run::{
         command_log_file::CommandLogFile,
         config::{RunConfig, ScheduleCondition},
@@ -21,7 +22,6 @@ use crate::{
     },
     serde_types::{proper_dirname::ProperDirname, proper_filename::ProperFilename},
     utillib::logging::{LogLevel, log_level},
-    zstd_file::compress_file,
 };
 
 /// `target_path` must include the `.zstd` extension. XX why does this

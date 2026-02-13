@@ -8,7 +8,7 @@ use kstring::KString;
 
 use crate::{
     evaluator::data::log_message::{LogMessage, Metadata},
-    zstd_file::decompressed_file,
+    io_utils::zstd_file::decompressed_file,
 };
 
 #[derive(Debug)]
