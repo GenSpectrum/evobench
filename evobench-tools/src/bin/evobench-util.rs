@@ -267,6 +267,7 @@ fn main() -> Result<()> {
 
             if single {
                 for run_dir in key_dir.sub_dirs()? {
+                    let run_dir = run_dir?;
                     post_process_single(&run_dir, conf, no_single_stats)?;
                 }
             }

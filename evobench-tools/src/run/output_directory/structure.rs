@@ -88,9 +88,9 @@ pub trait SubDirs: ToPath {
 
     /// Skips non-directory entries, but requires all directory entries to
     /// be convertible to `T`.
-    fn sub_dirs(self: &Arc<Self>) -> Result<Vec<Self::Target>> {
-        let dir_path = self.to_path();
-        std::fs::read_dir(dir_path)
+    fn sub_dirs(self: &Arc<Self>) -> Result<impl Iterator<Item = Result<Self::Target>>> {
+        let dir_path = self.to_path().to_owned();
+        Ok(std::fs::read_dir(&dir_path)
             .map_err(ctx!("opening dir {dir_path:?}"))?
             .map(|entry| -> Result<Option<Self::Target>> {
                 let entry: std::fs::DirEntry = entry?;
@@ -106,12 +106,15 @@ pub trait SubDirs: ToPath {
                     Ok(None)
                 }
             })
-            .filter_map(|r| r.transpose())
-            .collect::<Result<_, _>>()
-            .map_err(ctx!(
-                "getting {} listing for dir {dir_path:?}",
-                type_name_short::<Self>()
-            ))
+            .filter_map({
+                move |r| {
+                    r.map_err(ctx!(
+                        "getting {} listing for dir {dir_path:?}",
+                        type_name_short::<Self>()
+                    ))
+                    .transpose()
+                }
+            }))
     }
 }
 
