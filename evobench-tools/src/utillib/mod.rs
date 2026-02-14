@@ -23,6 +23,7 @@ pub mod recycle;
 pub mod ref_or_owned;
 pub mod safe_string;
 pub mod slice_or_box;
+pub mod tuple_transpose;
 pub mod type_name_short;
 pub mod unix;
 pub mod user;
