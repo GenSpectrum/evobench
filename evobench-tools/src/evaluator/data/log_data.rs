@@ -1,17 +1,11 @@
-use std::{
-    io::{BufRead, BufReader},
-    iter::FusedIterator,
-    path::Path,
-    sync::Mutex,
-};
+use std::{iter::FusedIterator, path::Path, sync::Mutex};
 
 use anyhow::{Context, Result, anyhow, bail};
 use kstring::KString;
 
 use crate::{
-    ctx,
     evaluator::data::log_message::{LogMessage, Metadata},
-    io_utils::{read_buf::read_buf, zstd_file::decompressed_file},
+    io_utils::zstd_file::decompressed_file_mmap,
     utillib::auto_vivify::AutoVivify,
 };
 
@@ -72,15 +66,13 @@ impl LogData {
     /// transparently. Currently not doing streaming with the parsed
     /// results, the in-memory representation is larger than the
     /// file.
+    // Note: you can find versions of this function reading from
+    // `decompressed_file` instead of using mmap in the Git history,
+    // in parallel and before-parallel versions.
     pub fn read_file(path: &Path) -> Result<Self> {
-        let mut input = decompressed_file(path, Some("log"))?;
-        let read_buf = read_buf::<{ Self::CHUNK_SIZE_BYTES }>;
+        let input = decompressed_file_mmap(path, Some("log"))?;
 
-        let first_buf = read_buf(&[], &mut input)
-            .map_err(ctx!("reading from {path:?}"))?
-            .ok_or_else(|| anyhow!("file {path:?} is empty"))?;
-
-        let mut items = IterWithLineAndByteCount::new(first_buf.split(|b| *b == b'\n'), path);
+        let mut items = IterWithLineAndByteCount::new(input.split(|b| *b == b'\n'), path);
 
         let msg = items
             .next()
@@ -99,10 +91,11 @@ impl LogData {
                 let results_ref = &results;
 
                 rayon::scope(|scope| -> Result<()> {
-                    let mut next_buf = read_buf(&first_buf[items.bytepos..], &mut input)
-                        .map_err(ctx!("reading from {path:?}"))?;
+                    let mut rest = &input[items.bytepos..];
                     let mut current_chunk_index = 0;
-                    while let Some(buf) = next_buf {
+
+                    while !rest.is_empty() {
+                        let buf = &rest[..Self::CHUNK_SIZE_BYTES.min(rest.len())];
                         // Find the last line break
                         let (i, _) = buf
                             .iter()
@@ -117,11 +110,8 @@ impl LogData {
                                 )
                             })?;
                         let cutoff = buf.len() - i;
-                        next_buf = read_buf(&buf[cutoff..], &mut input)
-                            .map_err(ctx!("reading from {path:?}"))?;
-
-                        let mut buf = buf;
-                        buf.truncate(cutoff);
+                        let buf = &buf[0..cutoff];
+                        rest = &rest[cutoff..];
 
                         scope.spawn({
                             let chunk_index = current_chunk_index;
