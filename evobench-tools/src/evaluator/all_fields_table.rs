@@ -18,7 +18,6 @@ use crate::{
         options::TILE_COUNT,
     },
     join::{self, KeyVal, keyval_inner_join},
-    rayon_util::ParRun,
     stats_tables::{
         dynamic_typing::{StatsOrCount, StatsOrCountOrSubStats},
         stats::{
@@ -31,7 +30,7 @@ use crate::{
         },
     },
     times::{MicroTime, NanoTime},
-    utillib::tuple_transpose::TupleTranspose,
+    utillib::{rayon_util::ParRun, tuple_transpose::TupleTranspose},
 };
 
 fn scopestats<K: KeyDetails>(

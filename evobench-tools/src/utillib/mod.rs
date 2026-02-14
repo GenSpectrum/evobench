@@ -19,6 +19,7 @@ pub mod linear;
 pub mod logging;
 pub mod path_is_top;
 pub mod path_resolve_home;
+pub mod rayon_util;
 pub mod recycle;
 pub mod ref_or_owned;
 pub mod safe_string;

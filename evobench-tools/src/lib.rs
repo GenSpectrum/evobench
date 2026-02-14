@@ -12,7 +12,6 @@ pub mod join;
 pub mod key;
 pub mod key_val_fs;
 pub mod output_table;
-pub mod rayon_util;
 pub mod resolution_unit;
 pub mod run;
 pub mod run_with_pre_exec;
