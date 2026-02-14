@@ -1,67 +1,175 @@
 use std::{
     io::{BufRead, BufReader},
+    iter::FusedIterator,
     path::Path,
+    sync::Mutex,
 };
 
 use anyhow::{Context, Result, anyhow, bail};
 use kstring::KString;
 
 use crate::{
+    ctx,
     evaluator::data::log_message::{LogMessage, Metadata},
-    io_utils::zstd_file::decompressed_file,
+    io_utils::{read_buf::read_buf, zstd_file::decompressed_file},
+    utillib::auto_vivify::AutoVivify,
 };
+
+struct IterWithLineAndByteCount<'t, I: Iterator<Item = &'t [u8]>> {
+    lines_iter: I,
+    linenum: usize,
+    bytepos: usize,
+    path: &'t Path,
+}
+
+impl<'t, I: Iterator<Item = &'t [u8]>> IterWithLineAndByteCount<'t, I> {
+    fn new(lines_iter: I, path: &'t Path) -> Self {
+        Self {
+            lines_iter,
+            linenum: 0,
+            bytepos: 0,
+            path,
+        }
+    }
+}
+
+impl<'t, I: Iterator<Item = &'t [u8]>> Iterator for IterWithLineAndByteCount<'t, I> {
+    type Item = Result<LogMessage>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(line) = self.lines_iter.next() {
+            self.linenum += 1;
+            self.bytepos += line.len() + 1;
+            Some(
+                serde_json::from_slice(line)
+                    .with_context(|| anyhow!("parsing file {:?}:{}", self.path, self.linenum)),
+            )
+        } else {
+            None
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct LogData {
     pub path: Box<Path>,
-    pub messages: Vec<LogMessage>,
+    pub messages: Box<[Box<[LogMessage]>]>,
     pub evobench_log_version: u32,
     pub evobench_version: KString,
     pub metadata: Metadata,
 }
 
 impl LogData {
+    // Size of buffer for decompressed log data (for one chunk
+    // processed in parallel)
+    const CHUNK_SIZE_BYTES: usize = 20000000;
+
+    pub fn messages(&self) -> impl DoubleEndedIterator<Item = &LogMessage> + FusedIterator {
+        self.messages.iter().flatten()
+    }
+
     /// `path` must end in `.log` or `.zstd`. Decompresses the latter
     /// transparently. Currently not doing streaming with the parsed
     /// results, the in-memory representation is larger than the
-    /// file. `max_file_size` can be used to avoid unintended loading
-    /// of overly large files.
+    /// file.
     pub fn read_file(path: &Path) -> Result<Self> {
-        let mut input = BufReader::new(decompressed_file(path, Some("log"))?);
+        let mut input = decompressed_file(path, Some("log"))?;
+        let read_buf = read_buf::<{ Self::CHUNK_SIZE_BYTES }>;
 
-        let mut line = String::new();
-        let mut linenum = 0;
-        let mut messages = Vec::new();
+        let first_buf = read_buf(&[], &mut input)
+            .map_err(ctx!("reading from {path:?}"))?
+            .ok_or_else(|| anyhow!("file {path:?} is empty"))?;
 
-        // ugly in-line 'iterator' that also updates linenum
-        macro_rules! let_next {
-            { $var:ident or $($err:tt)* } => {
-                if input.read_line(&mut line)? == 0 {
-                    $($err)*
-                }
-                linenum += 1;
-                let $var: LogMessage = serde_json::from_str(&line)
-                    .with_context(|| anyhow!("parsing file {path:?}:{linenum}"))?;
-                line.clear();
-            }
-        }
+        let mut items = IterWithLineAndByteCount::new(first_buf.split(|b| *b == b'\n'), path);
 
-        let_next!(msg or bail!("missing the first message in {path:?}"));
+        let msg = items
+            .next()
+            .ok_or_else(|| anyhow!("missing the first message in {path:?}"))??;
         if let LogMessage::Start {
             evobench_log_version,
             evobench_version,
         } = msg
         {
-            let_next!(msg or bail!("missing the second message in {path:?}"));
+            let msg = items
+                .next()
+                .ok_or_else(|| anyhow!("missing the second message in {path:?}"))??;
             if let LogMessage::Metadata(metadata) = msg {
-                loop {
-                    let_next!(msg or break);
-                    messages.push(msg);
-                }
+                // Results from chunks processing as they come in
+                let results: Mutex<Vec<Option<Result<Box<[LogMessage]>>>>> = Default::default();
+                let results_ref = &results;
 
-                let last = (&messages).last().ok_or_else(|| {
-                    anyhow!("log file {path:?} contains no data, and misses TEnd")
+                rayon::scope(|scope| -> Result<()> {
+                    let mut next_buf = read_buf(&first_buf[items.bytepos..], &mut input)
+                        .map_err(ctx!("reading from {path:?}"))?;
+                    let mut current_chunk_index = 0;
+                    while let Some(buf) = next_buf {
+                        // Find the last line break
+                        let (i, _) = buf
+                            .iter()
+                            .rev()
+                            .enumerate()
+                            .find(|(_, b)| **b == b'\n')
+                            .ok_or_else(|| {
+                                anyhow!(
+                                    "missing a line break in chunk {current_chunk_index} (size {}) \
+                                     in file {path:?}",
+                                    buf.len()
+                                )
+                            })?;
+                        let cutoff = buf.len() - i;
+                        next_buf = read_buf(&buf[cutoff..], &mut input)
+                            .map_err(ctx!("reading from {path:?}"))?;
+
+                        let mut buf = buf;
+                        buf.truncate(cutoff);
+
+                        scope.spawn({
+                            let chunk_index = current_chunk_index;
+                            move |_scope| {
+                                let r = (|| -> Result<Box<[LogMessage]>> {
+                                    let mut items = IterWithLineAndByteCount::new(
+                                        buf.trim_ascii_end().split(|b| *b == b'\n'),
+                                        path,
+                                    );
+
+                                    let mut messages = Vec::new();
+                                    while let Some(msg) = items.next() {
+                                        messages.push(msg?);
+                                    }
+                                    Ok(messages.into())
+                                })();
+                                let mut results = results_ref.lock().expect("no panics");
+                                _ = results.auto_get_mut(chunk_index, || None).insert(r);
+                            }
+                        });
+                        current_chunk_index += 1;
+                    }
+                    Ok(())
                 })?;
+
+                let messages: Vec<Box<[LogMessage]>> = results
+                    .into_inner()?
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, o)| {
+                        if let Some(r) = o {
+                            r.with_context(|| anyhow!("chunk {i}"))
+                        } else {
+                            bail!("chunk {i} has not reported a result, did it panic?")
+                        }
+                    })
+                    .collect::<Result<_>>()?;
+
+                let last = (&messages)
+                    .last()
+                    .ok_or_else(|| anyhow!("log file {path:?} contains no data, and misses TEnd"))?
+                    .last()
+                    .ok_or_else(|| {
+                        anyhow!(
+                            "processing log file {path:?}: missing a value in last chunk result"
+                        )
+                    })?;
+
                 if let LogMessage::TEnd(_) = last {
                     // OK
                 } else {
@@ -70,7 +178,7 @@ impl LogData {
 
                 Ok(LogData {
                     path: path.into(),
-                    messages,
+                    messages: messages.into(),
                     evobench_log_version,
                     evobench_version,
                     metadata,

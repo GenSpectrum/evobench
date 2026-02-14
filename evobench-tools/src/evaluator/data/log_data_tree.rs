@@ -416,7 +416,7 @@ impl<'t> LogDataTree<'t> {
         let mut thread_id_mapper = ThreadIdMapper::new();
         let mut start_by_thread: HashMap<ThreadId, Vec<SpanId<'t>>> = HashMap::new();
 
-        for message in &log_data.messages {
+        for message in log_data.messages() {
             match message.data_message() {
                 DataMessage::KeyValue(kv) => {
                     // Make it a Span
