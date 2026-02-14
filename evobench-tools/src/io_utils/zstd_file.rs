@@ -3,11 +3,11 @@ use std::{
     fs::File,
     io::Read,
     path::Path,
-    process::{Command, Stdio},
+    process::{ChildStdout, Command, Stdio},
 };
 
 use anyhow::{Context, Result, anyhow, bail};
-use ruzstd::StreamingDecoder;
+use ruzstd::{FrameDecoder, StreamingDecoder};
 
 use crate::ctx;
 
@@ -108,10 +108,16 @@ fn t_file_extension() {
     );
 }
 
+pub trait SendRead: Read + Send {}
+
+impl SendRead for StreamingDecoder<std::fs::File, FrameDecoder> {}
+impl SendRead for ChildStdout {}
+impl SendRead for File {}
+
 /// Transparently decompress zstd files if they have a .zstd suffix;
 /// after that, expecting the `expected_suffix` (which must be given
 /// *without* a leading dot) if given.
-pub fn decompressed_file(path: &Path, expected_suffix: Option<&str>) -> Result<Box<dyn Read>> {
+pub fn decompressed_file(path: &Path, expected_suffix: Option<&str>) -> Result<Box<dyn SendRead>> {
     let ext = file_extension(path, expected_suffix)?;
 
     let file_open = || File::open(path).with_context(|| anyhow!("opening file {path:?}"));
