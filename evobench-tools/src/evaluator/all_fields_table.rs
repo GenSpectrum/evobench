@@ -17,20 +17,19 @@ use crate::{
         index_by_call_path::IndexByCallPath,
         options::TILE_COUNT,
     },
-    join::{KeyVal, keyval_inner_join},
+    join::{keyval_inner_join, KeyVal},
     rayon_util::ParRun,
     stats_tables::{
         dynamic_typing::{StatsOrCount, StatsOrCountOrSubStats},
         stats::{
-            Stats, StatsError, StatsField, ToStatsString,
-            weighted::{WEIGHT_ONE, WeightedValue},
+            weighted::{WeightedValue, WEIGHT_ONE}, Stats, StatsError, StatsField, ToStatsString
         },
         tables::{
             table::{Table, TableKind},
             table_field_view::TableFieldView,
         },
     },
-    times::{MicroTime, NanoTime},
+    times::{MicroTime, NanoTime}, utillib::tuple_transpose::TupleTranspose,
 };
 
 fn scopestats<K: KeyDetails>(
@@ -377,26 +376,37 @@ impl AllFieldsTable<SingleRunStats> {
             IndexByCallPath::from_logdataindex(&log_data_tree, &opts)
         };
 
-        let real_time = table_for_field(
-            RealTime(key_details.clone()),
-            &log_data_tree,
-            &index_by_call_path,
-        )?;
-        let cpu_time = table_for_field(
-            CpuTime(key_details.clone()),
-            &log_data_tree,
-            &index_by_call_path,
-        )?;
-        let sys_time = table_for_field(
-            SysTime(key_details.clone()),
-            &log_data_tree,
-            &index_by_call_path,
-        )?;
-        let ctx_switches = table_for_field(
-            CtxSwitches(key_details.clone()),
-            &log_data_tree,
-            &index_by_call_path,
-        )?;
+        let (real_time, cpu_time, sys_time, ctx_switches) = (
+            || {
+                table_for_field(
+                    RealTime(key_details.clone()),
+                    &log_data_tree,
+                    &index_by_call_path,
+                )
+            },
+            || {
+                table_for_field(
+                    CpuTime(key_details.clone()),
+                    &log_data_tree,
+                    &index_by_call_path,
+                )
+            },
+            || {
+                table_for_field(
+                    SysTime(key_details.clone()),
+                    &log_data_tree,
+                    &index_by_call_path,
+                )
+            },
+            || {
+                table_for_field(
+                    CtxSwitches(key_details.clone()),
+                    &log_data_tree,
+                    &index_by_call_path,
+                )
+            },
+        )
+            .par_run().transpose()?;
 
         Ok(AllFieldsTable {
             kind: SingleRunStats,
