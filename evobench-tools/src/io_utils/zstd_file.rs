@@ -2,14 +2,17 @@ use std::{
     ffi::{OsStr, OsString},
     fs::File,
     io::Read,
+    os::unix::fs::MetadataExt,
     path::Path,
     process::{ChildStdout, Command, Stdio},
 };
 
 use anyhow::{Context, Result, anyhow, bail};
+use cj_path_util::unix::polyfill::add_extension;
+use memmap2::{Mmap, MmapOptions};
 use ruzstd::{FrameDecoder, StreamingDecoder};
 
-use crate::ctx;
+use crate::{ctx, io_utils::tempfile_utils::TempfileOptions};
 
 // For decompression; compression is always done via tool.
 const USING_EXTERNAL_TOOL: bool = false;
@@ -140,6 +143,67 @@ pub fn decompressed_file(path: &Path, expected_suffix: Option<&str>) -> Result<B
         }
         Extension::Other => Ok(Box::new(file_open()?)),
     }
+}
+
+/// Open the file as a mmap. `.zstd` files are first decompressed to
+/// `.zstd.uncompressed` if the path does not exist already. The MMap
+/// is created using 2MB huge-pages on Linux. The usual caveats for
+/// memory maps applies: modifications of the file while using the map
+/// can change the data during parsing, which is safe or not depending
+/// on the parser. Truncating the file while accessing it will
+/// segfault the process. Leaving it marked safe here, for now.
+pub fn decompressed_file_mmap(path: &Path, expected_suffix: Option<&str>) -> Result<Mmap> {
+    let ext = file_extension(path, expected_suffix)?;
+
+    let file_open =
+        |path: &Path| File::open(path).with_context(|| anyhow!("opening file {path:?}"));
+
+    let tmp;
+    let uncompressed_path = match ext {
+        Extension::ZStd => {
+            let uncompressed_path = add_extension(path, "uncompressed")
+                .ok_or_else(|| anyhow!("appending extension to {path:?}"))?;
+
+            if !uncompressed_path.exists() {
+                let tmp = TempfileOptions {
+                    target_path: uncompressed_path.clone(),
+                    retain_tempfile: false,
+                    migrate_access: false,
+                }
+                .tempfile()?;
+
+                let mut c = Command::new("zstd");
+                let args: Vec<OsString> = vec![
+                    "-df".into(),
+                    "--quiet".into(),
+                    "-o".into(),
+                    tmp.temp_path().into(),
+                    "--".into(),
+                    path.into(),
+                ];
+                c.args(args);
+                let mut child = c.spawn().map_err(ctx!("spawning command {c:?}"))?;
+                let status = child.wait()?;
+                if !status.success() {
+                    bail!("{c:?} failed: {status}");
+                }
+                tmp.finish()?;
+            }
+            tmp = uncompressed_path;
+            &tmp
+        }
+        Extension::Other => path,
+    };
+
+    let input = file_open(&uncompressed_path)?;
+
+    let meta = input.metadata()?;
+    let size: usize = meta.size().try_into()?;
+    unsafe {
+        // As safe as the function docs says
+        MmapOptions::new().huge(Some(21)).len(size).map(&input)
+    }
+    .map_err(ctx!("mmap for file {uncompressed_path:?}"))
 }
 
 /// If quiet is false, lets messaging by the `zstd` tool show up on
