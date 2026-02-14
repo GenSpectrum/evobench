@@ -1,5 +1,6 @@
 pub mod arc;
 pub mod ask;
+pub mod auto_vivify;
 pub mod bool_env;
 pub mod clone;
 pub mod conslist;
