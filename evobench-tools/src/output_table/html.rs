@@ -62,6 +62,9 @@ impl OutputStyle {
             s.push_str("; ");
         }
 
+        // trim whitespace at the end in place
+        s.truncate(s.trim_end().len());
+
         s
     }
 }
