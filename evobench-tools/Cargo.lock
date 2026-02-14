@@ -667,6 +667,7 @@ dependencies = [
  "lazy_static",
  "linfa",
  "linfa-clustering",
+ "memmap2",
  "mimalloc",
  "ndarray",
  "ndarray-rand",

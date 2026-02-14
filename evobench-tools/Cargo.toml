@@ -69,6 +69,7 @@ ouroboros = "0.18.5"
 fs2 = "0.4.3"
 nix = "0.24.3"
 yansi = "1.0.1"
+memmap2 = "0.9.4"
 
 chrono = "0.4"
 regex = "1.7"
