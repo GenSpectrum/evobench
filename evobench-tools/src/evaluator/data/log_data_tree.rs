@@ -22,6 +22,7 @@ use crate::{
         log_data::LogData,
         log_message::{DataMessage, KeyValue, PointKind, ThreadId, Timing},
     },
+    utillib::micro_vec::MicroVec,
 };
 
 #[derive(Debug)]
@@ -150,7 +151,7 @@ pub enum SpanData<'t> {
 #[derive(Debug)]
 pub struct Span<'t> {
     pub parent: Option<SpanId<'t>>,
-    pub children: Vec<SpanId<'t>>,
+    pub children: MicroVec<SpanId<'t>>,
     pub data: SpanData<'t>,
 }
 
