@@ -33,9 +33,9 @@ use crate::{
     utillib::{rayon_util::ParRun, tuple_transpose::TupleTranspose},
 };
 
-fn scopestats<K: KeyDetails>(
-    log_data_tree: &LogDataTree,
-    spans: &[SpanId],
+fn scopestats<'t, K: KeyDetails>(
+    log_data_tree: &LogDataTree<'t>,
+    spans: &[SpanId<'t>],
 ) -> Result<Stats<K::ViewType, TILE_COUNT>, StatsError> {
     let vals: Vec<WeightedValue> = spans
         .into_iter()
@@ -52,9 +52,9 @@ fn scopestats<K: KeyDetails>(
     Stats::from_values(vals)
 }
 
-fn pn_stats<K: KeyDetails>(
-    log_data_tree: &LogDataTree,
-    spans: &[SpanId],
+fn pn_stats<'t, K: KeyDetails>(
+    log_data_tree: &LogDataTree<'t>,
+    spans: &[SpanId<'t>],
     pn: &str,
 ) -> Result<KeyVal<Cow<'static, str>, StatsOrCountOrSubStats<K::ViewType, TILE_COUNT>>, StatsError>
 {

@@ -554,7 +554,7 @@ impl<'t> LogDataTree<'t> {
         (1..=self.spans.len()).map(SpanId::new)
     }
 
-    pub fn spans_by_pn(&self, pn: &str) -> Option<&Vec<SpanId<'t>>> {
-        self.spans_by_pn.get(pn)
+    pub fn spans_by_pn<'s>(&'s self, pn: &str) -> Option<&'s [SpanId<'t>]> {
+        self.spans_by_pn.get(pn).map(AsRef::as_ref)
     }
 }
