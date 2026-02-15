@@ -2,7 +2,7 @@
 
 use std::{borrow::Cow, fmt::Debug};
 
-use crate::{
+use super::{
     stats::{Stats, SubStats, ToStatsString},
     tables::table_view::{ColumnFormatting, Highlight, TableViewRow, Unit},
 };

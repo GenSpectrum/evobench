@@ -1,6 +1,9 @@
 //! Stats related, e.g. for flamegraph
 
-use crate::{join::KeyVal, stats::StatsField, tables::table_view::TableView};
+use crate::{
+    join::KeyVal,
+    stats_tables::{stats::StatsField, tables::table_view::TableView},
+};
 
 /// A full table, key and single value. dyn compatible. Combine with
 /// TableView for `table_name`.

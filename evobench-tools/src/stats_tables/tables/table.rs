@@ -4,15 +4,17 @@ use genawaiter::rc::Gen;
 use itertools::{EitherOrBoth, Itertools};
 
 use crate::{
-    dynamic_typing::{StatsOrCount, StatsOrCountOrSubStats},
     evaluator::options::TILE_COUNT,
     join::KeyVal,
     resolution_unit::ResolutionUnit,
-    stats::{Stats, StatsField, SubStats, ToStatsString},
-    tables::{
-        change::{Change, IsBetter},
-        table_field_view::TableFieldView,
-        table_view::{ColumnFormatting, Highlight, TableView, TableViewRow, Unit},
+    stats_tables::{
+        dynamic_typing::{StatsOrCount, StatsOrCountOrSubStats},
+        stats::{Stats, StatsField, SubStats, ToStatsString},
+        tables::{
+            change::{Change, IsBetter},
+            table_field_view::TableFieldView,
+            table_view::{ColumnFormatting, Highlight, TableView, TableViewRow, Unit},
+        },
     },
 };
 

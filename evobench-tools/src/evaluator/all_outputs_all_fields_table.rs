@@ -16,8 +16,10 @@ use crate::{
     info,
     io_utils::tempfile_utils::TempfileOptions,
     join::KeyVal,
-    stats::StatsField,
-    tables::{excel_table_view::excel_file_write, table_view::TableView},
+    stats_tables::{
+        stats::StatsField,
+        tables::{excel_table_view::excel_file_write, table_view::TableView},
+    },
     tree::Tree,
     warn,
 };

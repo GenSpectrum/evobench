@@ -4,10 +4,8 @@ use anyhow::{Context, Result, anyhow};
 use cj_path_util::unix::polyfill::add_extension;
 use rust_xlsxwriter::{Color, Format, FormatAlign, workbook::Workbook};
 
-use crate::{
-    io_utils::div::xrename,
-    tables::table_view::{ColumnFormatting, Highlight, TableView, Unit},
-};
+use super::table_view::{ColumnFormatting, Highlight, TableView, Unit};
+use crate::io_utils::div::xrename;
 
 /// How many characters to add to the automatic column width
 /// calculation to try to avoid setting widths too small to accomodate

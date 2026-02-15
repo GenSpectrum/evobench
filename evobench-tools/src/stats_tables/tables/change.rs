@@ -1,6 +1,6 @@
 use std::{borrow::Cow, marker::PhantomData};
 
-use crate::tables::table_view::{ColumnFormatting, Highlight, TableViewRow, Unit};
+use super::table_view::{ColumnFormatting, Highlight, TableViewRow, Unit};
 
 pub trait IsBetter {
     const FORMATTING_FOR_LARGER: Highlight;

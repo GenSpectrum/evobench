@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use anyhow::{Result, bail};
 
-use crate::stats::StatsField;
+use crate::stats_tables::stats::StatsField;
 
 // We use 101 buckets for percentiles instead of 100, so that we get
 // buckets at positions 50, 25, 75 for exact matches, OK? (Although

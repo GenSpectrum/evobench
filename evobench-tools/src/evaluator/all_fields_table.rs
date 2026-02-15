@@ -9,7 +9,6 @@ use anyhow::Result;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
-    dynamic_typing::{StatsOrCount, StatsOrCountOrSubStats},
     evaluator::{
         data::{
             log_data_tree::{LogDataTree, PathStringOptions, SpanId},
@@ -20,13 +19,16 @@ use crate::{
     },
     join::{KeyVal, keyval_inner_join},
     rayon_util::ParRun,
-    stats::{
-        Stats, StatsError, StatsField, ToStatsString,
-        weighted::{WEIGHT_ONE, WeightedValue},
-    },
-    tables::{
-        table::{Table, TableKind},
-        table_field_view::TableFieldView,
+    stats_tables::{
+        dynamic_typing::{StatsOrCount, StatsOrCountOrSubStats},
+        stats::{
+            Stats, StatsError, StatsField, ToStatsString,
+            weighted::{WEIGHT_ONE, WeightedValue},
+        },
+        tables::{
+            table::{Table, TableKind},
+            table_field_view::TableFieldView,
+        },
     },
     times::{MicroTime, NanoTime},
 };

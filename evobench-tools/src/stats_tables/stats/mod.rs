@@ -14,12 +14,14 @@ use fixed::traits::LossyFrom;
 use fixed::types::extra::U32;
 use num_traits::Zero;
 
-use crate::stats::average::Average;
-use crate::stats::weighted::{IndexedNumbers, WeightedValue};
-use crate::{
+use super::{
+    stats::{
+        average::Average,
+        weighted::{IndexedNumbers, WeightedValue},
+    },
     tables::table_view::{ColumnFormatting, Highlight, TableViewRow, Unit},
-    times::{MicroTime, NanoTime, ToStringMilliseconds},
 };
+use crate::times::{MicroTime, NanoTime, ToStringMilliseconds};
 
 fn f64_from_fixed(f: FixedU128<U32>) -> f64 {
     f.to_num()
@@ -462,7 +464,7 @@ impl<ViewType: From<u64> + ToStatsString, const TILE_COUNT: usize> TableViewRow<
 mod tests {
     use anyhow::Result;
 
-    use crate::stats::weighted::WEIGHT_ONE;
+    use crate::stats_tables::stats::weighted::WEIGHT_ONE;
 
     use super::*;
 

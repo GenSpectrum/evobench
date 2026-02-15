@@ -3,17 +3,24 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::Parser;
-use evobench_tools::evaluator::all_fields_table::{SingleRunStats, SummaryStats};
-use evobench_tools::evaluator::all_outputs_all_fields_table::AllOutputsAllFieldsTable;
-use evobench_tools::evaluator::data::log_data_and_tree::LogDataAndTree;
-use evobench_tools::evaluator::options::{
-    CheckedOutputOptions, EvaluationAndOutputOpts, FieldSelectorDimension3Opt,
-    FieldSelectorDimension4Opt, FlameFieldOpt,
-};
-use evobench_tools::stats::StatsField;
-use evobench_tools::utillib::get_terminal_width::get_terminal_width;
-use evobench_tools::utillib::logging::{LogLevelOpts, set_log_level};
 use mimalloc::MiMalloc;
+
+use evobench_tools::{
+    evaluator::{
+        all_fields_table::{SingleRunStats, SummaryStats},
+        all_outputs_all_fields_table::AllOutputsAllFieldsTable,
+        data::log_data_and_tree::LogDataAndTree,
+        options::{
+            CheckedOutputOptions, EvaluationAndOutputOpts, FieldSelectorDimension3Opt,
+            FieldSelectorDimension4Opt, FlameFieldOpt,
+        },
+    },
+    stats_tables::stats::StatsField,
+    utillib::{
+        get_terminal_width::get_terminal_width,
+        logging::{LogLevelOpts, set_log_level},
+    },
+};
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
