@@ -7,7 +7,7 @@
 //! and builds up a tree of all spans.
 
 use std::{
-    collections::{HashMap, hash_map::Entry},
+    collections::{BTreeMap, HashMap, btree_map, hash_map::Entry},
     fmt::{Display, Write},
     marker::PhantomData,
     num::NonZeroU32,
@@ -16,9 +16,12 @@ use std::{
 
 use anyhow::{Result, anyhow, bail};
 
-use crate::evaluator::data::{
-    log_data::LogData,
-    log_message::{DataMessage, KeyValue, PointKind, ThreadId, Timing},
+use crate::{
+    debug,
+    evaluator::data::{
+        log_data::LogData,
+        log_message::{DataMessage, KeyValue, PointKind, ThreadId, Timing},
+    },
 };
 
 #[derive(Debug)]
@@ -406,6 +409,40 @@ impl ThreadIdMapper {
 }
 
 impl<'t> LogDataTree<'t> {
+    /// For dev use: get info on the size of the leaf `Vec`s of
+    /// `spans_by_pn`
+    pub fn spans_by_pn_stats(&self) -> BTreeMap<usize, usize> {
+        let mut map: BTreeMap<usize, usize> = Default::default();
+        for vec in self.spans_by_pn.values() {
+            let len = vec.len();
+            match map.entry(len) {
+                btree_map::Entry::Vacant(vacant_entry) => {
+                    vacant_entry.insert(1);
+                }
+                btree_map::Entry::Occupied(occupied_entry) => {
+                    *occupied_entry.into_mut() += 1;
+                }
+            }
+        }
+        map
+    }
+
+    pub fn spans_children_stats(&self) -> BTreeMap<usize, usize> {
+        let mut map: BTreeMap<usize, usize> = Default::default();
+        for span in &self.spans {
+            let len = span.children.len();
+            match map.entry(len) {
+                btree_map::Entry::Vacant(vacant_entry) => {
+                    vacant_entry.insert(1);
+                }
+                btree_map::Entry::Occupied(occupied_entry) => {
+                    *occupied_entry.into_mut() += 1;
+                }
+            }
+        }
+        map
+    }
+
     pub fn from_logdata(log_data: &'t LogData) -> Result<Self> {
         let mut slf = Self {
             log_data,
@@ -533,6 +570,10 @@ impl<'t> LogDataTree<'t> {
                 }
             }
         }
+
+        debug!("spans_by_pn_stats={:?}", slf.spans_by_pn_stats());
+        debug!("spans_children_stats={:?}", slf.spans_children_stats());
+
         Ok(slf)
     }
 
