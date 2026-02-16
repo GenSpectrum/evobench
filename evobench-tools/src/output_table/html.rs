@@ -182,7 +182,7 @@ impl<'allocator> OutputTable for HtmlTable<'allocator> {
         )?)
     }
 
-    fn print(&mut self, s: &str) -> anyhow::Result<()> {
+    fn print<V: CellValue>(&mut self, value: V) -> anyhow::Result<()> {
         let html = self.table_body.allocator();
         let soft_pre = SoftPre {
             tabs_to_nbsp: Some(8),
@@ -190,9 +190,14 @@ impl<'allocator> OutputTable for HtmlTable<'allocator> {
             input_line_separator: "\n",
             trailing_br: false,
         };
-        let text = soft_pre.format(s, html)?;
+        let text = soft_pre.format(value.as_ref(), html)?;
+        let contents = if let Some(link) = value.perhaps_url() {
+            html.a([att("href", link)], text)?
+        } else {
+            text
+        };
         self.table_body
-            .push(html.tr([], html.td([att("colspan", self.num_columns())], text)?)?)
+            .push(html.tr([], html.td([att("colspan", self.num_columns())], contents)?)?)
     }
 
     fn finish(self) -> anyhow::Result<Self::Output> {

@@ -254,8 +254,8 @@ impl<O: Write + IsTerminal> OutputTable for TerminalTable<O> {
         Ok(self.out.write_all(self.thick_bar.as_bytes())?)
     }
 
-    fn print(&mut self, s: &str) -> Result<()> {
-        self.out.write_all(s.as_bytes())?;
+    fn print<V: CellValue>(&mut self, value: V) -> anyhow::Result<()> {
+        self.out.write_all(value.as_ref().as_bytes())?;
         Ok(())
     }
 

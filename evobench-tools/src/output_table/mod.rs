@@ -179,7 +179,7 @@ pub trait OutputTable {
 
     fn write_thick_bar(&mut self) -> anyhow::Result<()>;
 
-    fn print(&mut self, s: &str) -> anyhow::Result<()>;
+    fn print<V: CellValue>(&mut self, value: V) -> anyhow::Result<()>;
 
     fn finish(self) -> anyhow::Result<Self::Output>;
 }

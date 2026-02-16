@@ -50,6 +50,7 @@ pub fn print_list(
     queues: &RunQueues,
     output_table_opts: &OutputTableOpts,
     html: Option<&HtmlAllocator>,
+    link_skipped: Option<&str>,
     out: impl Write,
 ) -> Result<()> {
     let tmp;
@@ -61,8 +62,13 @@ pub fn print_list(
     };
     let num_columns = output_table_opts.parameter_view.titles().len();
     let table = HtmlTable::new(num_columns, &html);
-    let body =
-        output_table_opts.output_to_table(table, conf, working_directory_base_dir, queues)?;
+    let body = output_table_opts.output_to_table(
+        table,
+        conf,
+        link_skipped,
+        working_directory_base_dir,
+        queues,
+    )?;
     print_html_document(body.as_slice(), html, out)
 }
 
@@ -209,29 +215,39 @@ pub fn regenerate_index_files(
 
     let mut html = HtmlAllocator::new(1000000, Arc::new("regenerate_index_files"));
 
-    // list.html
-    {
-        let output_table_opts = OutputTableOpts {
-            verbose: false,
-            all: false,
-            n: Some(50),
-            parameter_view: ParameterView::Separated,
+    let write_jobs_list =
+        |html: &HtmlAllocator, file_name: &str, all: bool, link: Option<&str>| -> Result<()> {
+            let output_table_opts = OutputTableOpts {
+                verbose: false,
+                all,
+                n: None,
+                parameter_view: ParameterView::Separated,
+            };
+
+            let (tmp_file, out) = tempfile(conf.output_dir.path.join(file_name), false)?;
+
+            print_list(
+                conf,
+                working_directory_base_dir,
+                queues,
+                &output_table_opts,
+                Some(html),
+                link,
+                out,
+            )?;
+
+            tmp_file.finish()?;
+
+            Ok(())
         };
 
-        let (tmp_file, out) = tempfile(conf.output_dir.path.join("list.html"), false)?;
-
-        print_list(
-            conf,
-            working_directory_base_dir,
-            queues,
-            &output_table_opts,
-            Some(&html),
-            out,
-        )?;
-
-        tmp_file.finish()?;
-    }
-
+    // Write the jobs list with the default limit
+    write_jobs_list(&html, "list.html", false, Some("list-unlimited.html"))?;
+    html.clear();
+    // And again with "all" jobs; to avoid confusion, do not use
+    // "list-all.html" since "list-all" is a different evobench
+    // subcommand.
+    write_jobs_list(&html, "list-unlimited.html", true, None)?;
     html.clear();
 
     // parameter lists

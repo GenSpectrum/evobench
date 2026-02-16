@@ -118,6 +118,7 @@ impl OutputTableOpts {
         &self,
         mut table: Table,
         conf: &RunConfig,
+        link_skipped: Option<&str>,
         working_directory_base_dir: &Arc<WorkingDirectoryPoolBaseDir>,
         queues: &RunQueues,
     ) -> Result<Table::Output> {
@@ -251,7 +252,16 @@ impl OutputTableOpts {
             let shown_sorted_keys;
             if let Some(num_skipped_2) = all_sorted_keys.len().checked_sub(limit) {
                 let num_skipped = num_skipped_2 + 2;
-                table.print(&format!("... ({num_skipped} entries skipped)\n"))?;
+                let s = format!("... ({num_skipped} entries skipped)\n");
+                let tmp;
+                let gen_url: Option<&dyn Fn() -> Option<_>> = if let Some(link) = link_skipped {
+                    tmp = || Some(link.into());
+                    Some(&tmp)
+                } else {
+                    None
+                };
+                let value = WithUrlOnDemand { text: &s, gen_url };
+                table.print(value)?;
                 shown_sorted_keys = &all_sorted_keys[num_skipped..];
             } else {
                 shown_sorted_keys = &all_sorted_keys;
@@ -398,7 +408,7 @@ impl OutputTableOpts {
                 )?;
                 if *verbose {
                     let s = ron_to_string_pretty(&job)?;
-                    table.print(&format!("{s}\n\n"))?;
+                    table.print(format!("{s}\n\n"))?;
                 }
 
                 row = row.recycle_vec();
@@ -425,7 +435,7 @@ impl OutputTableOpts {
             if let Some(run_queue) = run_queue {
                 show_queue(queue_name, run_queue, true, table)?;
             } else {
-                table.print(&format!("No {queue_field} is configured"))?;
+                table.print(format!("No {queue_field} is configured"))?;
             }
             Ok(())
         };
@@ -492,11 +502,13 @@ impl ListOpts {
         } = self;
 
         if html {
+            // From run/output_directory/html_files.rs
             print_list(
                 conf,
                 working_directory_base_dir,
                 queues,
                 &output_table_opts,
+                None,
                 None,
                 stdout().lock(),
             )?;
@@ -512,6 +524,7 @@ impl ListOpts {
             let mut out = output_table_opts.output_to_table(
                 table,
                 conf,
+                None,
                 working_directory_base_dir,
                 queues,
             )?;
