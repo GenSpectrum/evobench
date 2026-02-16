@@ -9,7 +9,7 @@ use std::{
     sync::Arc,
 };
 
-use ahtml::{ASlice, HtmlAllocator, Node};
+use ahtml::{ASlice, HtmlAllocator, Node, SerHtmlFrag};
 use anyhow::Result;
 use kstring::KString;
 
@@ -31,9 +31,46 @@ fn print_html_document(
     html: &HtmlAllocator,
     mut out: impl Write,
 ) -> Result<()> {
+    // If a fragment was given, and it starts with "end-", scroll so
+    // that it lines up at the *end* of the viewport. Sadly without JS
+    // it will line up at the top; todo: put anchor (with a different
+    // name) for non-JS use in the 30th-last row or so instead?
+    let code: Arc<str> = Arc::from(
+        r##"
+<script>
+  if (location.hash) {
+    history.scrollRestoration = "manual";
+  }
+
+  window.addEventListener("DOMContentLoaded", () => {
+    if (location.hash.length > 0) {
+      const id = location.hash.substring(1);
+      const el = document.getElementById(id);
+      if (el) {
+        if (id.startsWith("end-")) {
+          el.scrollIntoView({ block: "end" });
+        } else {
+          el.scrollIntoView();
+        }
+      }
+    }
+  });
+</script>
+"##,
+    );
+
     let doc = html.html(
         [],
-        [html.head([], [])?, html.body([], html.table([], body)?)?],
+        [
+            html.head(
+                [],
+                html.preserialized(SerHtmlFrag {
+                    meta: &ahtml::SCRIPT_META,
+                    string: code,
+                })?,
+            )?,
+            html.body([], html.table([], body)?)?,
+        ],
     )?;
     html.print_html_document(doc, &mut out)?;
     out.flush()?;
