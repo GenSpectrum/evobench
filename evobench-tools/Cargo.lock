@@ -51,12 +51,35 @@ version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b211e473fd0cf7cefe3ca16531476685e2537ec323e512f6638594a5a1c8729e"
 dependencies = [
- "ahtml_html",
+ "ahtml_html 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "anyhow",
  "backtrace",
- "chj-util",
+ "chj-util 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "kstring 1.0.6",
  "lazy_static",
+]
+
+[[package]]
+name = "ahtml"
+version = "0.8.1"
+dependencies = [
+ "ahtml_html 0.1.0",
+ "anyhow",
+ "backtrace",
+ "chj-util 0.2.1",
+ "kstring 1.0.6",
+ "lazy_static",
+]
+
+[[package]]
+name = "ahtml_html"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "kstring 1.0.6",
+ "lazy_static",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -192,9 +215,9 @@ version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5da7b6ebeccf4f51676eb61d30c4f9b1f6a41dd9ca2b8d5074c73bc921d362c3"
 dependencies = [
- "ahtml",
+ "ahtml 0.8.0",
  "anyhow",
- "chj-util",
+ "chj-util 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "itertools 0.10.5",
  "kstring 1.0.6",
  "pct-str",
@@ -328,6 +351,14 @@ dependencies = [
  "num_threads",
  "ouroboros",
  "thiserror 1.0.40",
+]
+
+[[package]]
+name = "chj-util"
+version = "0.2.1"
+dependencies = [
+ "backtrace",
+ "kstring 1.0.6",
 ]
 
 [[package]]
@@ -643,7 +674,7 @@ dependencies = [
 name = "evobench-tools"
 version = "0.1.0"
 dependencies = [
- "ahtml",
+ "ahtml 0.8.1",
  "anstyle",
  "anyhow",
  "approx",
