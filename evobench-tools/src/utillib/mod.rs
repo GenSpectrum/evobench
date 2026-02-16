@@ -10,6 +10,7 @@ pub mod exit_status_ext;
 pub mod fallback;
 pub mod get_terminal_width;
 pub mod home;
+pub mod html_util;
 pub mod integers;
 pub mod into_arc_path;
 pub mod invert;
