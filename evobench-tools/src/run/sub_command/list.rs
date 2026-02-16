@@ -260,7 +260,7 @@ impl OutputTableOpts {
                 let tmp;
                 let gen_url: Option<&dyn Fn() -> Option<Cow<'link_skipped, str>>> =
                     if let Some(link) = link_skipped {
-                        let url: Cow<str> = format!("{link}#{}", file_name.as_str()).into();
+                        let url: Cow<str> = format!("{link}#end-{}", file_name.as_str()).into();
                         tmp = move || Some(url.clone());
                         Some(&tmp)
                     } else {
