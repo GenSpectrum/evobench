@@ -21,6 +21,8 @@ use evobench_tools::{
         logging::{LogLevelOpts, set_log_level},
     },
 };
+use rayon::iter::{ParallelBridge, ParallelIterator};
+use run_git::flattened::IntoFlattened;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -28,6 +30,10 @@ static GLOBAL: MiMalloc = MiMalloc;
 include!("../../include/evobench_version.rs");
 
 const PROGRAM_NAME: &str = "evobench-eval";
+
+/// How many files to process in parallel at most. This is to avoid
+/// using too much RAM.
+const NUM_FILES_IN_PARALLEL: usize = 4;
 
 #[derive(clap::Parser, Debug)]
 #[clap(next_line_help = true)]
@@ -132,20 +138,28 @@ fn main() -> Result<()> {
             flame_selector: FlameFieldOpt { flame_field },
         } => {
             let CheckedOutputOptions { variants } = output_opts.check()?;
-            let afts: Vec<AllOutputsAllFieldsTable<SingleRunStats>> = paths
-                .iter()
-                .map(|source_path| {
-                    let ldat = LogDataAndTree::read_file(source_path)?;
-                    AllOutputsAllFieldsTable::from_log_data_tree(
-                        ldat.tree(),
-                        &evaluation_opts,
-                        variants.clone(),
-                        false,
-                    )
-                })
+            let chunk_size = (paths.len() + NUM_FILES_IN_PARALLEL - 1) / NUM_FILES_IN_PARALLEL;
+            let afts: Vec<Vec<AllOutputsAllFieldsTable<SingleRunStats>>> = paths
+                .chunks(chunk_size)
+                .par_bridge()
+                .map(
+                    |source_paths| -> Result<Vec<AllOutputsAllFieldsTable<SingleRunStats>>> {
+                        let mut afts = Vec::new();
+                        for source_path in source_paths {
+                            let ldat = LogDataAndTree::read_file(source_path)?;
+                            afts.push(AllOutputsAllFieldsTable::from_log_data_tree(
+                                ldat.tree(),
+                                &evaluation_opts,
+                                variants.clone(),
+                                false,
+                            )?);
+                        }
+                        Ok(afts)
+                    },
+                )
                 .collect::<Result<_>>()?;
             let aft = AllOutputsAllFieldsTable::<SummaryStats>::summary_stats(
-                &afts,
+                &afts.into_flattened(),
                 summary_field,
                 &evaluation_opts,
                 variants, // same as passed to from_log_data_tree above
