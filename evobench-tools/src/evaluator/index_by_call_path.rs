@@ -3,8 +3,6 @@
 
 use std::collections::HashMap;
 
-use itertools::Itertools;
-
 use crate::evaluator::data::log_data_tree::{LogDataTree, PathStringOptions, SpanId};
 
 #[derive(Debug, Default)]
@@ -49,8 +47,10 @@ impl<'t> IndexByCallPath<'t> {
         slf
     }
 
-    pub fn call_paths(&self) -> impl Iterator<Item = &String> {
-        self.spans_by_call_path.keys().sorted()
+    pub fn call_paths(&self) -> Vec<&String> {
+        let mut paths: Vec<&String> = self.spans_by_call_path.keys().collect();
+        paths.sort();
+        paths
     }
 
     pub fn spans_by_call_path(&self, call_path: &str) -> Option<&Vec<SpanId<'_>>> {
