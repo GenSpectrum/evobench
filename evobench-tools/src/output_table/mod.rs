@@ -1,4 +1,5 @@
 use itertools::{EitherOrBoth, Itertools};
+use kstring::KString;
 use std::borrow::Cow;
 
 pub mod html;
@@ -15,10 +16,15 @@ pub struct OutputTableTitle<'s> {
 pub trait CellValue<'url>: AsRef<str> {
     /// If appropriate for the type and instance, return a URL value
     fn perhaps_url(&self) -> Option<Cow<'url, str>>;
+    /// If appropriate, generate an anchor
+    fn perhaps_anchor_name(&self) -> Option<&KString>;
 }
 
 impl<'url> CellValue<'url> for str {
     fn perhaps_url(&self) -> Option<Cow<'static, str>> {
+        None
+    }
+    fn perhaps_anchor_name(&self) -> Option<&KString> {
         None
     }
 }
@@ -26,9 +32,15 @@ impl<'url> CellValue<'url> for &str {
     fn perhaps_url(&self) -> Option<Cow<'static, str>> {
         None
     }
+    fn perhaps_anchor_name(&self) -> Option<&KString> {
+        None
+    }
 }
 impl<'url> CellValue<'url> for String {
     fn perhaps_url(&self) -> Option<Cow<'static, str>> {
+        None
+    }
+    fn perhaps_anchor_name(&self) -> Option<&KString> {
         None
     }
 }
@@ -36,11 +48,17 @@ impl<'t, 'url> CellValue<'url> for Cow<'t, str> {
     fn perhaps_url(&self) -> Option<Cow<'static, str>> {
         None
     }
+    fn perhaps_anchor_name(&self) -> Option<&KString> {
+        None
+    }
 }
 // Hmm huh.
 impl<'t, 'url> CellValue<'url> for &dyn CellValue<'url> {
     fn perhaps_url(&self) -> Option<Cow<'url, str>> {
         (*self).perhaps_url()
+    }
+    fn perhaps_anchor_name(&self) -> Option<&KString> {
+        None
     }
 }
 
@@ -191,11 +209,12 @@ pub trait OutputTable {
 
 /// A text with optional link which is generated only when needed
 /// (i.e. for HTML output)
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct WithUrlOnDemand<'s, 'url> {
     pub text: &'s str,
     // dyn because different columns might want different links
     pub gen_url: Option<&'s dyn Fn() -> Option<Cow<'url, str>>>,
+    pub anchor_name: Option<KString>,
 }
 
 impl<'s, 'url> From<&'s str> for WithUrlOnDemand<'s, 'url> {
@@ -203,6 +222,7 @@ impl<'s, 'url> From<&'s str> for WithUrlOnDemand<'s, 'url> {
         WithUrlOnDemand {
             text,
             gen_url: None,
+            anchor_name: None,
         }
     }
 }
@@ -220,5 +240,8 @@ impl<'s, 'url> CellValue<'url> for WithUrlOnDemand<'s, 'url> {
         } else {
             None
         }
+    }
+    fn perhaps_anchor_name(&self) -> Option<&KString> {
+        self.anchor_name.as_ref()
     }
 }

@@ -2,6 +2,7 @@ use ahtml::{AVec, HtmlAllocator, Node, att, util::SoftPre};
 
 use crate::{
     output_table::{CellValue, OutputStyle, OutputTable},
+    utillib::html_util::anchor,
     warn,
 };
 
@@ -127,6 +128,11 @@ impl<'allocator> OutputTable for HtmlTable<'allocator> {
                         html.a([att("href", url)], text)?
                     } else {
                         text
+                    };
+                    let content = if let Some(name) = item.perhaps_anchor_name() {
+                        anchor(name, content, html)?
+                    } else {
+                        content
                     };
                     cells.push(html.td([], content)?)?;
                 }

@@ -261,7 +261,11 @@ impl OutputTableOpts {
                     } else {
                         None
                     };
-                let value = WithUrlOnDemand { text: &s, gen_url };
+                let value = WithUrlOnDemand {
+                    text: &s,
+                    gen_url,
+                    anchor_name: None,
+                };
                 table.print(value)?;
                 shown_sorted_keys = &all_sorted_keys[num_skipped..];
             } else {
@@ -377,10 +381,12 @@ impl OutputTableOpts {
                             WithUrlOnDemand {
                                 text: &target_name,
                                 gen_url: Some(&gen_url),
+                                anchor_name: None,
                             },
                             WithUrlOnDemand {
                                 text: &*custom_parameters,
                                 gen_url: Some(&gen_url),
+                                anchor_name: None,
                             },
                         ]);
                     }
@@ -397,6 +403,7 @@ impl OutputTableOpts {
                         row.push(WithUrlOnDemand {
                             text: &*path,
                             gen_url: Some(&gen_url),
+                            anchor_name: None,
                         });
                     }
                 }

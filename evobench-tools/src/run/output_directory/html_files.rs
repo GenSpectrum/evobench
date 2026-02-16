@@ -151,11 +151,17 @@ impl<'url> CellValue<'url> for ParametersCellValue {
     fn perhaps_url(&self) -> Option<Cow<'static, str>> {
         Some(self.dir.to_path().to_string_lossy().to_string().into())
     }
+    fn perhaps_anchor_name(&self) -> Option<&KString> {
+        None
+    }
 }
 
 impl<'url> CellValue<'url> for &ParametersCellValue {
     fn perhaps_url(&self) -> Option<Cow<'static, str>> {
         Some(self.dir.to_path().to_string_lossy().to_string().into())
+    }
+    fn perhaps_anchor_name(&self) -> Option<&KString> {
+        None
     }
 }
 
@@ -163,10 +169,16 @@ impl<'url> CellValue<'url> for KString {
     fn perhaps_url(&self) -> Option<Cow<'static, str>> {
         None
     }
+    fn perhaps_anchor_name(&self) -> Option<&KString> {
+        None
+    }
 }
 
 impl<'url> CellValue<'url> for &KString {
     fn perhaps_url(&self) -> Option<Cow<'static, str>> {
+        None
+    }
+    fn perhaps_anchor_name(&self) -> Option<&KString> {
         None
     }
 }
