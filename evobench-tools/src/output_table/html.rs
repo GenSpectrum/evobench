@@ -104,7 +104,11 @@ impl<'allocator> OutputTable for HtmlTable<'allocator> {
         match row {
             Row::WithSpans(items) => {
                 for item in items {
-                    let OutputTableTitle { text, span } = item;
+                    let OutputTableTitle {
+                        text,
+                        span,
+                        anchor_name,
+                    } = item;
                     let s: &str = text.as_ref();
                     let text_node = html.text(s)?;
                     let text = if let Some(style) = &htmlstyle {
@@ -112,7 +116,12 @@ impl<'allocator> OutputTable for HtmlTable<'allocator> {
                     } else {
                         text_node
                     };
-                    cells.push(html.td([att("colspan", *span)], text)?)?;
+                    let content = if let Some(anchor_name) = anchor_name {
+                        anchor(anchor_name, text, html)?
+                    } else {
+                        text
+                    };
+                    cells.push(html.td([att("colspan", *span)], content)?)?;
                 }
             }
             Row::PlainStrings(items) => {
@@ -153,7 +162,11 @@ impl<'allocator> OutputTable for HtmlTable<'allocator> {
         let html = self.table_body.allocator();
         let mut cells = html.new_vec();
         for item in titles {
-            let OutputTableTitle { text, span } = item;
+            let OutputTableTitle {
+                text,
+                span,
+                anchor_name,
+            } = item;
             let s: &str = text.as_ref();
             let text_node = html.text(s)?;
             let text = if let Some(style) = &htmlstyle {
@@ -161,7 +174,12 @@ impl<'allocator> OutputTable for HtmlTable<'allocator> {
             } else {
                 text_node
             };
-            cells.push(html.th([att("colspan", *span)], text)?)?;
+            let content = if let Some(anchor_name) = anchor_name {
+                anchor(anchor_name, text, html)?
+            } else {
+                text
+            };
+            cells.push(html.th([att("colspan", *span)], content)?)?;
         }
         self.table_body.push(html.tr([], cells)?)
     }

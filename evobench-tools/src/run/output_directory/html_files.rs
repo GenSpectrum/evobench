@@ -90,6 +90,7 @@ fn write_2_column_table_file<'url, T1: CellValue<'url>, T2: CellValue<'url>>(
         .map(|title| OutputTableTitle {
             text: (*title).into(),
             span: 1,
+            anchor_name: None,
         })
         .collect();
 

@@ -9,6 +9,7 @@ use std::{
 
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Local};
+use kstring::KString;
 
 use crate::{
     config_file::ron_to_string_pretty,
@@ -167,6 +168,7 @@ impl OutputTableOpts {
                 .map(|s| OutputTableTitle {
                     text: Cow::Borrowed(s),
                     span: 1,
+                    anchor_name: None,
                 })
                 .collect();
 
@@ -210,10 +212,11 @@ impl OutputTableOpts {
             let titles = &[OutputTableTitle {
                 text: format!(
                     "{i}: queue {:?} ({schedule_condition}):",
-                    file_name.as_str()
+                    file_name.as_str(),
                 )
                 .into(),
                 span: full_span,
+                anchor_name: Some(KString::from_ref(file_name.as_str())),
             }];
 
             // It's OK to call this multiple times on the same table,
@@ -256,7 +259,8 @@ impl OutputTableOpts {
                 let tmp;
                 let gen_url: Option<&dyn Fn() -> Option<Cow<'link_skipped, str>>> =
                     if let Some(link) = link_skipped {
-                        tmp = || Some(link.into());
+                        let url: Cow<str> = format!("{link}#{}", file_name.as_str()).into();
+                        tmp = move || Some(url.clone());
                         Some(&tmp)
                     } else {
                         None

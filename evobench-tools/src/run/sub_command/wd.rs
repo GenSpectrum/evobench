@@ -397,6 +397,7 @@ impl Wd {
                         .map(|s| OutputTableTitle {
                             text: Cow::Borrowed(s),
                             span: 1,
+                            anchor_name: None,
                         })
                         .collect()
                 };

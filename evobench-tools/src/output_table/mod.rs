@@ -11,6 +11,8 @@ pub struct OutputTableTitle<'s> {
     /// How many columns this should span across; should normally be
     /// `1`
     pub span: usize,
+    /// Optional anchor for HTML
+    pub anchor_name: Option<KString>,
 }
 
 pub trait CellValue<'url>: AsRef<str> {
@@ -76,7 +78,12 @@ impl<'r, 's, 'url, V: CellValue<'url>> Row<'r, 's, V> {
         match self {
             Row::WithSpans(terminal_table_titles) => {
                 let mut cols = 0;
-                for OutputTableTitle { text: _, span } in *terminal_table_titles {
+                for OutputTableTitle {
+                    text: _,
+                    span,
+                    anchor_name: _,
+                } in *terminal_table_titles
+                {
                     cols += span;
                 }
                 cols
@@ -93,7 +100,12 @@ impl<'r, 's, 'url, V: CellValue<'url>> Row<'r, 's, V> {
             Row::WithSpans(terminal_table_titles) => {
                 let mut v: Vec<(Cow<str>, Option<usize>)> = Vec::new();
                 let mut widths = widths.into_iter();
-                for OutputTableTitle { text, span } in *terminal_table_titles {
+                for OutputTableTitle {
+                    text,
+                    span,
+                    anchor_name: _,
+                } in *terminal_table_titles
+                {
                     match *span {
                         0 => (),
                         n => {

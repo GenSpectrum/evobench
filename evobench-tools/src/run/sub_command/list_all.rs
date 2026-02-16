@@ -53,18 +53,22 @@ impl ListAllOpts {
                 OutputTableTitle {
                     text: Cow::Borrowed("Insertion time"),
                     span: 1,
+                    anchor_name: None,
                 },
                 OutputTableTitle {
                     text: Cow::Borrowed("Commit id"),
                     span: 1,
+                    anchor_name: None,
                 },
                 OutputTableTitle {
                     text: Cow::Borrowed("Target name"),
                     span: 1,
+                    anchor_name: None,
                 },
                 OutputTableTitle {
                     text: Cow::Borrowed("Custom parameters"),
                     span: 1,
+                    anchor_name: None,
                 },
             ],
             None,
