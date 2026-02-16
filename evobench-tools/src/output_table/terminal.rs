@@ -14,7 +14,7 @@ use std::{
 };
 
 use crate::{
-    output_table::{CellValue, OutputStyle, OutputTable, OutputTableTitle, Row},
+    output_table::{BarKind, CellValue, OutputStyle, OutputTable, OutputTableTitle, Row},
     utillib::get_terminal_width::get_terminal_width,
 };
 use anyhow::{Result, anyhow, bail};
@@ -246,12 +246,12 @@ impl<O: Write + IsTerminal> OutputTable for TerminalTable<O> {
         )
     }
 
-    fn write_thin_bar(&mut self) -> anyhow::Result<()> {
-        Ok(self.out.write_all(self.thin_bar.as_bytes())?)
-    }
-
-    fn write_thick_bar(&mut self) -> anyhow::Result<()> {
-        Ok(self.out.write_all(self.thick_bar.as_bytes())?)
+    fn write_bar(&mut self, bar_kind: BarKind, _anchor_name: Option<&str>) -> anyhow::Result<()> {
+        let bar = match bar_kind {
+            BarKind::Thin => &self.thin_bar,
+            BarKind::Thick => &self.thick_bar,
+        };
+        Ok(self.out.write_all(bar.as_bytes())?)
     }
 
     fn print<'url, V: CellValue<'url>>(&mut self, value: V) -> anyhow::Result<()> {

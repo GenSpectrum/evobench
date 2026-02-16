@@ -1,7 +1,7 @@
 use ahtml::{AVec, HtmlAllocator, Node, att, util::SoftPre};
 
 use crate::{
-    output_table::{CellValue, OutputStyle, OutputTable},
+    output_table::{BarKind, CellValue, OutputStyle, OutputTable},
     utillib::html_util::anchor,
     warn,
 };
@@ -184,26 +184,23 @@ impl<'allocator> OutputTable for HtmlTable<'allocator> {
         self.table_body.push(html.tr([], cells)?)
     }
 
-    fn write_thin_bar(&mut self) -> anyhow::Result<()> {
+    fn write_bar(&mut self, bar_kind: BarKind, anchor_name: Option<&str>) -> anyhow::Result<()> {
         let html = self.table_body.allocator();
-        self.table_body.push(html.tr(
-            [],
-            html.td(
-                [att("colspan", self.num_columns())],
-                html.hr([att("style", "width: 100%; border-style: dashed;")], [])?,
-            )?,
-        )?)
-    }
 
-    fn write_thick_bar(&mut self) -> anyhow::Result<()> {
-        let html = self.table_body.allocator();
-        self.table_body.push(html.tr(
-            [],
-            html.td(
-                [att("colspan", self.num_columns())],
-                html.hr([att("style", "width: 100%; ")], [])?,
-            )?,
-        )?)
+        let style = match bar_kind {
+            BarKind::Thin => "width: 100%; border-style: dashed;",
+            BarKind::Thick => "width: 100%;",
+        };
+
+        let hr = html.hr([att("style", style)], [])?;
+        let content = if let Some(anchor_name) = anchor_name {
+            anchor(anchor_name, hr, html)?
+        } else {
+            hr
+        };
+
+        self.table_body
+            .push(html.tr([], html.td([att("colspan", self.num_columns())], content)?)?)
     }
 
     fn print<'url, V: CellValue<'url>>(&mut self, value: V) -> anyhow::Result<()> {

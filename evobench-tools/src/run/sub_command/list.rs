@@ -15,7 +15,7 @@ use crate::{
     config_file::ron_to_string_pretty,
     io_utils::lockable_file::LockStatus,
     key_val_fs::key_val::Entry,
-    output_table::{FontSize, WithUrlOnDemand},
+    output_table::{BarKind, FontSize, WithUrlOnDemand},
     run::{
         config::RunConfig,
         output_directory::structure::{KeyDir, ToPath},
@@ -195,7 +195,8 @@ impl OutputTableOpts {
         let show_queue = |i: &str,
                           run_queue: &RunQueue,
                           is_extra_queue: bool,
-                          table: &mut Table|
+                          table: &mut Table,
+                          bar_kind_after: BarKind|
          -> Result<()> {
             let RunQueue {
                 file_name,
@@ -429,27 +430,38 @@ impl OutputTableOpts {
 
                 row = row.recycle_vec();
             }
+            table.write_bar(
+                bar_kind_after,
+                Some(&format!("end-{}", run_queue.file_name.as_str())),
+            )?;
             Ok(())
         };
 
-        let mut first = true;
+        table.write_bar(BarKind::Thick, None)?;
+
+        let pipeline_len = queues.pipeline().len();
         for (i, run_queue) in queues.pipeline().iter().enumerate() {
-            if first {
-                table.write_thick_bar()?;
-                first = false;
+            let after_bar_kind = if i + 1 == pipeline_len {
+                BarKind::Thick
             } else {
-                table.write_thin_bar()?;
-            }
-            show_queue(&(i + 1).to_string(), run_queue, false, &mut table)?;
+                BarKind::Thin
+            };
+            show_queue(
+                &(i + 1).to_string(),
+                run_queue,
+                false,
+                &mut table,
+                after_bar_kind,
+            )?;
         }
-        table.write_thick_bar()?;
+
         let perhaps_show_extra_queue = |queue_name: &str,
                                         queue_field: &str,
                                         run_queue: Option<&RunQueue>,
                                         table: &mut Table|
          -> Result<()> {
             if let Some(run_queue) = run_queue {
-                show_queue(queue_name, run_queue, true, table)?;
+                show_queue(queue_name, run_queue, true, table, BarKind::Thin)?;
             } else {
                 table.print(format!("No {queue_field} is configured"))?;
             }
@@ -461,14 +473,12 @@ impl OutputTableOpts {
             queues.done_jobs_queue(),
             &mut table,
         )?;
-        table.write_thin_bar()?;
         perhaps_show_extra_queue(
             "failures",
             "erroneous_jobs_queue",
             queues.erroneous_jobs_queue(),
             &mut table,
         )?;
-        table.write_thin_bar()?;
 
         table.finish()
     }

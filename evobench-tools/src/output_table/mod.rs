@@ -182,6 +182,12 @@ pub struct OutputStyle {
     pub color: Option<u8>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum BarKind {
+    Thin,
+    Thick,
+}
+
 pub trait OutputTable {
     type Output;
 
@@ -210,9 +216,7 @@ pub trait OutputTable {
         self.write_row(Row::PlainStrings(data), line_style)
     }
 
-    fn write_thin_bar(&mut self) -> anyhow::Result<()>;
-
-    fn write_thick_bar(&mut self) -> anyhow::Result<()>;
+    fn write_bar(&mut self, bar_kind: BarKind, anchor_name: Option<&str>) -> anyhow::Result<()>;
 
     fn print<'url, V: CellValue<'url>>(&mut self, value: V) -> anyhow::Result<()>;
 
