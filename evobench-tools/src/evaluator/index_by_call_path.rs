@@ -1,7 +1,7 @@
 //! Index spans at a call path from the top (excluding thread id,
 //! i.e. across all threads and processes)
 
-use std::collections::HashMap;
+use std::{collections::HashMap, time::SystemTime};
 
 use crate::evaluator::data::log_data_tree::{LogDataTree, PathStringOptions, SpanId};
 
@@ -17,6 +17,8 @@ impl<'t> IndexByCallPath<'t> {
         log_data_tree: &LogDataTree<'t>,
         path_string_optss: &[PathStringOptions],
     ) -> Self {
+        let t0 = SystemTime::now();
+
         let mut slf = Self::default();
         let mut out_prefix = String::new();
         let mut out_main = String::new();
@@ -44,6 +46,12 @@ impl<'t> IndexByCallPath<'t> {
                 }
             }
         }
+        let t1 = SystemTime::now();
+        eprintln!(
+            "t IndexByCallPath::from_logdataindex: {} s",
+            t1.duration_since(t0).unwrap().as_secs_f64()
+        );
+
         slf
     }
 
