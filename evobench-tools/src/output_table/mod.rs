@@ -12,41 +12,46 @@ pub struct OutputTableTitle<'s> {
     pub span: usize,
 }
 
-pub trait CellValue: AsRef<str> {
+pub trait CellValue<'url>: AsRef<str> {
     /// If appropriate for the type and instance, return a URL value
-    fn perhaps_url(&self) -> Option<String>;
+    fn perhaps_url(&self) -> Option<Cow<'url, str>>;
 }
 
-impl CellValue for &str {
-    fn perhaps_url(&self) -> Option<String> {
+impl<'url> CellValue<'url> for str {
+    fn perhaps_url(&self) -> Option<Cow<'static, str>> {
         None
     }
 }
-impl CellValue for String {
-    fn perhaps_url(&self) -> Option<String> {
+impl<'url> CellValue<'url> for &str {
+    fn perhaps_url(&self) -> Option<Cow<'static, str>> {
         None
     }
 }
-impl<'t> CellValue for Cow<'t, str> {
-    fn perhaps_url(&self) -> Option<String> {
+impl<'url> CellValue<'url> for String {
+    fn perhaps_url(&self) -> Option<Cow<'static, str>> {
+        None
+    }
+}
+impl<'t, 'url> CellValue<'url> for Cow<'t, str> {
+    fn perhaps_url(&self) -> Option<Cow<'static, str>> {
         None
     }
 }
 // Hmm huh.
-impl<'t> CellValue for &dyn CellValue {
-    fn perhaps_url(&self) -> Option<String> {
+impl<'t, 'url> CellValue<'url> for &dyn CellValue<'url> {
+    fn perhaps_url(&self) -> Option<Cow<'url, str>> {
         (*self).perhaps_url()
     }
 }
 
 /// Either something that can have spans; or something that can have
 /// URLs. Assumes that never want to have both.
-pub enum Row<'r, 's, V: CellValue> {
+pub enum Row<'r, 's, V> {
     WithSpans(&'r [OutputTableTitle<'s>]),
     PlainStrings(&'r [V]),
 }
 
-impl<'r, 's, V: CellValue> Row<'r, 's, V> {
+impl<'r, 's, 'url, V: CellValue<'url>> Row<'r, 's, V> {
     /// How many columns this Row covers (if it has entries that span
     /// multiple columns, all of those are added)
     fn logical_len(&self) -> usize {
@@ -155,7 +160,7 @@ pub trait OutputTable {
     fn num_columns(&self) -> usize;
 
     /// Normally, use `write_title_row` or `write_data_row` instead!
-    fn write_row<V: CellValue>(
+    fn write_row<'url, V: CellValue<'url>>(
         &mut self,
         row: Row<V>,
         line_style: Option<OutputStyle>,
@@ -167,7 +172,7 @@ pub trait OutputTable {
         line_style: Option<OutputStyle>,
     ) -> anyhow::Result<()>;
 
-    fn write_data_row<V: CellValue>(
+    fn write_data_row<'url, V: CellValue<'url>>(
         &mut self,
         data: &[V],
         line_style: Option<OutputStyle>,
@@ -179,7 +184,7 @@ pub trait OutputTable {
 
     fn write_thick_bar(&mut self) -> anyhow::Result<()>;
 
-    fn print<V: CellValue>(&mut self, value: V) -> anyhow::Result<()>;
+    fn print<'url, V: CellValue<'url>>(&mut self, value: V) -> anyhow::Result<()>;
 
     fn finish(self) -> anyhow::Result<Self::Output>;
 }
@@ -187,13 +192,13 @@ pub trait OutputTable {
 /// A text with optional link which is generated only when needed
 /// (i.e. for HTML output)
 #[derive(Clone, Copy)]
-pub struct WithUrlOnDemand<'s> {
+pub struct WithUrlOnDemand<'s, 'url> {
     pub text: &'s str,
     // dyn because different columns might want different links
-    pub gen_url: Option<&'s dyn Fn() -> Option<String>>,
+    pub gen_url: Option<&'s dyn Fn() -> Option<Cow<'url, str>>>,
 }
 
-impl<'s> From<&'s str> for WithUrlOnDemand<'s> {
+impl<'s, 'url> From<&'s str> for WithUrlOnDemand<'s, 'url> {
     fn from(text: &'s str) -> Self {
         WithUrlOnDemand {
             text,
@@ -202,14 +207,14 @@ impl<'s> From<&'s str> for WithUrlOnDemand<'s> {
     }
 }
 
-impl<'s> AsRef<str> for WithUrlOnDemand<'s> {
+impl<'s, 'url> AsRef<str> for WithUrlOnDemand<'s, 'url> {
     fn as_ref(&self) -> &str {
         self.text
     }
 }
 
-impl<'s> CellValue for WithUrlOnDemand<'s> {
-    fn perhaps_url(&self) -> Option<String> {
+impl<'s, 'url> CellValue<'url> for WithUrlOnDemand<'s, 'url> {
+    fn perhaps_url(&self) -> Option<Cow<'url, str>> {
         if let Some(gen_url) = self.gen_url {
             gen_url()
         } else {

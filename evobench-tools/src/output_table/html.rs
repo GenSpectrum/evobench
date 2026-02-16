@@ -92,7 +92,7 @@ impl<'allocator> OutputTable for HtmlTable<'allocator> {
         self.num_columns
     }
 
-    fn write_row<V: CellValue>(
+    fn write_row<'url, V: CellValue<'url>>(
         &mut self,
         row: Row<V>,
         line_style: Option<OutputStyle>,
@@ -182,7 +182,7 @@ impl<'allocator> OutputTable for HtmlTable<'allocator> {
         )?)
     }
 
-    fn print<V: CellValue>(&mut self, value: V) -> anyhow::Result<()> {
+    fn print<'url, V: CellValue<'url>>(&mut self, value: V) -> anyhow::Result<()> {
         let html = self.table_body.allocator();
         let soft_pre = SoftPre {
             tabs_to_nbsp: Some(8),

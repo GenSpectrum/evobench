@@ -114,11 +114,11 @@ pub struct OutputTableOpts {
 }
 
 impl OutputTableOpts {
-    pub fn output_to_table<Table: OutputTable>(
+    pub fn output_to_table<'link_skipped, Table: OutputTable>(
         &self,
         mut table: Table,
         conf: &RunConfig,
-        link_skipped: Option<&str>,
+        link_skipped: Option<&'link_skipped str>,
         working_directory_base_dir: &Arc<WorkingDirectoryPoolBaseDir>,
         queues: &RunQueues,
     ) -> Result<Table::Output> {
@@ -254,12 +254,13 @@ impl OutputTableOpts {
                 let num_skipped = num_skipped_2 + 2;
                 let s = format!("... ({num_skipped} entries skipped)\n");
                 let tmp;
-                let gen_url: Option<&dyn Fn() -> Option<_>> = if let Some(link) = link_skipped {
-                    tmp = || Some(link.into());
-                    Some(&tmp)
-                } else {
-                    None
-                };
+                let gen_url: Option<&dyn Fn() -> Option<Cow<'link_skipped, str>>> =
+                    if let Some(link) = link_skipped {
+                        tmp = || Some(link.into());
+                        Some(&tmp)
+                    } else {
+                        None
+                    };
                 let value = WithUrlOnDemand { text: &s, gen_url };
                 table.print(value)?;
                 shown_sorted_keys = &all_sorted_keys[num_skipped..];
@@ -325,13 +326,13 @@ impl OutputTableOpts {
                     age > Duration::from_secs(3600 * 24)
                 };
                 let time = if *verbose {
-                    &*format!("{file_name} ({key})")
+                    format!("{file_name} ({key})")
                 } else {
                     let datetime: DateTime<Local> = system_time.into();
-                    &*datetime.to_rfc3339()
+                    datetime.to_rfc3339()
                 };
                 row.extend_from_slice(&[
-                    time.into(),
+                    (&*time).into(),
                     locking.into(),
                     priority.into(),
                     (&*wd).into(),
@@ -342,10 +343,10 @@ impl OutputTableOpts {
                 let custom_parameters;
                 let key_dir;
                 let path;
-                let gen_url_cache: OnceCell<Option<String>> = OnceCell::new();
-                let gen_url = {
-                    || -> Option<String> {
-                        if let Some(url) = &conf.output_dir.url {
+                let gen_url_cache: OnceCell<Arc<Path>> = OnceCell::new();
+                let gen_url = || -> Option<Cow<'_, str>> {
+                    if let Some(url) = &conf.output_dir.url {
+                        Some(
                             gen_url_cache
                                 .get_or_init(|| {
                                     let key_dir = KeyDir::from_base_target_params(
@@ -354,12 +355,16 @@ impl OutputTableOpts {
                                         &job.public.run_parameters,
                                     );
                                     let url_as_path = key_dir.to_path();
-                                    Some(url_as_path.to_string_lossy().to_string())
+                                    url_as_path.clone()
                                 })
-                                .clone()
-                        } else {
-                            None
-                        }
+                                .to_str()
+                                .expect("always succeeds since generated from strings only")
+                                // Is it a Rust bug that this to_owned() is necessary?
+                                .to_owned()
+                                .into(),
+                        )
+                    } else {
+                        None
                     }
                 };
                 match parameter_view {

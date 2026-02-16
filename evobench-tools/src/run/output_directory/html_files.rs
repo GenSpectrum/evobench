@@ -3,6 +3,7 @@
 //! `evobench list` subcommand, and some more.
 
 use std::{
+    borrow::Cow,
     collections::{BTreeMap, BTreeSet, btree_map::Entry},
     io::Write,
     sync::Arc,
@@ -72,7 +73,7 @@ pub fn print_list(
     print_html_document(body.as_slice(), html, out)
 }
 
-fn write_2_column_table_file<T1: CellValue, T2: CellValue>(
+fn write_2_column_table_file<'url, T1: CellValue<'url>, T2: CellValue<'url>>(
     file_name: &str,
     titles: &[&str],
     index: &BTreeMap<T1, BTreeSet<T2>>,
@@ -146,26 +147,26 @@ impl AsRef<str> for ParametersCellValue {
     }
 }
 
-impl CellValue for ParametersCellValue {
-    fn perhaps_url(&self) -> Option<String> {
-        Some(self.dir.to_path().to_string_lossy().into_owned())
+impl<'url> CellValue<'url> for ParametersCellValue {
+    fn perhaps_url(&self) -> Option<Cow<'static, str>> {
+        Some(self.dir.to_path().to_string_lossy().to_string().into())
     }
 }
 
-impl CellValue for &ParametersCellValue {
-    fn perhaps_url(&self) -> Option<String> {
-        Some(self.dir.to_path().to_string_lossy().into_owned())
+impl<'url> CellValue<'url> for &ParametersCellValue {
+    fn perhaps_url(&self) -> Option<Cow<'static, str>> {
+        Some(self.dir.to_path().to_string_lossy().to_string().into())
     }
 }
 
-impl CellValue for KString {
-    fn perhaps_url(&self) -> Option<String> {
+impl<'url> CellValue<'url> for KString {
+    fn perhaps_url(&self) -> Option<Cow<'static, str>> {
         None
     }
 }
 
-impl CellValue for &KString {
-    fn perhaps_url(&self) -> Option<String> {
+impl<'url> CellValue<'url> for &KString {
+    fn perhaps_url(&self) -> Option<Cow<'static, str>> {
         None
     }
 }

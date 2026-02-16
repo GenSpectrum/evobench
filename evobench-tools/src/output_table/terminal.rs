@@ -177,7 +177,7 @@ impl<O: Write + IsTerminal> OutputTable for TerminalTable<O> {
 
     // Not making this an instance method so that we can give mut vs
     // non-mut parts independently
-    fn write_row<V: CellValue>(
+    fn write_row<'url, V: CellValue<'url>>(
         &mut self,
         row: Row<V>,
         line_style: Option<OutputStyle>,
@@ -254,7 +254,7 @@ impl<O: Write + IsTerminal> OutputTable for TerminalTable<O> {
         Ok(self.out.write_all(self.thick_bar.as_bytes())?)
     }
 
-    fn print<V: CellValue>(&mut self, value: V) -> anyhow::Result<()> {
+    fn print<'url, V: CellValue<'url>>(&mut self, value: V) -> anyhow::Result<()> {
         self.out.write_all(value.as_ref().as_bytes())?;
         Ok(())
     }
