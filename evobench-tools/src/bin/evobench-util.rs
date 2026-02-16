@@ -12,7 +12,7 @@ use evobench_tools::{
         config::{RunConfig, RunConfigBundle},
         global_app_state_dir::GlobalAppStateDir,
         output_directory::{
-            index_files::regenerate_index_files,
+            html_files::regenerate_index_files,
             post_process::compress_file_as,
             structure::{KeyDir, RunDir, SubDirs},
         },

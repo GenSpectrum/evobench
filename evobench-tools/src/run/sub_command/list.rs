@@ -31,7 +31,7 @@ use crate::{
 };
 use crate::{
     output_table::{OutputStyle, OutputTable, OutputTableTitle},
-    run::output_directory::index_files::print_list,
+    run::output_directory::html_files::print_list,
 };
 
 pub const TARGET_NAME_WIDTH: usize = 14;

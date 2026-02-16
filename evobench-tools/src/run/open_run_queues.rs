@@ -12,7 +12,7 @@ use chj_unix_util::polling_signals::SharedPollingSignals;
 use crate::{
     clone,
     run::{
-        config::ShareableConfig, output_directory::index_files::regenerate_index_files,
+        config::ShareableConfig, output_directory::html_files::regenerate_index_files,
         run_queues::RunQueues, sub_command::wd::open_queue_change_signals,
     },
     utillib::arc::CloneArc,
