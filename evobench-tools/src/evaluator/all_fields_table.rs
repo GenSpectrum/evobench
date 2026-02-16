@@ -17,19 +17,21 @@ use crate::{
         index_by_call_path::IndexByCallPath,
         options::TILE_COUNT,
     },
-    join::{keyval_inner_join, KeyVal},
+    join::{self, KeyVal, keyval_inner_join},
     rayon_util::ParRun,
     stats_tables::{
         dynamic_typing::{StatsOrCount, StatsOrCountOrSubStats},
         stats::{
-            weighted::{WeightedValue, WEIGHT_ONE}, Stats, StatsError, StatsField, ToStatsString
+            Stats, StatsError, StatsField, ToStatsString,
+            weighted::{WEIGHT_ONE, WeightedValue},
         },
         tables::{
             table::{Table, TableKind},
             table_field_view::TableFieldView,
         },
     },
-    times::{MicroTime, NanoTime}, utillib::tuple_transpose::TupleTranspose,
+    times::{MicroTime, NanoTime},
+    utillib::tuple_transpose::TupleTranspose,
 };
 
 fn scopestats<K: KeyDetails>(
@@ -87,22 +89,28 @@ fn table_for_field<'key, K: KeyDetails>(
 
     // Add the bare probe names, not paths, to the table if desired
     if kind.show_probe_names() {
-        for pn in log_data_tree.probe_names() {
-            rows.push(pn_stats::<K>(
-                log_data_tree,
-                log_data_tree.spans_by_pn(&pn).unwrap(),
-                pn,
-            )?);
-        }
+        rows = log_data_tree
+            .probe_names()
+            .into_par_iter()
+            .map(|pn| -> Result<join::KeyVal<_, _>, StatsError> {
+                pn_stats::<K>(log_data_tree, log_data_tree.spans_by_pn(&pn).unwrap(), pn)
+            })
+            .collect::<Result<Vec<_>, StatsError>>()?;
     }
 
-    for call_path in index_by_call_path.call_paths() {
-        rows.push(pn_stats::<K>(
-            log_data_tree,
-            index_by_call_path.spans_by_call_path(call_path).unwrap(),
-            call_path,
-        )?);
-    }
+    let mut rows2 = index_by_call_path
+        .call_paths()
+        .into_par_iter()
+        .map(|call_path| {
+            pn_stats::<K>(
+                log_data_tree,
+                index_by_call_path.spans_by_call_path(call_path).unwrap(),
+                call_path,
+            )
+        })
+        .collect::<Result<Vec<_>, StatsError>>()?;
+
+    rows.append(&mut rows2);
 
     Ok(Table { kind, rows })
 }
@@ -145,7 +153,7 @@ impl KeyRuntimeDetails {
     }
 }
 
-trait KeyDetails: TableKind {
+trait KeyDetails: TableKind + Debug {
     type ViewType: Into<u64> + From<u64> + ToStatsString + Debug + Display;
     fn new(det: KeyRuntimeDetails) -> Self;
     /// Extract a single value out of a `Timing`.
@@ -160,7 +168,7 @@ trait KeyDetails: TableKind {
 
 macro_rules! def_key_details {
     { $T:tt: $ViewType:tt, $table_name:tt, $timing_extract:expr, $aft_extract:expr, } => {
-        #[derive(Clone)]
+        #[derive(Clone, Debug)]
         pub struct $T(KeyRuntimeDetails);
         impl TableKind for $T {
             fn table_name(&self) -> Cow<'_, str> {
@@ -406,7 +414,8 @@ impl AllFieldsTable<SingleRunStats> {
                 )
             },
         )
-            .par_run().transpose()?;
+            .par_run()
+            .transpose()?;
 
         Ok(AllFieldsTable {
             kind: SingleRunStats,
