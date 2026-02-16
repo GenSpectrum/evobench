@@ -288,7 +288,8 @@ impl Wd {
                 if status.can_be_used_for_jobs() {
                     bail!(
                         "this action is only for working directories in {allowed_statuses} \
-                         status, but directory {} has status '{}'",
+                         status, but directory {} has status '{}' (you can use --force to \
+                         bypass this check)",
                         wd.working_directory_path().parent_path_and_id()?.1,
                         status
                     )
@@ -332,9 +333,8 @@ impl Wd {
                 {
                     return Ok(Some(Marked::Unchanged));
                 }
-                let original_status = check_original_status(&*wd, "error/examination")
-                    .map_err(ctx!("refusing working directory {id}"))
-                    .map_err(DoMarkError::Check)?;
+                let original_status =
+                    check_original_status(&*wd, "error/examination").map_err(DoMarkError::Check)?;
                 wd.set_and_save_status(wanted_status)
                     .map_err(DoMarkError::Generic)?;
                 if let Some(working_directory_change_signals) = working_directory_change_signals {
