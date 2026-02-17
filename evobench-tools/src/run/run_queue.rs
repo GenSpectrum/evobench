@@ -112,8 +112,8 @@ impl<'conf> RunQueue<'conf> {
 
     /// NOTE: this returns unlocked `QueueItem`s! Call
     /// `lock_exclusive()` on them to lock them afterwards.
-    // XXX obsolete, kept public and in direct use only for testing, rename and only use in
-    pub fn jobs<'s>(
+    // This is obsolete as public method and only used via the `data` method.
+    fn jobs<'s>(
         &'s self,
     ) -> impl Iterator<Item = Result<(QueueItem<'s, BenchmarkingJob>, BenchmarkingJob), KeyValError>>
     + use<'s> {
