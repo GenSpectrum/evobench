@@ -73,12 +73,6 @@ impl<'conf, 'run_queue> RunQueueData<'conf, 'run_queue> {
     }
 }
 
-pub enum TerminationReason {
-    Timeout,
-    QueueEmpty,
-    Inactive,
-}
-
 impl<'conf> RunQueue<'conf> {
     pub fn push_front(&self, job: &BenchmarkingJob) -> Result<(), KeyValError> {
         self.queue.push_front(job)
