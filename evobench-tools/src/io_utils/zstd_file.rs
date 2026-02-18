@@ -146,13 +146,18 @@ pub fn decompressed_file(path: &Path, expected_suffix: Option<&str>) -> Result<B
 }
 
 /// Open the file as a mmap. `.zstd` files are first decompressed to
-/// `.zstd.uncompressed` if the path does not exist already. The MMap
-/// is created using 2MB huge-pages on Linux. The usual caveats for
-/// memory maps applies: modifications of the file while using the map
-/// can change the data during parsing, which is safe or not depending
-/// on the parser. Truncating the file while accessing it will
-/// segfault the process. Leaving it marked safe here, for now.
-pub fn decompressed_file_mmap(path: &Path, expected_suffix: Option<&str>) -> Result<Mmap> {
+/// `uncompressed_path` (or `.zstd.uncompressed` if not given) if the
+/// path does not exist already. The MMap is created using 2MB
+/// huge-pages on Linux. The usual caveats for memory maps applies:
+/// modifications of the file while using the map can change the data
+/// during parsing, which is safe or not depending on the
+/// parser. Truncating the file while accessing it will segfault the
+/// process. Leaving it marked safe here, for now.
+pub fn decompressed_file_mmap(
+    path: &Path,
+    uncompressed_path: Option<&Path>,
+    expected_suffix: Option<&str>,
+) -> Result<Mmap> {
     let ext = file_extension(path, expected_suffix)?;
 
     let file_open =
@@ -161,9 +166,12 @@ pub fn decompressed_file_mmap(path: &Path, expected_suffix: Option<&str>) -> Res
     let tmp;
     let uncompressed_path = match ext {
         Extension::ZStd => {
-            let uncompressed_path = add_extension(path, "uncompressed")
-                .ok_or_else(|| anyhow!("appending extension to {path:?}"))?;
-
+            let uncompressed_path = if let Some(uncompressed_path) = uncompressed_path {
+                uncompressed_path.to_owned()
+            } else {
+                add_extension(path, "uncompressed")
+                    .ok_or_else(|| anyhow!("appending extension to {path:?}"))?
+            };
             if !uncompressed_path.exists() {
                 let tmp = TempfileOptions {
                     target_path: uncompressed_path.clone(),

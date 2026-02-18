@@ -42,7 +42,7 @@ use evobench_tools::{
         global_app_state_dir::GlobalAppStateDir,
         insert_jobs::{DryRunOpt, ForceOpt, QuietOpt, insert_jobs},
         open_run_queues::open_run_queues,
-        output_directory::structure::OutputSubdir,
+        output_directory::structure::{OutputSubdir, SubDirs},
         run_context::RunContext,
         run_job::JobRunner,
         run_queues::RunQueues,
@@ -59,9 +59,9 @@ use evobench_tools::{
         working_directory_pool::{WorkingDirectoryPool, WorkingDirectoryPoolBaseDir},
     },
     serde_types::date_and_time::{DateTimeWithOffset, LOCAL_TIME},
-    utillib::get_terminal_width::get_terminal_width,
     utillib::{
         arc::CloneArc,
+        get_terminal_width::get_terminal_width,
         into_arc_path::IntoArcPath,
         logging::{LogLevel, LogLevelOpts, set_log_level},
     },
@@ -359,6 +359,26 @@ fn run_queues<'ce>(
             },
             &mut run_context,
         )?;
+
+        if let Some((job, job_status)) = ran {
+            if !job_status.can_run_again() {
+                let parameters = job.benchmarking_job_parameters();
+                let key_dir = parameters.to_key_dir(conf.output_dir.path.clone_arc());
+                for run_dir in key_dir.sub_dirs()? {
+                    let run_dir = run_dir?;
+                    let uncompressed_path = run_dir.evobench_log_uncompressed_path();
+                    match std::fs::remove_file(&uncompressed_path) {
+                        Ok(_) => info!("deleted {uncompressed_path:?}"),
+                        Err(e) => match e.kind() {
+                            std::io::ErrorKind::NotFound => {
+                                info!("no {uncompressed_path:?} to delete")
+                            }
+                            _ => info!("ignoring error deleting {uncompressed_path:?}: {e:#}"),
+                        },
+                    }
+                }
+            }
+        }
 
         if once {
             return Ok(RunResult::OnceResult(ran.is_some()));

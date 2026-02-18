@@ -69,8 +69,8 @@ impl LogData {
     // Note: you can find versions of this function reading from
     // `decompressed_file` instead of using mmap in the Git history,
     // in parallel and before-parallel versions.
-    pub fn read_file(path: &Path) -> Result<Self> {
-        let input = decompressed_file_mmap(path, Some("log"))?;
+    pub fn read_file(path: &Path, uncompressed_path: Option<&Path>) -> Result<Self> {
+        let input = decompressed_file_mmap(path, uncompressed_path, Some("log"))?;
 
         let mut items = IterWithLineAndByteCount::new(input.split(|b| *b == b'\n'), path);
 

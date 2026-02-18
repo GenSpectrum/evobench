@@ -370,7 +370,7 @@ impl RemoteRepositoryOpts {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 #[serde(from = "Option<Arc<str>>", into = "Option<Arc<str>>")]
 pub struct PreExecLevel2(Option<Arc<str>>);
 
@@ -407,7 +407,7 @@ impl PreExecLevel2 {
     }
 }
 
-#[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 /// What command to run on the target project to execute a
 /// benchmarking run; the env variables configured in CustomParameters

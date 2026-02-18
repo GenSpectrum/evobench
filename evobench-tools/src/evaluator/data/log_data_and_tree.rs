@@ -15,9 +15,9 @@ pub struct LogDataAndTree {
 
 impl LogDataAndTree {
     /// `LogData::read_file` combined with `LogDataTree::from_logdata`
-    pub fn read_file(path: &Path) -> Result<Self> {
+    pub fn read_file(path: &Path, uncompressed_path: Option<&Path>) -> Result<Self> {
         let t0 = SystemTime::now();
-        let log_data = LogData::read_file(path)?;
+        let log_data = LogData::read_file(path, uncompressed_path)?;
 
         let t1 = SystemTime::now();
         let r = LogDataAndTree::try_new(log_data, |log_data| LogDataTree::from_logdata(log_data));

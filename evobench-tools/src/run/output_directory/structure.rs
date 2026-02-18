@@ -9,7 +9,7 @@ use std::{
 };
 
 use anyhow::{Result, anyhow, bail};
-use cj_path_util::path_util::AppendToPath;
+use cj_path_util::{path_util::AppendToPath, unix::polyfill::add_extension};
 use derive_more::From;
 use kstring::KString;
 
@@ -513,6 +513,15 @@ impl RunDir {
     /// The path to the compressed evobench.log file
     pub fn evobench_log_path(&self) -> PathBuf {
         self.to_path().append("evobench.log.zstd")
+    }
+
+    /// The same path as `io_utils::zstd_file::decompressed_file_mmap`
+    /// generates (the call to the aforementioned function happens in
+    /// a context outside the runner, hence can't use this function
+    /// here)
+    pub fn evobench_log_uncompressed_path(&self) -> PathBuf {
+        add_extension(self.evobench_log_path(), "uncompressed")
+            .expect("evobench_log_path has filename")
     }
 
     /// The optional output location that target projects can use,

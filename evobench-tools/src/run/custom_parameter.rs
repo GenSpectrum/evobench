@@ -14,7 +14,9 @@ use crate::{
 /// The value type of a custom parameter--those values are passed as
 /// environment variables and hence as strings, but they are parsed
 /// when read from the user (config) to ensure correctness.
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum CustomParameterType {
     String,
     Filename,
@@ -32,7 +34,7 @@ pub struct AllowedCustomParameter {
 }
 
 /// A checked value
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct CustomParameterValue {
     r#type: CustomParameterType,
     value: KString,

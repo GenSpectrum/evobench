@@ -118,7 +118,7 @@ impl UncheckedCustomParameters {
 /// Custom key/value pairings, passed on as environment variables when
 /// executing the benchmarking runner of the target project. These
 /// are checked for allowed and required values.
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct CustomParameters(BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, CustomParameterValue>);
 
 /// Extend `path` with segments leading to the folder to use for
@@ -264,7 +264,7 @@ impl Display for UncheckedCustomParameters {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunParameters {
     pub commit_id: GitHash,
@@ -276,7 +276,7 @@ pub struct RunParameters {
 /// influence on results, but comes from the configured pipeline, not
 /// the insertion. This here is used for insertion uniqueness
 /// checking, but maybe also for key determination lager (XX todo).
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize)]
 pub struct BenchmarkingJobParameters {
     pub run_parameters: Arc<RunParameters>,
     /// NOTE that BenchmarkingCommand has both `target_name` and the

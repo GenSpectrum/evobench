@@ -117,7 +117,7 @@ fn main() -> Result<()> {
             path,
         } => {
             let CheckedOutputOptions { variants } = output_opts.check()?;
-            let ldat = LogDataAndTree::read_file(&path)?;
+            let ldat = LogDataAndTree::read_file(&path, None)?;
             let aoaft = AllOutputsAllFieldsTable::from_log_data_tree(
                 ldat.tree(),
                 &evaluation_opts,
@@ -146,7 +146,7 @@ fn main() -> Result<()> {
                     |source_paths| -> Result<Vec<AllOutputsAllFieldsTable<SingleRunStats>>> {
                         let mut afts = Vec::new();
                         for source_path in source_paths {
-                            let ldat = LogDataAndTree::read_file(source_path)?;
+                            let ldat = LogDataAndTree::read_file(source_path, None)?;
                             afts.push(AllOutputsAllFieldsTable::from_log_data_tree(
                                 ldat.tree(),
                                 &evaluation_opts,
