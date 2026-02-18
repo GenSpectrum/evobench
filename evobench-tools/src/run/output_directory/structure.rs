@@ -17,6 +17,7 @@ use kstring::KString;
 use crate::{
     clone, ctx,
     git::GitHash,
+    info,
     run::{
         config::JobTemplate,
         env_vars::AllowableCustomEnvVar,
@@ -105,9 +106,18 @@ pub trait SubDirs: ToPath {
                 let ft = entry.file_type()?;
                 if ft.is_dir() {
                     if let Some(file_name) = entry.file_name().to_str() {
-                        Ok(Some(self.clone_arc().append_subdir_str(&file_name)?))
+                        match self.clone_arc().append_subdir_str(&file_name) {
+                            Ok(v) => Ok(Some(v)),
+                            Err(e) => {
+                                info!("ignoring subdir that does not parse: {e:#}");
+                                Ok(None)
+                            }
+                        }
                     } else {
-                        // silently ignore those paths, OK?
+                        info!(
+                            "ignoring path with file name that doesn't decode as string: {:?}",
+                            entry.path()
+                        );
                         Ok(None)
                     }
                 } else {
@@ -661,7 +671,7 @@ impl SubDirs for OutputSubdir {
             // Note: this error never shows up when `sub_dirs` method
             // is called and there are no subdirs, since the call
             // doesn't happen then. If there *are* subdirs, then they
-            // will be reported.
+            // will be reported via `info!` just like parsing errors.
             OutputSubdir::RunDir(_) => bail!("can't get subdirs for RunDir instances"),
         })
     }
