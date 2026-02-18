@@ -5,9 +5,9 @@ use anyhow::{Result, anyhow, bail};
 use crate::{
     fallback_to_default, fallback_to_option,
     git::GitHash,
-    key::{BenchmarkingJobParameters, CustomParameters, RunParameters},
     run::{
         config::RunConfig,
+        key::{BenchmarkingJobParameters, CustomParameters, RunParameters},
         sub_command::insert::{ForceInvalidOpt, InsertBenchmarkingJobOpts},
     },
     serde_types::priority::{NonComparableNumber, Priority},

@@ -16,8 +16,11 @@ use kstring::KString;
 use crate::{
     clone, ctx,
     git::GitHash,
-    key::{CustomParameters, ExtendPath, RunParameters, UncheckedCustomParameters},
-    run::{config::JobTemplate, env_vars::AllowableCustomEnvVar},
+    run::{
+        config::JobTemplate,
+        env_vars::AllowableCustomEnvVar,
+        key::{CustomParameters, ExtendPath, RunParameters, UncheckedCustomParameters},
+    },
     serde_types::{
         allowed_env_var::AllowedEnvVar, date_and_time::DateTimeWithOffset,
         proper_dirname::ProperDirname, proper_filename::ProperFilename,

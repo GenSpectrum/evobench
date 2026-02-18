@@ -15,7 +15,6 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
     ctx,
-    key::{BenchmarkingJobParameters, BenchmarkingJobParametersHash, RunParameters},
     key_val_fs::{
         as_key::AsKey,
         key_val::{KeyVal, KeyValError},
@@ -23,6 +22,7 @@ use crate::{
     run::{
         benchmarking_job::{BenchmarkingJob, BenchmarkingJobPublic, BenchmarkingJobState},
         config::{BenchmarkingCommand, PreExecLevel2},
+        key::{BenchmarkingJobParameters, BenchmarkingJobParametersHash, RunParameters},
         run_queue::RunQueue,
     },
     serde_types::{priority::Priority, proper_dirname::ProperDirname},

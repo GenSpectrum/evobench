@@ -6,9 +6,10 @@ use crate::output_table::terminal::{TerminalTable, TerminalTableOpts};
 use crate::output_table::{CellValue, OutputTable, OutputTableTitle};
 use crate::run::config::ShareableConfig;
 use crate::{
-    key::{BenchmarkingJobParameters, RunParameters},
     run::{
-        config::BenchmarkingCommand, insert_jobs::open_already_inserted,
+        config::BenchmarkingCommand,
+        insert_jobs::open_already_inserted,
+        key::{BenchmarkingJobParameters, RunParameters},
         sub_command::list::TARGET_NAME_WIDTH,
     },
     serde_types::date_and_time::system_time_to_rfc3339,

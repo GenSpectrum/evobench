@@ -5,10 +5,9 @@ use run_git::git::GitWorkingDir;
 
 use crate::{
     git::GitHash,
-    key::CustomParameters,
     run::{
-        custom_parameter::CustomParameterType, versioned_dataset_dir::VersionedDatasetDir,
-        working_directory::FetchedTags,
+        custom_parameter::CustomParameterType, key::CustomParameters,
+        versioned_dataset_dir::VersionedDatasetDir, working_directory::FetchedTags,
     },
 };
 

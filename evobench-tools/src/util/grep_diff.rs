@@ -10,10 +10,10 @@ use crate::{
     ctx,
     git::GitHash,
     info,
-    key::{BenchmarkingJobParameters, RunParameters},
     run::{
         command_log_file::{CommandLog, CommandLogFile, ParseCommandLogError},
         env_vars::AllowableCustomEnvVar,
+        key::{BenchmarkingJobParameters, RunParameters},
     },
     serde_types::{
         allowed_env_var::AllowedEnvVar, proper_dirname::ProperDirname,

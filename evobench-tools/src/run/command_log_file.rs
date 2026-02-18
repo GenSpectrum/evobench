@@ -13,7 +13,7 @@ use chrono::DateTime;
 
 use crate::{
     ctx, io_utils::output_capture_log::OutputCaptureLog, io_utils::zstd_file::decompressed_file,
-    key::BenchmarkingJobParameters,
+    run::key::BenchmarkingJobParameters,
 };
 
 /// Returns `(head, rest, rest_lineno)`, where `rest_lineno` is the

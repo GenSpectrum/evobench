@@ -27,13 +27,13 @@ use crate::{
         output_capture_log::{CaptureOptions, OutputCaptureLog},
         temporary_file::TemporaryFile,
     },
-    key::{BenchmarkingJobParameters, RunParameters},
     run::{
         bench_tmp_dir::bench_tmp_dir,
         benchmarking_job::BenchmarkingJob,
         config::{RunConfig, ShareableConfig},
         dataset_dir_env_var::dataset_dir_for,
         env_vars::assert_evobench_env_var,
+        key::{BenchmarkingJobParameters, RunParameters},
         output_directory::{
             post_process::compress_file_as,
             structure::{KeyDir, ReplaceBasePath, RunDir, ToPath},

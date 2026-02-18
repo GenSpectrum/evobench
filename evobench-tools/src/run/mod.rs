@@ -9,6 +9,7 @@ pub mod dataset_dir_env_var;
 pub mod env_vars;
 pub mod global_app_state_dir;
 pub mod insert_jobs;
+pub mod key;
 pub mod migrate;
 pub mod open_run_queues;
 pub mod output_directory;
