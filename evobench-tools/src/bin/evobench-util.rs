@@ -1,5 +1,6 @@
 use std::{ffi::OsString, path::PathBuf, sync::Arc};
 
+use ahtml::arc_util::IntoArc;
 use anyhow::{Result, bail};
 use cj_path_util::path_util::AppendToPath;
 use clap::Parser;
@@ -14,14 +15,14 @@ use evobench_tools::{
         output_directory::{
             html_files::regenerate_index_files,
             post_process::compress_file_as,
-            structure::{KeyDir, RunDir, SubDirs},
+            structure::{KeyDir, OutputSubdir, RunDir, SubDirs},
         },
         working_directory_pool::WorkingDirectoryPoolBaseDir,
     },
     serde_types::proper_dirname::ProperDirname,
     util::grep_diff::GrepDiffRegion,
-    utillib::get_terminal_width::get_terminal_width,
     utillib::{
+        get_terminal_width::get_terminal_width,
         into_arc_path::IntoArcPath,
         logging::{LogLevelOpts, set_log_level},
     },
@@ -143,6 +144,9 @@ enum SubCommand {
 enum DevSubCommand {
     /// Regenerate index files
     RegenerateIndexFiles,
+
+    /// List the contents of a folder, structurally
+    ListOutputDir { dir_path: PathBuf },
 }
 
 fn post_process_single(run_dir: &RunDir, run_config: &RunConfig, no_stats: bool) -> Result<()> {
@@ -278,6 +282,19 @@ fn main() -> Result<()> {
             DevSubCommand::RegenerateIndexFiles => {
                 let run_config_bundle = get_config()?;
                 regenerate_index_files(&run_config_bundle.shareable, None, None)?;
+            }
+            DevSubCommand::ListOutputDir { dir_path } => {
+                let dir_path = dir_path.into_arc_path();
+                let output_subdir = OutputSubdir::try_from(dir_path)?;
+                println!(
+                    "Listing for {} at {:?}:",
+                    output_subdir.type_name(),
+                    output_subdir.to_path()
+                );
+                for subdir in output_subdir.into_arc().sub_dirs()? {
+                    let subdir = subdir?;
+                    println!("{} at {:?}", subdir.type_name(), subdir.to_path());
+                }
             }
         },
     }

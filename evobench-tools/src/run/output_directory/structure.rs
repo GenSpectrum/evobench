@@ -2,6 +2,7 @@
 
 use std::{
     collections::BTreeMap,
+    ffi::OsStr,
     fmt::Display,
     path::{Path, PathBuf},
     str::FromStr,
@@ -73,7 +74,7 @@ pub struct RunDir {
 }
 
 /// Any kind of *Dir
-#[derive(derive_more::From)]
+#[derive(Debug, derive_more::From)]
 pub enum OutputSubdir {
     ParametersDir(Arc<ParametersDir>),
     KeyDir(Arc<KeyDir>),
@@ -128,7 +129,28 @@ pub trait ReplaceBasePath {
     fn replace_base_path(&self, base_path: Arc<Path>) -> Self;
 }
 
-/// Parse a path's filename as T
+/// Parse the file name part of a path. You should provide context
+/// around this call for the full path or similar.
+fn parse_filename<T: FromStr>(file_name: &OsStr) -> Result<T>
+where
+    T::Err: Display,
+{
+    if let Ok(file_name_str) = file_name.to_owned().into_string() {
+        T::from_str(&file_name_str).map_err(|e| {
+            anyhow!(
+                "dir name {file_name_str:?} \
+                     does not parse as {}: {e:#}",
+                type_name_short::<T>()
+            )
+        })
+    } else {
+        let lossy1 = file_name.to_string_lossy();
+        let lossy: &str = lossy1.as_ref();
+        bail!("can't decode dir name to string: {lossy:?}");
+    }
+}
+
+/// Parse a path's filename as T.
 fn parse_path_filename<T: FromStr>(path: &Path) -> Result<(T, &Path)>
 where
     T::Err: Display,
@@ -139,21 +161,9 @@ where
     let dir = path
         .parent()
         .ok_or_else(|| anyhow!("path is missing a parent dir"))?;
-    if let Ok(file_name_str) = file_name.to_owned().into_string() {
-        match T::from_str(&file_name_str) {
-            Ok(v) => Ok((v, dir)),
-            Err(e) => {
-                bail!(
-                    "dir name {file_name_str:?} in {path:?} \
-                     does not parse as {}: {e:#}",
-                    type_name_short::<T>()
-                )
-            }
-        }
-    } else {
-        let lossy1 = file_name.to_string_lossy();
-        let lossy: &str = lossy1.as_ref();
-        bail!("can't decode dir name to string: {lossy:?} in {path:?}");
+    match parse_filename(file_name) {
+        Ok(val) => Ok((val, dir)),
+        Err(e) => Err(e),
     }
 }
 
@@ -230,6 +240,22 @@ impl ToPath for ParametersDir {
             custom_parameters
                 .extend_path(base_path.append(target_name.as_str()))
                 .into()
+        })
+    }
+}
+
+impl SubDirs for ParametersDir {
+    type Target = KeyDir;
+
+    fn append_str(self: Arc<Self>, file_name: &str) -> Result<Self::Target> {
+        let commit_id = parse_filename(file_name.as_ref()).map_err(ctx!(
+            "appending file name to parent path {:?}",
+            self.to_path()
+        ))?;
+        Ok(KeyDir {
+            parent: self,
+            commit_id,
+            path_cache: Default::default(),
         })
     }
 }
@@ -544,7 +570,8 @@ impl RunDir {
     }
 
     /// Same as `append` but returns an error if file_name cannot be a
-    /// `ProperFilename`.
+    /// `ProperFilename`. Only for files, currently there are no
+    /// subdirs of RunDir.
     pub fn append_str(&self, file_name: &str) -> Result<PathBuf> {
         let proper = ProperFilename::from_str(file_name)
             .map_err(|msg| anyhow!("not a proper file name ({msg}): {file_name:?}"))?;
@@ -582,6 +609,14 @@ impl OutputSubdir {
             OutputSubdir::RunDir(v) => v.to_path(),
         }
     }
+
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            OutputSubdir::ParametersDir(_) => "ParametersDir",
+            OutputSubdir::KeyDir(_) => "KeyDir",
+            OutputSubdir::RunDir(_) => "RunDir",
+        }
+    }
 }
 
 /// Attempt to parse as all levels, with the deepest type first.
@@ -605,6 +640,32 @@ impl TryFrom<Arc<Path>> for OutputSubdir {
             ))
         })()
         .invert()
+    }
+}
+
+impl ToPath for OutputSubdir {
+    fn to_path(&self) -> &Arc<Path> {
+        match self {
+            OutputSubdir::ParametersDir(v) => v.to_path(),
+            OutputSubdir::KeyDir(v) => v.to_path(),
+            OutputSubdir::RunDir(v) => v.to_path(),
+        }
+    }
+}
+
+impl SubDirs for OutputSubdir {
+    type Target = OutputSubdir;
+
+    fn append_str(self: Arc<Self>, file_name: &str) -> Result<Self::Target> {
+        Ok(match &*self {
+            OutputSubdir::ParametersDir(v) => v.clone_arc().append_str(file_name)?.into(),
+            OutputSubdir::KeyDir(v) => v.clone_arc().append_str(file_name)?.into(),
+            // Note: this error never shows up when `sub_dirs` method
+            // is called and there are no subdirs, since the call
+            // doesn't happen then. If there *are* subdirs, then they
+            // will be reported.
+            OutputSubdir::RunDir(_) => bail!("can't get subdirs for RunDir instances"),
+        })
     }
 }
 
@@ -665,7 +726,7 @@ mod tests {
         // `..`.file_name() returns None
         assert_eq!(
             &t("um/api/foo=1/baz=3/../bar=2/").err().unwrap(),
-            "can't parse path \"um/api/foo=1/baz=3/../bar=2/\"\n- as RunDir: dir name \"bar=2\" in \"um/api/foo=1/baz=3/../bar=2/\" does not parse as DateTimeWithOffset: input contains invalid characters\n- as KeyDir: dir name \"bar=2\" in \"um/api/foo=1/baz=3/../bar=2/\" does not parse as GitHash: not a git hash of 40 hex bytes: \"bar=2\"\n- as ParametersDir: path \"um/api/foo=1/baz=3/../bar=2/\" contains a '..' or '.' part: \"um/api/foo=1/baz=3/..\""
+            "can't parse path \"um/api/foo=1/baz=3/../bar=2/\"\n- as RunDir: dir name \"bar=2\" does not parse as DateTimeWithOffset: input contains invalid characters\n- as KeyDir: dir name \"bar=2\" does not parse as GitHash: not a git hash of 40 hex bytes: \"bar=2\"\n- as ParametersDir: path \"um/api/foo=1/baz=3/../bar=2/\" contains a '..' or '.' part: \"um/api/foo=1/baz=3/..\""
         );
         assert_eq!(
             &t("api/foo=1/bar=2/09193b52688a964956b3fae0f52eeae471adc027")?,
@@ -694,7 +755,7 @@ mod tests {
                 2026-02-02T11:26:48.563793486+00:00")
             .err()
             .unwrap(),
-            "can't parse path \"/foo=1//bar=2/09193b52688a964956b3fae0f52eeae471adc027/2026-02-02T11:26:48.563793486+00:00\"\n- as RunDir: parsing ParametersDir \"/foo=1//bar=2\": missing target segment left of the var segments\n- as KeyDir: dir name \"2026-02-02T11:26:48.563793486+00:00\" in \"/foo=1//bar=2/09193b52688a964956b3fae0f52eeae471adc027/2026-02-02T11:26:48.563793486+00:00\" does not parse as GitHash: not a git hash of 40 hex bytes: \"2026-02-02T11:26:48.563793486+00:00\"\n- as ParametersDir: not a proper directory name: \"2026-02-02T11:26:48.563793486+00:00\": a file name (not path), must not contain '/', '\\n', '\\0', and must not be \".\", \"..\", the empty string, or longer than 255 bytes, and not have a file extension"
+            "can't parse path \"/foo=1//bar=2/09193b52688a964956b3fae0f52eeae471adc027/2026-02-02T11:26:48.563793486+00:00\"\n- as RunDir: parsing ParametersDir \"/foo=1//bar=2\": missing target segment left of the var segments\n- as KeyDir: dir name \"2026-02-02T11:26:48.563793486+00:00\" does not parse as GitHash: not a git hash of 40 hex bytes: \"2026-02-02T11:26:48.563793486+00:00\"\n- as ParametersDir: not a proper directory name: \"2026-02-02T11:26:48.563793486+00:00\": a file name (not path), must not contain '/', '\\n', '\\0', and must not be \".\", \"..\", the empty string, or longer than 255 bytes, and not have a file extension"
         );
         // `.` is not dropped: it's only skiped by
         // parent(). file_name() then yields another Null.
@@ -704,7 +765,7 @@ mod tests {
         );
         assert_eq!(
             &t("./foo=1").err().unwrap(),
-            "can't parse path \"./foo=1\"\n- as RunDir: dir name \"foo=1\" in \"./foo=1\" does not parse as DateTimeWithOffset: input contains invalid characters\n- as KeyDir: dir name \"foo=1\" in \"./foo=1\" does not parse as GitHash: not a git hash of 40 hex bytes: \"foo=1\"\n- as ParametersDir: path \"./foo=1\" contains a '..' or '.' part: \".\""
+            "can't parse path \"./foo=1\"\n- as RunDir: dir name \"foo=1\" does not parse as DateTimeWithOffset: input contains invalid characters\n- as KeyDir: dir name \"foo=1\" does not parse as GitHash: not a git hash of 40 hex bytes: \"foo=1\"\n- as ParametersDir: path \"./foo=1\" contains a '..' or '.' part: \".\""
         );
         assert_eq!(&t("./a/foo=1")?, "BASE/a/foo=1");
         assert_eq!(&t("./a/./foo=1")?, "BASE/a/foo=1");
