@@ -19,7 +19,10 @@ use crate::{
     run::{
         config::JobTemplate,
         env_vars::AllowableCustomEnvVar,
-        key::{CustomParameters, ExtendPath, RunParameters, UncheckedCustomParameters},
+        key::{
+            BenchmarkingJobParameters, CustomParameters, ExtendPath, RunParameters,
+            UncheckedCustomParameters,
+        },
     },
     serde_types::{
         allowed_env_var::AllowedEnvVar, date_and_time::DateTimeWithOffset,
@@ -428,6 +431,17 @@ impl KeyDir {
             parent,
             path_cache: Default::default(),
         })
+    }
+
+    pub fn from_benchmarking_job_parameters(
+        output_base_dir: Arc<Path>,
+        benchmarking_job_parameters: &BenchmarkingJobParameters,
+    ) -> Arc<Self> {
+        let BenchmarkingJobParameters {
+            run_parameters,
+            command,
+        } = benchmarking_job_parameters;
+        Self::from_base_target_params(output_base_dir, command.target_name.clone(), run_parameters)
     }
 
     pub fn append(self: Arc<Self>, dir_name: DateTimeWithOffset) -> RunDir {

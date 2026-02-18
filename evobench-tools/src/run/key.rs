@@ -25,7 +25,12 @@
 //! providing input data to an application sorted or not.
 
 use std::{
-    collections::BTreeMap, fmt::Display, num::NonZeroU32, path::PathBuf, str::FromStr, sync::Arc,
+    collections::BTreeMap,
+    fmt::Display,
+    num::NonZeroU32,
+    path::{Path, PathBuf},
+    str::FromStr,
+    sync::Arc,
 };
 
 use anyhow::{Result, bail};
@@ -42,6 +47,7 @@ use crate::{
         config::BenchmarkingCommand,
         custom_parameter::{AllowedCustomParameter, CustomParameterValue},
         env_vars::AllowableCustomEnvVar,
+        output_directory::structure::KeyDir,
     },
     serde_types::allowed_env_var::AllowedEnvVar,
     utillib::crypto_hash::crypto_hash,
@@ -284,6 +290,10 @@ pub struct BenchmarkingJobParameters {
 impl BenchmarkingJobParameters {
     pub fn slow_hash(&self) -> BenchmarkingJobParametersHash {
         self.into()
+    }
+
+    pub fn to_key_dir(&self, output_base_dir: Arc<Path>) -> Arc<KeyDir> {
+        KeyDir::from_benchmarking_job_parameters(output_base_dir, self)
     }
 }
 
