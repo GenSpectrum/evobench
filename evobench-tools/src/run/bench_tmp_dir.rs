@@ -23,7 +23,7 @@ use crate::{
 /// The path to a temporary directory, and [on Linux (because of
 /// systems using systemd--Debian from trixie onwards will delete
 /// it),] a thread that keeps updating its mtime to prevent
-/// deletion. Implements AsRef<Path> and Deref<Target = Path>.
+/// deletion. Implements `AsRef<Path>` and `Deref<Target = Path>`.
 #[derive(Debug, PartialEq, Eq)]
 pub struct BenchTmpDir {
     path: Arc<Path>,

@@ -16,8 +16,8 @@
 //! containing data structure is needed, which might be cleaner?
 
 //! Original idea and partially code came from
-//! https://jack.wrenn.fyi/blog/undroppable/ and
-//! https://geo-ant.github.io/blog/2024/rust-linear-types-use-once/,
+//! <https://jack.wrenn.fyi/blog/undroppable/> and
+//! <https://geo-ant.github.io/blog/2024/rust-linear-types-use-once/>,
 //! but again, doesn't appear to work in practice. There are also some
 //! other crates going the runtime route, maybe the most-used one
 //! being <https://crates.io/crates/drop_bomb>.
