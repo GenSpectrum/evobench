@@ -361,7 +361,7 @@ fn run_queues<'ce>(
         )?;
 
         if once {
-            return Ok(RunResult::OnceResult(ran));
+            return Ok(RunResult::OnceResult(ran.is_some()));
         }
 
         // XX have something better than polling?

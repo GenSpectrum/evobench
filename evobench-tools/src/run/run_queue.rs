@@ -148,6 +148,7 @@ pub struct RunQueueDataWithNext<'conf, 'run_queue, 'r> {
 /// `run::working_directory::Status` type which is currently used to
 /// determine "R" status column in `evobench list`.)
 #[derive(Clone, Copy)]
+#[must_use]
 pub enum JobStatus {
     /// It will still be run
     Active,

@@ -21,7 +21,10 @@ use crate::{
         key_val::{KeyValConfig, KeyValSync},
         queue::{Queue, QueueGetItemOptions, QueueItem, TimeKey},
     },
-    run::run_job::{JobRunnerJobData, JobRunnerWithJob},
+    run::{
+        run_job::{JobRunnerJobData, JobRunnerWithJob},
+        run_queue::JobStatus,
+    },
     serde_types::{priority::Priority, proper_filename::ProperFilename},
     utillib::logging::{LogLevel, log_level},
 };
@@ -431,15 +434,17 @@ impl<'run_queues> RunQueuesData<'run_queues> {
     }
 
     /// Run the first or most prioritized job in the queues. Returns
-    /// true if a job was found, false if all runnable queues are
-    /// empty. This method needs to be run in a loop forever for
-    /// daemon style processing. The reason this doesn't do the
-    /// looping inside is to allow for a reload of the queue config
-    /// and then queues. `current_stop_start`, if given, represents an
-    /// active `stop_start` command that was run with `stop` and now
-    /// needs a `start` when the next running action does not require
-    /// the same command to be `stop`ed. Likewise, this method returns
-    /// the active `stop_start` command, if any, by the time it
+    /// the job and its status after running it if one was found,
+    /// None if all runnable queues are empty.
+    ///
+    /// This method needs to be run in a loop forever for daemon style
+    /// processing. The reason this doesn't do the looping inside is
+    /// to allow for a reload of the queue config and then
+    /// queues. `current_stop_start`, if given, represents an active
+    /// `stop_start` command that was run with `stop` and now needs a
+    /// `start` when the next running action does not require the same
+    /// command to be `stop`ed. Likewise, this method returns the
+    /// active `stop_start` command, if any, by the time it
     /// returns. The caller should pass that back into this method on
     /// the next iteration. Using SliceOrBox to allow carrying it over
     /// a config reload. `now` should be the current time (at least is
@@ -449,12 +454,12 @@ impl<'run_queues> RunQueuesData<'run_queues> {
         &'s self,
         job_runner: JobRunner,
         run_context: &mut RunContext,
-    ) -> Result<bool> {
+    ) -> Result<Option<(&'s BenchmarkingJob, JobStatus)>> {
         let timestamp_local = job_runner.timestamp_local();
 
         let job = self.most_prioritized_job(timestamp_local)?;
 
-        let ran_job = if let Some((rqdwn, dtr, item, job, _)) = job {
+        if let Some((rqdwn, dtr, item, job, _)) = job {
             let rq = rqdwn.current.run_queue();
             run_context.stop_start_be(rq.schedule_condition.stop_start())?;
             if let Some(dtr) = dtr {
@@ -472,7 +477,7 @@ impl<'run_queues> RunQueuesData<'run_queues> {
                 lock.clear_current_working_directory()?;
             }
 
-            rqdwn.run_queue_with_next().run_job(
+            let job_status = rqdwn.run_queue_with_next().run_job(
                 &item,
                 &mut JobRunnerWithJob {
                     job_runner,
@@ -486,13 +491,11 @@ impl<'run_queues> RunQueuesData<'run_queues> {
                 working_directory_id,
             )?;
 
-            true
+            Ok(Some((job, job_status)))
         } else {
             run_context.stop_start_be(None)?;
 
-            false
-        };
-
-        Ok(ran_job)
+            Ok(None)
+        }
     }
 }
