@@ -1,6 +1,6 @@
-//! Generic config file loader that supports reloading.
+//! Generic config file loader that supports reloading
 
-//! TODO: integrate `serde_path_to_error` crate
+// TODO: integrate `serde_path_to_error` crate. (Still?)
 
 use std::{
     borrow::{Borrow, Cow},

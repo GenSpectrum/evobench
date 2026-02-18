@@ -1,6 +1,7 @@
-//! The core evobench-eval functionality (i.e. excl. more general
-//! library files, and excl. the main driver program at
-//! src/bin/evobench-eval)
+//! Benchmarking log file evaluation
+//!
+//! This represents the core of the `evobench-eval` tool, excluding
+//! the main driver program at `src/bin/evobench-eval.rs`.
 
 pub mod all_fields_table;
 pub mod all_outputs_all_fields_table;

@@ -1,4 +1,6 @@
-//! Extension of run-git crate, probably to be moved there at some point.
+//! Extension for the `run-git` crate to retrieve git tags
+//!
+//! Probably to be moved there at some point.
 
 use std::{collections::BTreeMap, str::FromStr, sync::Arc};
 

@@ -1,3 +1,5 @@
+//! Filesystem based key-value database
+//!
 //! Simple filesystem based key-value database using a separate file
 //! in the file system per mapping, and offering locking operations on
 //! each entry for mutations/deletions. The goal of this library is

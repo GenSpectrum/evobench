@@ -1,4 +1,4 @@
-//! Numbers based on decimal digits, for testing only
+//! Numbers based on vectors of decimal digits for testing purposes
 
 use std::{fmt::Display, io::Write};
 

@@ -1,3 +1,5 @@
+//! Trait to attach a physical unit to a type
+
 /// Attach a physical unit (or "count" or similar) to a type.
 pub trait ResolutionUnit: Into<u64> {
     /// The physical unit for 1 increment of the resolution of the

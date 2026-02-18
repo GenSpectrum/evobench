@@ -1,3 +1,5 @@
+//! The key for a benchmarking run--all parameters modifying the output
+//!
 //! The representation of the parameters (given or recorded) for a
 //! benchmarking run. This does not necessarily include *all* recorded
 //! metainformation. The aim is to allow to automatically group runs
@@ -8,17 +10,17 @@
 //! identical. And maybe provide for the means to allow for manual
 //! overrides, to include all runs in a summary with keys "close
 //! enough".
-
+//!
 //! Some parameters, e.g. hostname, may be irrelevant when the
 //! hardware and software versions are given; or it may turn out
 //! controlling for those is not enough; thus, some key pieces are
 //! redundant, or not?
-
+//!
 //! Time-of-day may be relevant (rather: were other processes shut
 //! down or not), strongly or weakly, but can't be part of the key or
 //! grouping would not work; this is a piece of information to track
 //! separately for verification.
-
+//!
 //! Custom parameters can be given and be relevant, e.g. whether
 //! providing input data to an application sorted or not.
 

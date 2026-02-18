@@ -1,3 +1,5 @@
+//! Generate tables for human consumption, for the terminal, as HTML or CSV
+
 use itertools::{EitherOrBoth, Itertools};
 use kstring::KString;
 use std::borrow::Cow;
