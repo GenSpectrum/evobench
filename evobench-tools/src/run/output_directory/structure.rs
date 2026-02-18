@@ -91,7 +91,8 @@ pub trait ToPath {
 
 pub trait SubDirs: ToPath {
     type Target;
-    fn append_str(self: Arc<Self>, file_name: &str) -> Result<Self::Target>;
+
+    fn append_subdir_str(self: Arc<Self>, file_name: &str) -> Result<Self::Target>;
 
     /// Skips non-directory entries, but requires all directory entries to
     /// be convertible to `T`.
@@ -104,7 +105,7 @@ pub trait SubDirs: ToPath {
                 let ft = entry.file_type()?;
                 if ft.is_dir() {
                     if let Some(file_name) = entry.file_name().to_str() {
-                        Ok(Some(self.clone_arc().append_str(&file_name)?))
+                        Ok(Some(self.clone_arc().append_subdir_str(&file_name)?))
                     } else {
                         // silently ignore those paths, OK?
                         Ok(None)
@@ -247,7 +248,7 @@ impl ToPath for ParametersDir {
 impl SubDirs for ParametersDir {
     type Target = KeyDir;
 
-    fn append_str(self: Arc<Self>, file_name: &str) -> Result<Self::Target> {
+    fn append_subdir_str(self: Arc<Self>, file_name: &str) -> Result<Self::Target> {
         let commit_id = parse_filename(file_name.as_ref()).map_err(ctx!(
             "appending file name to parent path {:?}",
             self.to_path()
@@ -429,8 +430,8 @@ impl ToPath for KeyDir {
 impl SubDirs for KeyDir {
     type Target = RunDir;
 
-    fn append_str(self: Arc<Self>, file_name: &str) -> Result<Self::Target> {
-        Ok(self.append(file_name.parse()?))
+    fn append_subdir_str(self: Arc<Self>, file_name: &str) -> Result<Self::Target> {
+        Ok(self.append_subdir(file_name.parse()?))
     }
 }
 
@@ -470,7 +471,7 @@ impl KeyDir {
         Self::from_base_target_params(output_base_dir, command.target_name.clone(), run_parameters)
     }
 
-    pub fn append(self: Arc<Self>, dir_name: DateTimeWithOffset) -> RunDir {
+    pub fn append_subdir(self: Arc<Self>, dir_name: DateTimeWithOffset) -> RunDir {
         RunDir {
             parent: self,
             timestamp: dir_name,
@@ -570,8 +571,9 @@ impl RunDir {
     }
 
     /// Same as `append` but returns an error if file_name cannot be a
-    /// `ProperFilename`. Only for files, currently there are no
-    /// subdirs of RunDir.
+    /// `ProperFilename`. Only for files (subdirs would be via an
+    /// `append_subdir_str` method, but `RunDir`s have no subdirs,
+    /// currently.)
     pub fn append_str(&self, file_name: &str) -> Result<PathBuf> {
         let proper = ProperFilename::from_str(file_name)
             .map_err(|msg| anyhow!("not a proper file name ({msg}): {file_name:?}"))?;
@@ -656,10 +658,10 @@ impl ToPath for OutputSubdir {
 impl SubDirs for OutputSubdir {
     type Target = OutputSubdir;
 
-    fn append_str(self: Arc<Self>, file_name: &str) -> Result<Self::Target> {
+    fn append_subdir_str(self: Arc<Self>, file_name: &str) -> Result<Self::Target> {
         Ok(match &*self {
-            OutputSubdir::ParametersDir(v) => v.clone_arc().append_str(file_name)?.into(),
-            OutputSubdir::KeyDir(v) => v.clone_arc().append_str(file_name)?.into(),
+            OutputSubdir::ParametersDir(v) => v.clone_arc().append_subdir_str(file_name)?.into(),
+            OutputSubdir::KeyDir(v) => v.clone_arc().append_subdir_str(file_name)?.into(),
             // Note: this error never shows up when `sub_dirs` method
             // is called and there are no subdirs, since the call
             // doesn't happen then. If there *are* subdirs, then they

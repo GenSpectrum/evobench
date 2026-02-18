@@ -378,7 +378,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             // Inside the key_dir, make a dir for this particular run
             let run_dir: RunDir = key_dir
                 .clone_arc()
-                .append(self.job_runner.timestamp.clone());
+                .append_subdir(self.job_runner.timestamp.clone());
             create_dir_all(run_dir.to_path()).map_err(ctx!("create_dir_all {run_dir:?}"))?;
 
             // Maintain a "latest-redir" subdirectory at the top of
