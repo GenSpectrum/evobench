@@ -142,10 +142,50 @@ pub struct RunQueueDataWithNext<'conf, 'run_queue, 'r> {
     pub next: Option<&'r RunQueueData<'conf, 'run_queue>>,
 }
 
+/// The status that a job is in (after running
+/// `RunQueueWithNext::run_job`, but perhaps also useful more
+/// generally?) (This is related to, but currently independent of, the
+/// `run::working_directory::Status` type which is currently used to
+/// determine "R" status column in `evobench list`.)
+#[derive(Clone, Copy)]
+pub enum JobStatus {
+    /// It will still be run
+    Active,
+    /// Job is finished; the argument says if retained in a
+    /// `done_jobs_queue`. Note that this can happen even if
+    /// `remaining_count` is non-zero; relevant is having reached the
+    /// end of the pipeline.
+    Done(bool),
+    /// Positioned in a queue with ScheduleCondition::Inactive (other
+    /// than the done queue)
+    Inactive,
+    /// Job ran out of `remaining_count` *before* reaching the end of
+    /// the pipeline
+    Dropped,
+    /// Ran out of error budget; the argument says if retained in an
+    /// `erroneous_jobs_queue`
+    Error(bool),
+}
+
+impl JobStatus {
+    /// If this returns false, then e.g. cache files retained for the
+    /// whole job execution can be deleted.
+    pub fn can_run_again(self) -> bool {
+        match self {
+            JobStatus::Active => true,
+            JobStatus::Done(_) | JobStatus::Inactive | JobStatus::Dropped | JobStatus::Error(_) => {
+                false
+            }
+        }
+    }
+}
+
 impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
     /// Run the given job, which must be from this queue. `item`
     /// represents the queue entry of this job, and is used for
     /// locking and deletion--it must not already be locked!
+    ///
+    /// Returns the status of the job after running it.
     pub fn run_job(
         &self,
         item: &QueueItem<BenchmarkingJob>,
@@ -153,7 +193,7 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
         erroneous_jobs_queue: Option<&RunQueue>,
         done_jobs_queue: Option<&RunQueue>,
         working_directory_id: WorkingDirectoryId,
-    ) -> Result<()> {
+    ) -> Result<JobStatus> {
         let _lock = item.lock_exclusive()?;
 
         let BenchmarkingJobState {
@@ -162,7 +202,7 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
             last_working_directory: _,
         } = job_runner_with_job.job_data.job.state.clone();
 
-        let job_completed = |remaining_count| -> Result<()> {
+        let finish_completed_job = |remaining_count| -> Result<JobStatus> {
             let job = job_runner_with_job
                 .job_data
                 .job
@@ -175,10 +215,37 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
                 "job completed: {}",
                 ron_to_string_pretty(&job).expect("no err")
             );
-            if let Some(done_jobs_queue) = done_jobs_queue {
+            let retained = if let Some(done_jobs_queue) = done_jobs_queue {
                 done_jobs_queue.push_front(&job)?;
-            }
-            Ok(())
+                true
+            } else {
+                false
+            };
+            Ok(JobStatus::Done(retained))
+        };
+
+        let handle_out_of_error_budget = || -> Result<JobStatus> {
+            let job = job_runner_with_job
+                .job_data
+                .job
+                .clone_for_queue_reinsertion(BenchmarkingJobState {
+                    remaining_count,
+                    remaining_error_budget: 0,
+                    last_working_directory: Some(working_directory_id),
+                });
+
+            let retained = if let Some(queue) = &erroneous_jobs_queue {
+                queue.push_front(&job)?;
+                true
+            } else {
+                info!(
+                    "job dropped due to running out of error budget \
+                     and no configured erroneous_jobs_queue: {}",
+                    ron_to_string_pretty(&job).expect("no err")
+                );
+                false
+            };
+            Ok(JobStatus::Error(retained))
         };
 
         let BenchmarkingJobPublic {
@@ -187,6 +254,8 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
             run_parameters: _,
             command: _,
         } = job_runner_with_job.job_data.job.public.clone();
+
+        let job_status;
 
         if remaining_error_budget > 0 {
             if remaining_count > 0 {
@@ -217,6 +286,9 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
                                 last_working_directory: Some(working_directory_id),
                             });
                         self.current.push_front(&job)?;
+                        job_status = JobStatus::Active;
+                    } else {
+                        job_status = handle_out_of_error_budget()?;
                     }
                 } else {
                     let remaining_count = remaining_count - 1;
@@ -265,14 +337,16 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
                             });
                         if let Some(queue) = maybe_queue {
                             queue.push_front(&job)?;
+                            job_status = JobStatus::Active;
                         } else {
                             info!(
                                 "job dropping off the pipeline: {}",
                                 ron_to_string_pretty(&job).expect("no err")
                             );
+                            job_status = JobStatus::Dropped;
                         }
                     } else {
-                        job_completed(remaining_count)?;
+                        job_status = finish_completed_job(remaining_count)?;
                     }
                 }
             } else {
@@ -280,31 +354,14 @@ impl<'conf, 'r> RunQueueWithNext<'conf, 'r> {
                     "should never get here normally: job stored in normal queue \
                      with remaining_count 0"
                 );
-                job_completed(remaining_count)?;
+                job_status = finish_completed_job(remaining_count)?;
             }
-        }
-        if remaining_error_budget == 0 {
-            let job = job_runner_with_job
-                .job_data
-                .job
-                .clone_for_queue_reinsertion(BenchmarkingJobState {
-                    remaining_count,
-                    remaining_error_budget,
-                    last_working_directory: Some(working_directory_id),
-                });
-
-            if let Some(queue) = &erroneous_jobs_queue {
-                queue.push_front(&job)?;
-            } else {
-                info!(
-                    "job dropped due to running out of error budget \
-                     and no configured erroneous_jobs_queue: {}",
-                    ron_to_string_pretty(&job).expect("no err")
-                );
-            }
+        } else {
+            info!("Job already had no error budget; should not be possible?");
+            job_status = handle_out_of_error_budget()?;
         }
         item.delete()?;
-        Ok(())
+        Ok(job_status)
     }
 
     pub fn handle_timeout(&self) -> Result<()> {
