@@ -139,8 +139,7 @@ where
     if let Ok(file_name_str) = file_name.to_owned().into_string() {
         T::from_str(&file_name_str).map_err(|e| {
             anyhow!(
-                "dir name {file_name_str:?} \
-                     does not parse as {}: {e:#}",
+                "dir name {file_name_str:?} does not parse as {}: {e:#}",
                 type_name_short::<T>()
             )
         })
@@ -249,10 +248,7 @@ impl SubDirs for ParametersDir {
     type Target = KeyDir;
 
     fn append_subdir_str(self: Arc<Self>, file_name: &str) -> Result<Self::Target> {
-        let commit_id = parse_filename(file_name.as_ref()).map_err(ctx!(
-            "appending file name to parent path {:?}",
-            self.to_path()
-        ))?;
+        let commit_id = parse_filename(file_name.as_ref())?;
         Ok(KeyDir {
             parent: self,
             commit_id,
@@ -431,7 +427,7 @@ impl SubDirs for KeyDir {
     type Target = RunDir;
 
     fn append_subdir_str(self: Arc<Self>, file_name: &str) -> Result<Self::Target> {
-        Ok(self.append_subdir(file_name.parse()?))
+        Ok(self.append_subdir(parse_filename(file_name.as_ref())?))
     }
 }
 
