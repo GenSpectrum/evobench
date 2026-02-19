@@ -1,3 +1,5 @@
+//! Get information on the filesystem mount points on Linux
+
 use std::{
     collections::HashMap,
     fs::Metadata,
@@ -15,7 +17,7 @@ pub struct MountPoint {
     pub path: KString,
     pub fstype: KString,
     pub options: KString,
-    // Ignore remaining fields
+    // Ignore the remaining (numeric) fields (for now)
 }
 
 impl MountPoint {
@@ -51,13 +53,16 @@ impl MountPoints {
             .trim_end()
             .split("\n")
             .map(|line| -> Result<MountPoint> {
+                // XX what is the precise syntax of this file?
                 let mut items = line.split(" ");
                 macro_rules! let_get {
-                { $name:tt } =>  {
-                    let $name = KString::from_ref(items.next().ok_or_else(
-                        || anyhow!("missing {:?}", stringify!( $name)))?);
+                    { $name:tt } =>  {
+                        let $name = KString::from_ref(
+                            items.next().ok_or_else(
+                                || anyhow!("missing value for {:?}", stringify!($name)))?
+                        );
+                    }
                 }
-            }
                 let_get!(device_name);
                 let_get!(path);
                 let_get!(fstype);
