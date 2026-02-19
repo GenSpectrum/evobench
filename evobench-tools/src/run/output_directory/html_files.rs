@@ -98,7 +98,11 @@ pub fn print_list(
         tmp = HtmlAllocator::new(1000000, Arc::new("list"));
         &tmp
     };
-    let num_columns = output_table_opts.parameter_view.titles().len();
+    let num_columns = output_table_opts
+        .parameter_view
+        .unwrap_or_default()
+        .titles()
+        .len();
     let table = HtmlTable::new(num_columns, &html);
     let body = output_table_opts.output_to_table(
         table,
@@ -272,7 +276,7 @@ pub fn regenerate_index_files(
                 verbose: false,
                 all,
                 n: None,
-                parameter_view: ParameterView::Separated,
+                parameter_view: Some(ParameterView::Separated),
             };
 
             let (tmp_file, out) = tempfile(conf.output_dir.path.join(file_name), false)?;

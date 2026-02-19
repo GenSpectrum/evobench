@@ -53,10 +53,11 @@ impl Default for ParameterPathKind {
     }
 }
 
-#[derive(Debug, Clone, Copy, clap::Subcommand)]
+#[derive(Debug, Clone, Copy, clap::Subcommand, Default)]
 pub enum ParameterView {
     /// Show separate `Commit_id`, `Target_name`, `Custom_parameters`
-    /// columns
+    /// columns (default)
+    #[default]
     Separated,
     /// Show a single column that represents a path to the job in the
     /// outputs directory.
@@ -111,7 +112,7 @@ pub struct OutputTableOpts {
 
     /// How to show the job parameters
     #[clap(subcommand)]
-    pub parameter_view: ParameterView,
+    pub parameter_view: Option<ParameterView>,
 }
 
 impl OutputTableOpts {
@@ -129,6 +130,8 @@ impl OutputTableOpts {
             n,
             parameter_view,
         } = self;
+
+        let parameter_view = parameter_view.unwrap_or_default();
 
         // The base of the path that's used for the `path` view
         let path_base: Option<Arc<Path>> = {
@@ -544,7 +547,7 @@ impl ListOpts {
                 &terminal_table_opts,
                 out,
                 output_table_opts.verbose,
-                output_table_opts.parameter_view,
+                output_table_opts.parameter_view.unwrap_or_default(),
             );
 
             let mut out = output_table_opts.output_to_table(
