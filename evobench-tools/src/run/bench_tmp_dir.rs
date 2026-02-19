@@ -2,6 +2,7 @@ use std::{
     collections::{HashMap, hash_map::Entry},
     fs::File,
     io::Write,
+    mem::swap,
     ops::Deref,
     os::unix::fs::MetadataExt,
     path::Path,
@@ -47,20 +48,29 @@ fn _start_daemon(path: Arc<Path>) -> Result<JoinHandle<()>, std::io::Error> {
     let th = std::thread::Builder::new().name("tmp-keep-alive".into());
     th.spawn(move || -> () {
         let pid = getpid();
+
+        let mut file_path_0 = path.append(format!(".{pid}.tmp-keep-alive-dir-0"));
         {
-            let file_path = path.append(format!(".{pid}-stay.tmp-keep-alive-dir"));
-            if let Ok(mut f) = File::create(&file_path) {
-                _ = f.write_all("This file stays to ensure there is always a file\n".as_bytes());
+            if let Ok(mut f) = File::create(&file_path_0) {
+                _ = f.write_all(
+                    "This file stays to ensure there is always a file--or now replaced\n"
+                        .as_bytes(),
+                );
             } else {
-                info!("could not create touch file {file_path:?}");
+                info!("could not create touch file {file_path_0:?}");
             }
         }
-        let file_path = path.append(format!(".{pid}.tmp-keep-alive-dir"));
+        let mut file_path = path.append(format!(".{pid}.tmp-keep-alive-dir"));
+        _ = File::create(&file_path);
         let mut rnd = rand::thread_rng();
         while Arc::strong_count(&path) > 1 {
+            if rnd.gen_range(0..2) == 0 {
+                swap(&mut file_path_0, &mut file_path);
+                _ = std::fs::remove_file(&file_path);
+            }
             match File::create(&file_path) {
                 Ok(mut f) => {
-                    for _ in 0..30 {
+                    for _ in 0..20 {
                         let n = rnd.gen_range(0..10000000);
                         use std::io::Write;
                         if let Err(e) = write!(&mut f, "{n}\n") {
@@ -69,7 +79,6 @@ fn _start_daemon(path: Arc<Path>) -> Result<JoinHandle<()>, std::io::Error> {
                         }
                         std::thread::sleep(Duration::from_secs(1));
                     }
-                    _ = std::fs::remove_file(&file_path);
                 }
                 Err(e) => {
                     info!("could not create touch file {file_path:?}: {e:#}");
