@@ -19,6 +19,7 @@ use rand::Rng;
 use crate::{
     ctx, info,
     utillib::{into_arc_path::IntoArcPath, user::get_username},
+    warn,
 };
 
 /// The path to a temporary directory, and [on Linux (because of
@@ -77,15 +78,43 @@ fn _start_daemon(path: Arc<Path>) -> Result<JoinHandle<()>, std::io::Error> {
                             info!("could not write to touch file {file_path:?}: {e:#}");
                             break;
                         }
-                        std::thread::sleep(Duration::from_secs(1));
+
+                        if !path.exists() {
+                            // COPY-PASTE from below
+                            match std::fs::create_dir(&path) {
+                                Ok(_) => {
+                                    warn!(
+                                        "recreated directory {path:?}, worst of all \
+                                         total hacks with race condition"
+                                    );
+                                }
+                                Err(e) => {
+                                    warn!("could not even recreate directory {path:?}: {e:#}");
+                                    break;
+                                }
+                            }
+                        }
+
+                        std::thread::sleep(Duration::from_millis(100));
                     }
                 }
                 Err(e) => {
-                    info!("could not create touch file {file_path:?}: {e:#}");
-                    break;
+                    warn!("could not create touch file {file_path:?}: {e:#}");
+                    match std::fs::create_dir(&path) {
+                        Ok(_) => {
+                            warn!(
+                                "recreated directory {path:?}, worst of all \
+                                 total hacks with race condition"
+                            );
+                        }
+                        Err(e) => {
+                            warn!("could not even recreate directory {path:?}: {e:#}");
+                            break;
+                        }
+                    }
                 }
             }
-            std::thread::sleep(Duration::from_secs(1));
+            std::thread::sleep(Duration::from_millis(100));
         }
         // Remove ourselves, right?
         let mut daemons_guard = DAEMONS.lock().expect("no panics in this scope");
