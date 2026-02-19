@@ -67,7 +67,7 @@ impl LogOrLogf {
 
             if logf {
                 let mut cmd = Command::new("tail");
-                cmd.arg("-f");
+                cmd.arg("-F");
                 cmd.arg("--");
                 cmd.arg(standard_log_path);
                 return Err(cmd.exec()).with_context(|| anyhow!("executing {cmd:?}"));
