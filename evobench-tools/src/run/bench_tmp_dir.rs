@@ -45,7 +45,7 @@ impl Deref for BenchTmpDir {
 
 fn _start_daemon(path: Arc<Path>) -> Result<JoinHandle<()>, std::io::Error> {
     let th = std::thread::Builder::new().name("tmp-keep-alive".into());
-    th.spawn(move || {
+    th.spawn(move || -> () {
         let pid = getpid();
         {
             let file_path = path.append(format!(".{pid}-stay.tmp-keep-alive-dir"));
@@ -58,22 +58,32 @@ fn _start_daemon(path: Arc<Path>) -> Result<JoinHandle<()>, std::io::Error> {
         let file_path = path.append(format!(".{pid}.tmp-keep-alive-dir"));
         let mut rnd = rand::thread_rng();
         while Arc::strong_count(&path) > 1 {
-            if let Ok(mut f) = File::create(&file_path) {
-                for _ in 0..30 {
-                    let n = rnd.gen_range(0..10000000);
-                    use std::io::Write;
-                    if let Err(e) = write!(&mut f, "{n}\n") {
-                        info!("could not write to touch file {file_path:?}: {e:#}");
-                        break;
+            match File::create(&file_path) {
+                Ok(mut f) => {
+                    for _ in 0..30 {
+                        let n = rnd.gen_range(0..10000000);
+                        use std::io::Write;
+                        if let Err(e) = write!(&mut f, "{n}\n") {
+                            info!("could not write to touch file {file_path:?}: {e:#}");
+                            break;
+                        }
+                        std::thread::sleep(Duration::from_secs(1));
                     }
-                    std::thread::sleep(Duration::from_secs(1));
+                    _ = std::fs::remove_file(&file_path);
                 }
-                _ = std::fs::remove_file(&file_path);
-            } else {
-                info!("could not create touch file {file_path:?}");
+                Err(e) => {
+                    info!("could not create touch file {file_path:?}: {e:#}");
+                    break;
+                }
             }
             std::thread::sleep(Duration::from_secs(1));
         }
+        // Remove ourselves, right?
+        let mut daemons_guard = DAEMONS.lock().expect("no panics in this scope");
+        let daemons = daemons_guard
+            .as_mut()
+            .expect("already has hashmap since that happens before this thread is started");
+        daemons.remove(&path);
     })
 }
 
