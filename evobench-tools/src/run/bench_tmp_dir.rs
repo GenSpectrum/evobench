@@ -1,11 +1,12 @@
 use std::{
     collections::{HashMap, hash_map::Entry},
+    env::temp_dir,
     fs::File,
     io::Write,
     mem::swap,
     ops::Deref,
     os::unix::fs::MetadataExt,
-    path::Path,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
     thread::JoinHandle,
     time::Duration,
@@ -18,7 +19,7 @@ use rand::Rng;
 
 use crate::{
     ctx, info,
-    utillib::{into_arc_path::IntoArcPath, user::get_username},
+    utillib::{into_arc_path::IntoArcPath, linux_mounts::MountPoints, user::get_username},
     warn,
 };
 
@@ -45,7 +46,9 @@ impl Deref for BenchTmpDir {
     }
 }
 
-fn _start_daemon(path: Arc<Path>) -> Result<JoinHandle<()>, std::io::Error> {
+fn _start_daemon(path: Arc<Path>, is_tmpfs: bool) -> Result<JoinHandle<()>, std::io::Error> {
+    let sleep_time = Duration::from_millis(if is_tmpfs { 100 } else { 10000 });
+
     let th = std::thread::Builder::new().name("tmp-keep-alive".into());
     th.spawn(move || -> () {
         let pid = getpid();
@@ -95,7 +98,7 @@ fn _start_daemon(path: Arc<Path>) -> Result<JoinHandle<()>, std::io::Error> {
                             }
                         }
 
-                        std::thread::sleep(Duration::from_millis(100));
+                        std::thread::sleep(sleep_time);
                     }
                 }
                 Err(e) => {
@@ -114,7 +117,7 @@ fn _start_daemon(path: Arc<Path>) -> Result<JoinHandle<()>, std::io::Error> {
                     }
                 }
             }
-            std::thread::sleep(Duration::from_millis(100));
+            std::thread::sleep(sleep_time);
         }
         // Remove ourselves, right?
         let mut daemons_guard = DAEMONS.lock().expect("no panics in this scope");
@@ -128,16 +131,57 @@ fn _start_daemon(path: Arc<Path>) -> Result<JoinHandle<()>, std::io::Error> {
 static DAEMONS: Mutex<Option<HashMap<Arc<Path>, Result<JoinHandle<()>, std::io::Error>>>> =
     Mutex::new(None);
 
-fn start_daemon(path: Arc<Path>) -> Result<()> {
+fn start_daemon(path: Arc<Path>, is_tmpfs: bool) -> Result<()> {
     let mut daemons = DAEMONS.lock().expect("no panics in this scope");
     let m = daemons.get_or_insert_with(|| HashMap::new());
     let r = match m.entry(path.clone()) {
         Entry::Occupied(occupied_entry) => occupied_entry.into_mut(),
-        Entry::Vacant(vacant_entry) => vacant_entry.insert(_start_daemon(path)),
+        Entry::Vacant(vacant_entry) => vacant_entry.insert(_start_daemon(path, is_tmpfs)),
     };
     r.as_ref()
         .map(|_| ())
         .map_err(|e| anyhow!("start_daemon: {e:#}"))
+}
+
+/// Try to find the best place for putting the evobench.log, while
+/// avoiding tmp file cleaners like systemd and staying portable. Also
+/// returns if the path is pointing to a tmpfs.
+pub fn get_fast_and_large_temp_dir_base() -> Result<(PathBuf, bool)> {
+    // XX use src/installation/binaries_repo.rs from xmlhub-indexer
+    // instead once that's separated?
+    match std::env::consts::OS {
+        "linux" => {
+            let mount_points = MountPoints::read()?;
+
+            if let Some(tmp) = mount_points.get_by_path("/tmp") {
+                if tmp.is_tmpfs() {
+                    let tmp_metadata = tmp.path_metadata()?;
+                    if let Some(dev_shm) = mount_points.get_by_path("/dev/shm") {
+                        let dev_shm_metadata = dev_shm.path_metadata()?;
+                        if tmp_metadata.ino() == dev_shm_metadata.ino() {
+                            return Ok((tmp.path_buf(), true));
+                        }
+                    }
+                    // XX todo check if large enough
+                    return Ok((tmp.path_buf(), true));
+                } else {
+                    if let Some(dev_shm) = mount_points.get_by_path("/dev/shm") {
+                        // XX todo check Debian release? oldstable is OK, stable not.
+                        return Ok((dev_shm.path_buf(), dev_shm.is_tmpfs()));
+                    }
+                    // XX ?
+                    return Ok((tmp.path_buf(), false));
+                }
+            } else {
+                if let Some(dev_shm) = mount_points.get_by_path("/dev/shm") {
+                    // XX todo check Debian release? oldstable is OK, stable not.
+                    return Ok((dev_shm.path_buf(), dev_shm.is_tmpfs()));
+                }
+                return Ok((temp_dir(), false));
+            }
+        }
+        _ => Ok((temp_dir(), false)),
+    }
 }
 
 /// Returns the path to a temporary directory, creating it if
@@ -150,46 +194,33 @@ fn start_daemon(path: Arc<Path>) -> Result<()> {
 /// keeps updating the directory mtime to prevent deletion by tmp
 /// cleaners.
 pub fn bench_tmp_dir() -> Result<BenchTmpDir> {
-    // XX use src/installation/binaries_repo.rs from xmlhub-indexer
-    // instead once that's separated?
+    let (base, is_tmpfs) = get_fast_and_large_temp_dir_base()?;
     let user = get_username()?;
-    match std::env::consts::OS {
-        "linux" => {
-            let path = format!("/dev/shm/{user}").into_arc_path();
+    let path = base.append(&user).into_arc_path();
 
-            info!("bench_tmp_dir path, exists?: {:?}", (&path, path.exists()));
-
-            match std::fs::create_dir(&path) {
-                Ok(()) => {
-                    start_daemon(path.clone())?;
-                    Ok(BenchTmpDir { path })
-                }
-                Err(e) => match e.kind() {
-                    std::io::ErrorKind::AlreadyExists => {
-                        let m = std::fs::metadata(&path)?;
-                        let dir_uid = m.uid();
-                        let uid: u32 = getuid().into();
-                        if dir_uid == uid {
-                            start_daemon(path.clone())?;
-                            Ok(BenchTmpDir { path })
-                        } else {
-                            bail!(
-                                "bench_tmp_dir: directory {path:?} should be owned by \
-                                 the user {user:?} which is set in the USER env var, \
-                                 but the uid owning that directory is {dir_uid} whereas \
-                                 the current process is running as {uid}"
-                            )
-                        }
-                    }
-                    _ => Err(e).map_err(ctx!("create_dir {path:?}")),
-                },
-            }
-        }
-        _ => {
-            let path = "./tmp".into_arc_path();
-            std::fs::create_dir_all(&path).map_err(ctx!("create_dir_all {path:?}"))?;
-            start_daemon(path.clone())?;
+    match std::fs::create_dir(&path) {
+        Ok(()) => {
+            start_daemon(path.clone(), is_tmpfs)?;
             Ok(BenchTmpDir { path })
         }
+        Err(e) => match e.kind() {
+            std::io::ErrorKind::AlreadyExists => {
+                let m = std::fs::metadata(&path)?;
+                let dir_uid = m.uid();
+                let uid: u32 = getuid().into();
+                if dir_uid == uid {
+                    start_daemon(path.clone(), is_tmpfs)?;
+                    Ok(BenchTmpDir { path })
+                } else {
+                    bail!(
+                        "bench_tmp_dir: directory {path:?} should be owned by \
+                         the user {user:?} which is set in the USER env var, \
+                         but the uid owning that directory is {dir_uid} whereas \
+                         the current process is running as {uid}"
+                    )
+                }
+            }
+            _ => Err(e).map_err(ctx!("create_dir {path:?}")),
+        },
     }
 }

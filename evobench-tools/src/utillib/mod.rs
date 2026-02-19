@@ -17,6 +17,7 @@ pub mod invert;
 pub mod invert_index;
 pub mod lazy;
 pub mod linear;
+pub mod linux_mounts;
 pub mod logging;
 pub mod micro_vec;
 pub mod path_is_top;
