@@ -30,7 +30,7 @@ use crate::{
         },
     },
     times::{MicroTime, NanoTime},
-    utillib::{rayon_util::ParRun, tuple_transpose::TupleTranspose},
+    utillib::{rayon_util::par_run::ParRun, tuple_transpose::TupleTranspose},
 };
 
 fn scopestats<'t, K: KeyDetails>(
