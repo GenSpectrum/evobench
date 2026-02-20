@@ -1,11 +1,11 @@
-//! Clean up files via `Drop` action. Unlike what the `tempfile`
-//! offers, can clean paths that we didn't open ourselves, and specify
-//! any path.
+//! Clean up files via `Drop` action
+
+//! Unlike what the `tempfile` offers, can clean paths that we didn't
+//! open ourselves, and specify any path.
 
 //! Relying on `Drop` means that kill by e.g. signals without handlers
-//! (ctl-c) will prevent the cleanup. (TODO?: idea as remedy: fork off
-//! a daemon in a new session, send it the paths to delete when the
-//! pipe to it closes.)
+//! (ctl-c) will prevent the cleanup. Use `PathWithCleanup` instead if
+//! that is relevant!
 
 use std::{
     fs::File,
