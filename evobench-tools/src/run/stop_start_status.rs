@@ -1,6 +1,27 @@
-use anyhow::Result;
+use anyhow::{Result, bail};
+use std::process::Command;
 
-use crate::{debug, info, run::run_queue::run_command};
+use crate::{ctx, debug, info};
+
+// Move, where?
+pub fn run_command(cmd: &[String], start_stop: &str) -> Result<()> {
+    assert!(
+        !cmd.is_empty(),
+        "start_stop should have been checked in `check_run_queues` already"
+    );
+    let mut cmd: Vec<&str> = cmd.iter().map(|s| s.as_str()).collect();
+    cmd.push(start_stop);
+    info!("running command {cmd:?}");
+    let mut command = Command::new(cmd[0]);
+    command.args(&cmd[1..]);
+    // XX consistent capture?
+    let status = command.status().map_err(ctx!("running {cmd:?}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        bail!("command {cmd:?} gave status {status}")
+    }
+}
 
 #[derive(Default)]
 pub struct StopStartStatus {

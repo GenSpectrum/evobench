@@ -1,10 +1,8 @@
-use std::process::Command;
-
-use anyhow::{Result, bail};
+use anyhow::Result;
 
 use crate::{
     config_file::ron_to_string_pretty,
-    ctx, info,
+    info,
     key_val_fs::{
         key_val::{KeyVal, KeyValError},
         queue::{Queue, QueueGetItemOptions, QueueItem, QueueIterationOptions, TimeKey},
@@ -19,26 +17,6 @@ use super::{
     config::ScheduleCondition,
     working_directory_pool::WorkingDirectoryId,
 };
-
-// Move, where?
-pub fn run_command(cmd: &[String], start_stop: &str) -> Result<()> {
-    assert!(
-        !cmd.is_empty(),
-        "start_stop should have been checked in `check_run_queues` already"
-    );
-    let mut cmd: Vec<&str> = cmd.iter().map(|s| s.as_str()).collect();
-    cmd.push(start_stop);
-    info!("running command {cmd:?}");
-    let mut command = Command::new(cmd[0]);
-    command.args(&cmd[1..]);
-    // XX consistent capture?
-    let status = command.status().map_err(ctx!("running {cmd:?}"))?;
-    if status.success() {
-        Ok(())
-    } else {
-        bail!("command {cmd:?} gave status {status}")
-    }
-}
 
 #[derive(Debug, PartialEq)]
 pub struct RunQueue<'conf> {
