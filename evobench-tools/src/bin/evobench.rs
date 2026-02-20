@@ -61,7 +61,7 @@ use evobench_tools::{
     serde_types::date_and_time::{DateTimeWithOffset, LOCAL_TIME},
     utillib::{
         arc::CloneArc,
-        cleanup_daemon::FileCleanupHandler,
+        cleanup_daemon::CleanupHandler,
         get_terminal_width::get_terminal_width,
         into_arc_path::IntoArcPath,
         logging::{LogLevel, LogLevelOpts, set_log_level},
@@ -272,7 +272,7 @@ fn run_queues<'ce>(
     once: bool,
     daemon_check_exit: Option<CheckExit<'ce>>,
     queue_change_signals: PollingSignalsSender,
-    file_cleanup_handler: &FileCleanupHandler,
+    file_cleanup_handler: &CleanupHandler,
 ) -> Result<RunResult> {
     let conf = &run_config_bundle.shareable.run_config;
     let _run_lock = get_run_lock(conf)?;
@@ -702,7 +702,7 @@ fn run() -> Result<Option<ExecutionResult>> {
 
             match mode {
                 RunMode::One { false_if_none } => {
-                    let file_cleanup_handler = FileCleanupHandler::start()?;
+                    let file_cleanup_handler = CleanupHandler::start()?;
                     let (queues, regenerate_index_files) = queues.into_value()?;
                     let working_directory_pool = open_working_directory_pool(conf)?;
                     let r = run_queues(
@@ -744,7 +744,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                         // daemon child so that logging output goes to
                         // the daemon log, but before any threads are
                         // started:
-                        let file_cleanup_handler = FileCleanupHandler::start()?;
+                        let file_cleanup_handler = CleanupHandler::start()?;
                         regenerate_index_files.spawn_runner_thread()?;
 
                         let conf = &run_config_bundle.shareable.run_config;

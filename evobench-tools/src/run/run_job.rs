@@ -42,7 +42,7 @@ use crate::{
     serde_types::{date_and_time::DateTimeWithOffset, proper_dirname::ProperDirname},
     utillib::{
         arc::CloneArc,
-        cleanup_daemon::{DeletionItem, FileCleanupHandler},
+        cleanup_daemon::{CleanupHandler, Deletion},
         into_arc_path::IntoArcPath,
         logging::{LogLevel, log_level},
     },
@@ -91,7 +91,7 @@ pub struct JobRunner<'pool> {
     pub shareable_config: &'pool ShareableConfig,
     // ditto?
     pub versioned_dataset_dir: &'pool VersionedDatasetDir,
-    pub file_cleanup_handler: &'pool FileCleanupHandler,
+    pub file_cleanup_handler: &'pool CleanupHandler,
 }
 
 impl<'pool> JobRunner<'pool> {
@@ -169,15 +169,13 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
         let bench_output_log;
         {
             let pid = getpid();
-            evobench_log = file_cleanup_handler.register_temporary_file(DeletionItem::File(
-                bench_tmp_dir.append(format!("evobench-{pid}.log")).into(),
-            ))?;
+            evobench_log = file_cleanup_handler.register_temporary_file(Deletion::file(
+                bench_tmp_dir.append(format!("evobench-{pid}.log")),
+            )?)?;
 
-            bench_output_log = file_cleanup_handler.register_temporary_file(DeletionItem::File(
-                bench_tmp_dir
-                    .append(format!("bench-output-{pid}.log"))
-                    .into(),
-            ))?;
+            bench_output_log = file_cleanup_handler.register_temporary_file(Deletion::file(
+                bench_tmp_dir.append(format!("bench-output-{pid}.log")),
+            )?)?;
         }
 
         // Remove any stale files from previous runs (we're not
@@ -428,7 +426,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                 // It's OK to delete the original now, but we'll make use of
                 // it for reading back.
                 let standard_log_tempfile = file_cleanup_handler
-                    .register_temporary_file(DeletionItem::File(standard_log_tempfile.into()))?;
+                    .register_temporary_file(Deletion::file(standard_log_tempfile)?)?;
 
                 {
                     let target = run_dir.append_str("schedule_condition.ron")?;
