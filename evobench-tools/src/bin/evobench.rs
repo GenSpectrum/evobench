@@ -61,6 +61,7 @@ use evobench_tools::{
     serde_types::date_and_time::{DateTimeWithOffset, LOCAL_TIME},
     utillib::{
         arc::CloneArc,
+        cleanup_daemon::FileCleanupHandler,
         get_terminal_width::get_terminal_width,
         into_arc_path::IntoArcPath,
         logging::{LogLevel, LogLevelOpts, set_log_level},
@@ -271,6 +272,7 @@ fn run_queues<'ce>(
     once: bool,
     daemon_check_exit: Option<CheckExit<'ce>>,
     queue_change_signals: PollingSignalsSender,
+    file_cleanup_handler: &FileCleanupHandler,
 ) -> Result<RunResult> {
     let conf = &run_config_bundle.shareable.run_config;
     let _run_lock = get_run_lock(conf)?;
@@ -356,6 +358,7 @@ fn run_queues<'ce>(
                 timestamp: DateTimeWithOffset::now(None),
                 shareable_config: &run_config_bundle.shareable,
                 versioned_dataset_dir: &versioned_dataset_dir,
+                file_cleanup_handler: &file_cleanup_handler,
             },
             &mut run_context,
         )?;
@@ -699,6 +702,7 @@ fn run() -> Result<Option<ExecutionResult>> {
 
             match mode {
                 RunMode::One { false_if_none } => {
+                    let file_cleanup_handler = FileCleanupHandler::start()?;
                     let (queues, regenerate_index_files) = queues.into_value()?;
                     let working_directory_pool = open_working_directory_pool(conf)?;
                     let r = run_queues(
@@ -709,6 +713,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                         true,
                         None,
                         queue_change_signals.force()?.clone(),
+                        &file_cleanup_handler,
                     );
                     regenerate_index_files.run_one();
                     match r? {
@@ -735,6 +740,11 @@ fn run() -> Result<Option<ExecutionResult>> {
 
                     // The code that runs in the daemon and executes the jobs
                     let inner_run = |daemon_check_exit: CheckExit| -> Result<()> {
+                        // FileCleanupHandler must be started in
+                        // daemon child so that logging output goes to
+                        // the daemon log, but before any threads are
+                        // started:
+                        let file_cleanup_handler = FileCleanupHandler::start()?;
                         regenerate_index_files.spawn_runner_thread()?;
 
                         let conf = &run_config_bundle.shareable.run_config;
@@ -747,6 +757,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                             false,
                             Some(daemon_check_exit.clone()),
                             queue_change_signals.force()?.clone(),
+                            &file_cleanup_handler,
                         )?;
                         Ok(())
                     };

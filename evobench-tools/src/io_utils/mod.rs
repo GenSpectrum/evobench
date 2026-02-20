@@ -6,5 +6,4 @@ pub mod owning_lockable_file;
 pub mod read_buf;
 pub mod shell;
 pub mod tempfile_utils;
-pub mod temporary_file;
 pub mod zstd_file;

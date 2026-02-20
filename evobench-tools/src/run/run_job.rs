@@ -23,10 +23,7 @@ use crate::{
     git_tags::GitTags,
     html_files::write_redirect_html_file,
     info,
-    io_utils::{
-        output_capture_log::{CaptureOptions, OutputCaptureLog},
-        temporary_file::TemporaryFile,
-    },
+    io_utils::output_capture_log::{CaptureOptions, OutputCaptureLog},
     run::{
         bench_tmp_dir::bench_tmp_dir,
         benchmarking_job::BenchmarkingJob,
@@ -45,6 +42,7 @@ use crate::{
     serde_types::{date_and_time::DateTimeWithOffset, proper_dirname::ProperDirname},
     utillib::{
         arc::CloneArc,
+        cleanup_daemon::{DeletionItem, FileCleanupHandler},
         into_arc_path::IntoArcPath,
         logging::{LogLevel, log_level},
     },
@@ -93,6 +91,7 @@ pub struct JobRunner<'pool> {
     pub shareable_config: &'pool ShareableConfig,
     // ditto?
     pub versioned_dataset_dir: &'pool VersionedDatasetDir,
+    pub file_cleanup_handler: &'pool FileCleanupHandler,
 }
 
 impl<'pool> JobRunner<'pool> {
@@ -162,15 +161,23 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             (&bench_tmp_dir, bench_tmp_dir.exists())
         );
 
+        let file_cleanup_handler = self.job_runner.file_cleanup_handler;
+
         // File for evobench library output
         let evobench_log;
         // File for other output, for optional use by target application
         let bench_output_log;
         {
             let pid = getpid();
-            evobench_log = TemporaryFile::from(bench_tmp_dir.append(format!("evobench-{pid}.log")));
-            bench_output_log =
-                TemporaryFile::from(bench_tmp_dir.append(format!("bench-output-{pid}.log")));
+            evobench_log = file_cleanup_handler.register_temporary_file(DeletionItem::File(
+                bench_tmp_dir.append(format!("evobench-{pid}.log")).into(),
+            ))?;
+
+            bench_output_log = file_cleanup_handler.register_temporary_file(DeletionItem::File(
+                bench_tmp_dir
+                    .append(format!("bench-output-{pid}.log"))
+                    .into(),
+            ))?;
         }
 
         // Remove any stale files from previous runs (we're not
@@ -178,8 +185,8 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
         // processes alone (in case running multiple independent
         // daemons might be useful)), just those that would get in the
         // way).
-        let _ = remove_file(evobench_log.path());
-        let _ = remove_file(bench_output_log.path());
+        let _ = remove_file(&evobench_log);
+        let _ = remove_file(&bench_output_log);
 
         let conf = self.job_runner.run_config();
 
@@ -248,15 +255,15 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
 
                     info!(
                         "running {cmd_in_dir}, EVOBENCH_LOG={:?}...",
-                        evobench_log.path()
+                        evobench_log.deref()
                     );
 
                     let check = assert_evobench_env_var;
 
                     command
                         .envs(custom_parameters.btree_map())
-                        .env(check("EVOBENCH_LOG"), evobench_log.path())
-                        .env(check("BENCH_OUTPUT_LOG"), bench_output_log.path())
+                        .env(check("EVOBENCH_LOG"), &**evobench_log)
+                        .env(check("BENCH_OUTPUT_LOG"), &**bench_output_log)
                         .env(check("COMMIT_ID"), commit_id.to_string())
                         .env(check("COMMIT_TAGS"), commit_tags)
                         .current_dir(&dir);
@@ -408,23 +415,20 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                 // First try to compress the log file, here we check whether
                 // it exists; before we expect to compress evobench.log
                 // without checking its existence.
-                if bench_output_log.path().exists() {
-                    compress_file_as(
-                        bench_output_log.path(),
-                        run_dir.bench_output_log_path(),
-                        false,
-                    )?;
+                if bench_output_log.exists() {
+                    compress_file_as(&bench_output_log, run_dir.bench_output_log_path(), false)?;
                     drop(bench_output_log);
                 }
 
                 let evobench_log_tmp =
-                    compress_file_as(evobench_log.path(), run_dir.evobench_log_path(), true)?;
+                    compress_file_as(&evobench_log, run_dir.evobench_log_path(), true)?;
 
                 let (target_name, standard_log_tempfile) = log_extraction;
                 compress_file_as(&standard_log_tempfile, run_dir.standard_log_path(), false)?;
                 // It's OK to delete the original now, but we'll make use of
                 // it for reading back.
-                let standard_log_tempfile = TemporaryFile::from(standard_log_tempfile);
+                let standard_log_tempfile = file_cleanup_handler
+                    .register_temporary_file(DeletionItem::File(standard_log_tempfile.into()))?;
 
                 {
                     let target = run_dir.append_str("schedule_condition.ron")?;
@@ -441,7 +445,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                     std::fs::write(&target, &s).map_err(ctx!("saving to {target:?}"))?
                 }
 
-                let evobench_log_path = evobench_log.path().to_owned();
+                let evobench_log_path = evobench_log.to_owned();
                 run_dir.post_process_single(
                     Some(&evobench_log_path),
                     move || {
@@ -456,7 +460,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                     },
                     // log extraction:
                     target_name,
-                    standard_log_tempfile.path(),
+                    &standard_log_tempfile,
                     &self.job_runner.run_config(),
                     // Do not omit generation of evobench.log stats
                     false,
