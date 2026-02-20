@@ -175,18 +175,18 @@ impl From<WorkingDirectoryPath> for PathBuf {
 
 impl WorkingDirectoryPath {
     const STANDARD_LOG_EXTENSION_BASE: &str = "output_of_benchmarking_command_at_";
-    pub fn standard_log_path_from_working_dir_path(
-        path: &Path,
-        timestamp: &DateTimeWithOffset,
-    ) -> Result<PathBuf> {
+
+    /// The path to which the stdout and stderr of the target process
+    /// is logged, including a header with the serialized key data
+    /// (before it is moved/compressed to the output directory when
+    /// the run was successful)
+    pub fn standard_log_path(&self, timestamp: &DateTimeWithOffset) -> Result<PathBuf> {
+        let path = &self.0;
         add_extension(
-            path,
+            &**path,
             format!("{}{timestamp}", Self::STANDARD_LOG_EXTENSION_BASE),
         )
         .ok_or_else(|| anyhow!("can't add extension to path {path:?}"))
-    }
-    pub fn standard_log_path(&self, timestamp: &DateTimeWithOffset) -> Result<PathBuf> {
-        Self::standard_log_path_from_working_dir_path(&self.0, timestamp)
     }
 
     /// Originally thought `id` is a pool matter only, but now need it
