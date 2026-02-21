@@ -1,5 +1,4 @@
 use std::{
-    cell::Cell,
     io::{BufRead, BufReader, PipeReader, PipeWriter, Write, pipe},
     marker::PhantomData,
 };
@@ -9,10 +8,7 @@ use serde::{Serialize, de::DeserializeOwned};
 
 pub struct NdJsonPipe<T: Serialize + DeserializeOwned> {
     _phantom: PhantomData<fn() -> T>,
-    // Cell and Option because the borrow checker doesn't understand
-    // `fork` thus we have to panic at runtime instead on usage
-    // errors.
-    p: Cell<Option<(PipeReader, PipeWriter)>>,
+    p: (PipeReader, PipeWriter),
 }
 
 #[derive(Debug)]
@@ -61,18 +57,16 @@ impl<T: Serialize + DeserializeOwned> NdJsonPipe<T> {
     pub fn new() -> Result<Self> {
         let p = pipe()?;
         Ok(Self {
-            p: Some(p).into(),
             _phantom: PhantomData,
+            p,
         })
     }
 
-    /// You can only use *one* of the `into_*` functions, once,
-    /// otherwise you get a panic.
-    pub fn into_reader(&self) -> NdJsonPipeReader<T> {
-        let (r, _w) = self
-            .p
-            .take()
-            .expect("only call once in each of parent and child");
+    /// Note: if the borrow checker doesn't allow you to use both
+    /// `into_*` methods, then revert the git commit introducing this
+    /// comment.
+    pub fn into_reader(self) -> NdJsonPipeReader<T> {
+        let (r, _w) = self.p;
         NdJsonPipeReader {
             _phantom: PhantomData,
             line: String::new(),
@@ -80,13 +74,11 @@ impl<T: Serialize + DeserializeOwned> NdJsonPipe<T> {
         }
     }
 
-    /// You can only use *one* of the `into_*` functions, once,
-    /// otherwise you get a panic.
-    pub fn into_writer(&self) -> NdJsonPipeWriter<T> {
-        let (_r, w) = self
-            .p
-            .take()
-            .expect("only call once in each of parent and child");
+    /// Note: if the borrow checker doesn't allow you to use both
+    /// `into_*` methods, then revert the git commit introducing this
+    /// comment.
+    pub fn into_writer(self) -> NdJsonPipeWriter<T> {
+        let (_r, w) = self.p;
         NdJsonPipeWriter {
             _phantom: PhantomData,
             w,
