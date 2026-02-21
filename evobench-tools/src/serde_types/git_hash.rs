@@ -4,6 +4,7 @@ use std::{
 };
 
 use anyhow::{Result, bail};
+use derive_more::From;
 use serde::de::Visitor;
 
 use crate::serde_types::git_reference::GitReference;
@@ -34,7 +35,7 @@ fn decode_hex<const N: usize>(input: &[u8], output: &mut [u8; N]) -> Result<()> 
     Ok(())
 }
 
-#[derive(Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Hash, PartialEq, Eq, PartialOrd, Ord, From)]
 pub struct GitHash([u8; 20]);
 
 impl GitHash {

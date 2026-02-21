@@ -12,6 +12,7 @@ use std::{
 
 use anyhow::{Result, bail};
 use chj_unix_util::unix::easy_fork;
+use derive_more::From;
 use nix::unistd::{Pid, setsid};
 use serde::{Deserialize, Serialize};
 
@@ -168,22 +169,10 @@ impl RunCleanup for CleanupCommand {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, From)]
 pub enum CleanupItem {
     Deletion(Deletion),
     CleanupCommand(CleanupCommand),
-}
-
-impl From<Deletion> for CleanupItem {
-    fn from(value: Deletion) -> Self {
-        Self::Deletion(value)
-    }
-}
-
-impl From<CleanupCommand> for CleanupItem {
-    fn from(value: CleanupCommand) -> Self {
-        Self::CleanupCommand(value)
-    }
 }
 
 impl RunCleanup for CleanupItem {

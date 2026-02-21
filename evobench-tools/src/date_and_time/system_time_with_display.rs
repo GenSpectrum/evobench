@@ -3,9 +3,11 @@
 
 use std::{fmt::Display, ops::Deref, time::SystemTime};
 
+use derive_more::From;
+
 use crate::serde_types::date_and_time::system_time_to_rfc3339;
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, From)]
 pub struct SystemTimeWithDisplay(pub SystemTime);
 
 impl Deref for SystemTimeWithDisplay {
@@ -19,17 +21,5 @@ impl Deref for SystemTimeWithDisplay {
 impl Display for SystemTimeWithDisplay {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&system_time_to_rfc3339(self.0, None))
-    }
-}
-
-impl From<SystemTime> for SystemTimeWithDisplay {
-    fn from(value: SystemTime) -> Self {
-        Self(value)
-    }
-}
-
-impl From<&SystemTime> for SystemTimeWithDisplay {
-    fn from(value: &SystemTime) -> Self {
-        Self(*value)
     }
 }
