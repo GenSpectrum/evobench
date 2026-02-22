@@ -19,6 +19,5 @@ pub mod serde_util;
 pub mod silo;
 pub mod stats_tables;
 pub mod times;
-pub mod tree;
 pub mod util;
 pub mod utillib;

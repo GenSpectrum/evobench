@@ -20,7 +20,7 @@ use crate::{
         stats::StatsField,
         tables::{excel_table_view::excel_file_write, table_view::TableView},
     },
-    tree::Tree,
+    util::tree::Tree,
     warn,
 };
 
