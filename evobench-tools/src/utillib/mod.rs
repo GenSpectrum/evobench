@@ -7,6 +7,7 @@ pub mod clone;
 pub mod conslist;
 pub mod crypto_hash;
 pub mod ctx;
+pub mod escaped_display;
 pub mod exit_status_ext;
 pub mod fallback;
 pub mod get_terminal_width;

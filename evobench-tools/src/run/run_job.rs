@@ -43,6 +43,7 @@ use crate::{
     utillib::{
         arc::CloneArc,
         cleanup_daemon::{CleanupHandler, Deletion},
+        escaped_display::AsEscapedString,
         into_arc_path::IntoArcPath,
         logging::{LogLevel, log_level},
     },
@@ -158,7 +159,10 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
         let bench_tmp_dir = &bench_tmp_dir()?;
         info!(
             "bench_tmp_dir path, exists?: {:?}",
-            (&bench_tmp_dir, bench_tmp_dir.exists())
+            (
+                (&**bench_tmp_dir).as_escaped_string(),
+                bench_tmp_dir.exists()
+            )
         );
 
         let file_cleanup_handler = self.job_runner.file_cleanup_handler;
@@ -247,13 +251,14 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
                         .git_working_dir
                         .working_dir_path_ref()
                         .append(subdir);
+                    let dir_str = dir.as_escaped_string();
 
                     // for debugging info only:
-                    let cmd_in_dir = format!("command {command:?} in directory {dir:?}");
+                    let cmd_in_dir = format!("command {command:?} in directory {dir_str}");
 
                     info!(
-                        "running {cmd_in_dir}, EVOBENCH_LOG={:?}...",
-                        evobench_log.deref()
+                        "running {cmd_in_dir}, EVOBENCH_LOG={}...",
+                        evobench_log.as_escaped_string()
                     );
 
                     let check = assert_evobench_env_var;
@@ -283,7 +288,10 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
 
                     info!(
                         "bench_tmp_dir path, exists?: {:?}",
-                        (&bench_tmp_dir, bench_tmp_dir.exists())
+                        (
+                            (&**bench_tmp_dir).as_escaped_string(),
+                            bench_tmp_dir.exists()
+                        )
                     );
 
                     let status = {
@@ -307,7 +315,10 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
 
                     info!(
                         "bench_tmp_dir path, exists?: {:?}",
-                        (&bench_tmp_dir, bench_tmp_dir.exists())
+                        (
+                            (&**bench_tmp_dir).as_escaped_string(),
+                            bench_tmp_dir.exists()
+                        )
                     );
 
                     if status.success() {
@@ -319,20 +330,24 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
 
                         info!(
                             "bench_tmp_dir path, exists?: {:?}",
-                            (&bench_tmp_dir, bench_tmp_dir.exists())
+                            (
+                                (&**bench_tmp_dir).as_escaped_string(),
+                                bench_tmp_dir.exists()
+                            )
                         );
 
                         let last_part = command_output_file.last_part(3000)?;
                         if log_level() < LogLevel::Info {
                             let mut err = stderr().lock();
-                            writeln!(err, "---- run_job: error in dir {dir:?}: -------")?;
+                            writeln!(err, "---- run_job: error in dir {dir_str}: -------")?;
                             err.write_all(last_part.as_bytes())?;
-                            writeln!(err, "---- /run_job: error in dir {dir:?} -------")?;
+                            writeln!(err, "---- /run_job: error in dir {dir_str} -------")?;
                         }
 
                         bail!(
                             "benchmarking command {cmd_in_dir} gave \
-                             error status {status}, last_part {last_part:?}"
+                             error status {status}, last_part {}",
+                            last_part.as_escaped_string()
                         )
                     }
                 },
@@ -384,7 +399,10 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             let run_dir: RunDir = key_dir
                 .clone_arc()
                 .append_subdir(self.job_runner.timestamp.clone());
-            create_dir_all(run_dir.to_path()).map_err(ctx!("create_dir_all {run_dir:?}"))?;
+            {
+                let path = run_dir.to_path();
+                create_dir_all(path).map_err(ctx!("create_dir_all {path:?}"))?;
+            }
 
             // Maintain a "latest-redir" subdirectory at the top of
             // the output dir tree: make a new subdirectory with an
@@ -395,8 +413,11 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             // key dir.  -- Also see "latest" above.
             if let Some(output_dir_url) = &self.job_runner.run_config().output_dir.url {
                 let latest_dir = self.job_runner.output_base_dir.join("latest-redir");
-                let subdir = latest_dir.join(self.job_runner.timestamp.as_str());
-                create_dir_all(&subdir).map_err(ctx!("create_dir_all {subdir:?}"))?;
+                let subdir: PathBuf = latest_dir.join(self.job_runner.timestamp.as_str());
+                {
+                    let path = &subdir;
+                    create_dir_all(path).map_err(ctx!("create_dir_all {path:?}"))?;
+                }
 
                 // To get a relative path, simply use `output_dir_url` as the base
                 // dir.
@@ -408,7 +429,7 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
             // Move the result files to the run_dir and generate the
             // files with the extracts.
             {
-                info!("moving files to {run_dir:?}");
+                info!("moving files to {}", run_dir.to_path().as_escaped_string());
 
                 // First try to compress the log file, here we check whether
                 // it exists; before we expect to compress evobench.log
@@ -430,17 +451,19 @@ impl<'pool, 'run_queues, 'j, 's> JobRunnerWithJob<'pool, 'run_queues, 'j, 's> {
 
                 {
                     let target = run_dir.append_str("schedule_condition.ron")?;
-                    info!("saving context to {target:?}");
+                    let target_str = target.as_escaped_string();
+                    info!("saving context to {target_str}");
                     let schedule_condition_str = ron_to_string_pretty(&schedule_condition)?;
                     std::fs::write(&target, &schedule_condition_str)
-                        .map_err(ctx!("saving to {target:?}"))?
+                        .map_err(ctx!("saving to {target_str}"))?
                 }
 
                 {
                     let target = run_dir.append_str("reason.ron")?;
-                    info!("saving context to {target:?}");
+                    let target_str = target.as_escaped_string();
+                    info!("saving context to {target_str}");
                     let s = ron_to_string_pretty(&reason)?;
-                    std::fs::write(&target, &s).map_err(ctx!("saving to {target:?}"))?
+                    std::fs::write(&target, &s).map_err(ctx!("saving to {target_str}"))?
                 }
 
                 let evobench_log_path = evobench_log.to_owned();

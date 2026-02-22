@@ -20,6 +20,7 @@ use crate::{
     debug, info,
     utillib::{
         arc::CloneArc,
+        escaped_display::{AsEscapedString, DebugForDisplay},
         into_arc_path::IntoArcPath,
         ndjson_pipe::{NdJsonPipe, NdJsonPipeWriter},
     },
@@ -354,6 +355,17 @@ impl AsRef<Arc<Path>> for TemporaryFile {
 impl AsRef<Path> for TemporaryFile {
     fn as_ref(&self) -> &Path {
         &**self
+    }
+}
+
+impl AsEscapedString for TemporaryFile {
+    type ViewableType<'t>
+        = DebugForDisplay<&'t Path>
+    where
+        Self: 't;
+
+    fn as_escaped_string<'s>(&'s self) -> Self::ViewableType<'s> {
+        DebugForDisplay(self.as_ref())
     }
 }
 
