@@ -56,8 +56,9 @@ pub struct LogLevelOpts {
 
 impl LogLevelOpts {
     /// Complain if both options in self and `opt_log_level` are
-    /// given.
-    pub fn xor_log_level(self, opt_log_level: Option<LogLevel>) -> Result<LogLevel> {
+    /// given. Returns None if neither kind of options were given (you
+    /// could `unwrap_or_default()`).
+    pub fn xor_log_level(self, opt_log_level: Option<LogLevel>) -> Result<Option<LogLevel>> {
         if let Some(level) = TryInto::<Option<LogLevel>>::try_into(self)? {
             if let Some(expected_log_level) = opt_log_level {
                 if level != expected_log_level {
@@ -72,9 +73,9 @@ impl LogLevelOpts {
                     )
                 }
             }
-            Ok(level)
+            Ok(Some(level))
         } else {
-            Ok(opt_log_level.unwrap_or_default())
+            Ok(opt_log_level)
         }
     }
 }

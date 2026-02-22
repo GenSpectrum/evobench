@@ -44,7 +44,7 @@ fn main() -> Result<()> {
         log_level,
     } = Opts::parse();
 
-    let log_level = log_level_opts.xor_log_level(log_level)?;
+    let log_level = log_level_opts.xor_log_level(log_level)?.unwrap_or_default();
     set_log_level(log_level);
 
     let cleanup_handler = CleanupHandler::start()?;

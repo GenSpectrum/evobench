@@ -217,7 +217,7 @@ enum SubCommand {
     ConfigSave { output_path: PathBuf },
 }
 
-#[derive(Debug, Clone, clap::Subcommand)]
+#[derive(Debug, clap::Subcommand)]
 pub enum RunMode {
     /// Carry out a single run
     One {
@@ -238,10 +238,14 @@ pub enum RunMode {
         #[clap(flatten)]
         restart_for_config_change_opts: RestartForConfigChangeOpts,
 
-        /// The logging level while running as daemon (overrides the
-        /// top-level logging options like --verbose, --debug,
-        /// --quiet) (default: "info" for run daemon, "warn" for poll
-        /// daemon)
+        #[clap(flatten)]
+        log_level_opts: LogLevelOpts,
+
+        /// The logging level while running as daemon (as alternative
+        /// to the --verbose, --debug, --quiet options on this level,
+        /// and overriding the top-level logging options --log-level,
+        /// --verbose, --debug, --quiet) (default: "info" for run
+        /// daemon, "warn" for poll daemon)
         #[clap(short, long)]
         log_level: Option<LogLevel>,
 
@@ -495,9 +499,13 @@ fn run() -> Result<Option<ExecutionResult>> {
         subcommand,
     } = Opts::parse();
 
-    let log_level = log_level_opts.xor_log_level(log_level)?;
+    let top_level_log_level = log_level_opts
+        .xor_log_level(log_level)
+        .map_err(ctx!("parsing top-level log level options"))?;
+    set_log_level(top_level_log_level.clone().unwrap_or_default());
+    #[allow(unused)]
+    let (log_level_opts, log_level) = ((), ());
 
-    set_log_level(log_level);
     // Interactive use should get local time. (Daemon mode possibly
     // overwrites this.) true or LOCAL_TIME_DEFAULT?
     LOCAL_TIME.store(LOCAL_TIME_DEFAULT, Ordering::SeqCst);
@@ -665,6 +673,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                     opts,
                     restart_for_executable_change_opts,
                     restart_for_config_change_opts,
+                    log_level_opts,
                     log_level,
                     action,
                 } => {
@@ -674,10 +683,17 @@ fn run() -> Result<Option<ExecutionResult>> {
                         try_run_poll(Some(daemon_check_exit))?;
                         Ok(())
                     };
+
+                    let log_level = log_level_opts
+                        .xor_log_level(log_level)
+                        .map_err(ctx!("parsing `poll daemon` log level options"))?
+                        .or(top_level_log_level)
+                        .unwrap_or(LogLevel::Warn);
+
                     let daemon = EvobenchDaemon {
                         paths,
                         opts,
-                        log_level: log_level.unwrap_or(LogLevel::Warn),
+                        log_level,
                         restart_for_executable_change_opts,
                         restart_for_config_change_opts,
                         config_file,
@@ -737,6 +753,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                     opts,
                     restart_for_executable_change_opts,
                     restart_for_config_change_opts,
+                    log_level_opts,
                     log_level,
                     action,
                 } => {
@@ -774,10 +791,17 @@ fn run() -> Result<Option<ExecutionResult>> {
                         )?;
                         Ok(())
                     };
+
+                    let log_level = log_level_opts
+                        .xor_log_level(log_level)
+                        .map_err(ctx!("parsing `run daemon` log level options"))?
+                        .or(top_level_log_level)
+                        .unwrap_or(LogLevel::Info);
+
                     let daemon = EvobenchDaemon {
                         paths,
                         opts,
-                        log_level: log_level.unwrap_or(LogLevel::Info),
+                        log_level,
                         restart_for_executable_change_opts,
                         restart_for_config_change_opts,
                         config_file,
