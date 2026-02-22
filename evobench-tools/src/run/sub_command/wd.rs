@@ -69,6 +69,8 @@ pub enum GetRunLockError {
     Generic(anyhow::Error),
 }
 
+/// Get the lock for the run action from `evobench run`, to ensure
+/// only one is ever executed at the same time.
 // omg the error handling.
 pub fn get_run_lock(conf: &RunConfig) -> Result<StandaloneExclusiveFileLock, GetRunLockError> {
     let run_lock_path = &conf.run_jobs_daemon.state_dir;

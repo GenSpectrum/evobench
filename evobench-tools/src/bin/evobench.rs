@@ -33,7 +33,7 @@ use evobench_tools::{
     ctx, debug,
     git::GitHash,
     info,
-    io_utils::shell::preferred_shell,
+    io_utils::{lockable_file::StandaloneExclusiveFileLock, shell::preferred_shell},
     lazyresult,
     run::{
         bench_tmp_dir::bench_tmp_dir,
@@ -263,7 +263,8 @@ enum RunResult {
 /// Run through the queues forever unless `once` is true (in which
 /// case it returns whether a job was run), but pick up config
 /// changes; it also returns in non-once mode if the binary changes
-/// and true was given for `restart_on_upgrades`.
+/// and true was given for `restart_on_upgrades`. Requires holding the
+/// `_run_lock`, the lock for executing "run" actions.
 fn run_queues<'ce>(
     run_config_bundle: RunConfigBundle,
     queues: RunQueues,
@@ -273,9 +274,9 @@ fn run_queues<'ce>(
     daemon_check_exit: Option<CheckExit<'ce>>,
     queue_change_signals: PollingSignalsSender,
     file_cleanup_handler: &CleanupHandler,
+    _run_lock: StandaloneExclusiveFileLock,
 ) -> Result<RunResult> {
     let conf = &run_config_bundle.shareable.run_config;
-    let _run_lock = get_run_lock(conf)?;
 
     let mut run_context = RunContext::default();
     let versioned_dataset_dir = VersionedDatasetDir::new();
@@ -702,6 +703,10 @@ fn run() -> Result<Option<ExecutionResult>> {
 
             match mode {
                 RunMode::One { false_if_none } => {
+                    // See comment further down on the other instance
+                    // of `CleanupHandler::start` for the importance
+                    // of the execution order here!
+                    let run_lock = get_run_lock(conf)?;
                     let file_cleanup_handler = CleanupHandler::start()?;
                     let (queues, regenerate_index_files) = queues.into_value()?;
                     let working_directory_pool = open_working_directory_pool(conf)?;
@@ -714,6 +719,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                         None,
                         queue_change_signals.force()?.clone(),
                         &file_cleanup_handler,
+                        run_lock,
                     );
                     regenerate_index_files.run_one();
                     match r? {
@@ -740,14 +746,20 @@ fn run() -> Result<Option<ExecutionResult>> {
 
                     // The code that runs in the daemon and executes the jobs
                     let inner_run = |daemon_check_exit: CheckExit| -> Result<()> {
+                        let conf = &run_config_bundle.shareable.run_config;
+
+                        let run_lock = get_run_lock(conf)?;
                         // FileCleanupHandler must be started in
                         // daemon child so that logging output goes to
                         // the daemon log, but before any threads are
-                        // started:
+                        // started; but after the RunLock has been
+                        // taken (above), so that the child shares it, so that
+                        // when the daemon re-exec's, it will not
+                        // start new things until the cleanup daemon
+                        // from the previous instance is done.
                         let file_cleanup_handler = CleanupHandler::start()?;
                         regenerate_index_files.spawn_runner_thread()?;
 
-                        let conf = &run_config_bundle.shareable.run_config;
                         let working_directory_pool = open_working_directory_pool(conf)?;
                         run_queues(
                             run_config_bundle,
@@ -758,6 +770,7 @@ fn run() -> Result<Option<ExecutionResult>> {
                             Some(daemon_check_exit.clone()),
                             queue_change_signals.force()?.clone(),
                             &file_cleanup_handler,
+                            run_lock,
                         )?;
                         Ok(())
                     };
