@@ -17,7 +17,7 @@ use nix::unistd::{Pid, setsid};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ctx, debug, info,
+    debug, info,
     utillib::{
         arc::CloneArc,
         into_arc_path::IntoArcPath,
@@ -34,10 +34,9 @@ trait RunCleanup {
     fn run_cleanup(&self) -> Result<Option<String>>;
 }
 
-/// Note: paths have to be absolute (or even canonical), or using
-/// chdir in the app after starting the daemon will lead to breakage!
-/// Use the constructor functions rather than constructing this type
-/// directly--they canonicalize if needed!
+/// Note: paths need to be absolute (or canonical), or using chdir in
+/// the app after starting the daemon will lead to breakage!  Use the
+/// constructor functions rather than constructing this type directly!
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Deletion {
     /// A single file, deleted via `remove_file`, does not work for dirs
@@ -67,32 +66,17 @@ impl AsRef<Path> for Deletion {
     }
 }
 
-// XX move to path utils?
-fn canonicalize_if_needed(path: impl IntoArcPath + AsRef<Path>) -> Result<Arc<Path>> {
-    let path_rf = path.as_ref();
-    Ok(if path_rf.is_absolute() {
-        path.into_arc_path()
-    } else {
-        path_rf
-            .canonicalize()
-            .map_err(ctx!("canonicalizing path {path_rf:?}"))?
-            .into_arc_path()
-    })
-}
-
 impl Deletion {
     /// Construct a single-file deletion action from a path; the path
-    /// is canonicalized if not absolute, errors during that process
-    /// are reported
+    /// is made absolute based on the current cwd if needed, errors
+    /// during that process are reported
     pub fn file(path: impl IntoArcPath + AsRef<Path>) -> Result<Self> {
-        let path = canonicalize_if_needed(path)?;
-        Ok(Self::File(path))
+        Ok(Self::File(std::path::absolute(path)?.into()))
     }
 
     /// Same as `file` but to delete dir trees
     pub fn dir(path: impl IntoArcPath + AsRef<Path>) -> Result<Self> {
-        let path = canonicalize_if_needed(path)?;
-        Ok(Self::Dir(path))
+        Ok(Self::Dir(std::path::absolute(path)?.into()))
     }
 
     /// Note that this could be a path to an executable, something to
