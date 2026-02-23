@@ -36,5 +36,5 @@ overview.)
 
 * [internals/eval/](internals/eval/index.md) -- how evobench-eval works internally
 
-* [internals/jobs/](internals/jobs/index.md) -- how evobench works internally
+* [internals/run/](internals/run/index.md) -- how evobench works internally
 

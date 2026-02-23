@@ -1,5 +1,9 @@
 # How `evobench-tools` works internally
 
+TODO: this needs updating and finishing.
+
+Also [see the cargo docs](https://silo-benchmarks.genspectrum.org/cargo-doc.html).
+
 ## Statistics levels
 
 1. The benchmark log file resulting from a benchmarking run is
