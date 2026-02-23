@@ -2,6 +2,7 @@
 name = "evobench-tools"
 version = "0.1.0"
 edition = "2024"
+license = "MIT OR Apache-2.0"
 
 [lints.clippy]
 collapsible_else_if = "allow"
