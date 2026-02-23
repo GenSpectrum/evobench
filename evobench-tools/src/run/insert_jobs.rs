@@ -5,6 +5,7 @@ use itertools::Itertools;
 
 use crate::{
     config_file::ron_to_string_pretty,
+    debug,
     key_val_fs::key_val::{KeyVal, KeyValSync},
     run::{
         config::ShareableConfig,
@@ -106,6 +107,7 @@ pub fn insert_jobs(
             let params;
             (params, insertion_times) = entry.get()?;
             if force {
+                debug!("already inserted, but --force was given");
                 // fall through and try to do insertion anyway, below
             } else {
                 if !quiet {
@@ -119,7 +121,7 @@ pub fn insert_jobs(
                         ron_to_string_pretty(&params).expect("no err")
                     ));
                 }
-                // skip insertion
+                debug!("already inserted, skip insertion");
                 continue;
             }
         } else {

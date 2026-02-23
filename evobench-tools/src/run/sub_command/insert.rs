@@ -9,6 +9,7 @@ use run_git::git::GitWorkingDir;
 
 use crate::{
     config_file::backend_from_path,
+    debug,
     git::GitHash,
     git_ext::MoreGitWorkingDir,
     info,
@@ -344,8 +345,9 @@ fn insert_templates_with_references(
     let insert_benchmarking_job_opts = insert_benchmarking_job_opts
         .complete_with(&shareable_config.run_config.benchmarking_job_settings);
 
-    let commits: Vec<Option<GitHash>> = gwd.resolve_references(reference_names)?;
+    let commits: Vec<Option<GitHash>> = gwd.resolve_references(&reference_names)?;
     let commits: BTreeSet<GitHash> = commits.into_iter().filter_map(|v| v).collect();
+    debug!("reference_names {reference_names:?} resolve to commits {commits:?}");
 
     let benchmarking_jobs: Vec<BenchmarkingJob> = commits
         .into_iter()
