@@ -28,7 +28,6 @@ use std::{
 };
 
 use evobench_tools::{
-    clap_styles::clap_styles,
     config_file::{self, ConfigFile, save_config_file},
     ctx, debug,
     git::GitHash,
@@ -59,6 +58,7 @@ use evobench_tools::{
         working_directory_pool::{WorkingDirectoryPool, WorkingDirectoryPoolBaseDir},
     },
     serde_types::date_and_time::{DateTimeWithOffset, LOCAL_TIME},
+    util::clap_styles::clap_styles,
     utillib::{
         arc::CloneArc,
         cleanup_daemon::CleanupHandler,
@@ -293,56 +293,60 @@ fn run_queues<'ce>(
             pool.clear_current_working_directory()?;
         }
         debug!("Got working directory {working_directory_id:?}");
-        let ((), token) = working_directory_pool.process_in_working_directory(
-            working_directory_id,
-            &DateTimeWithOffset::now(None),
-            |working_directory| -> Result<()> {
-                let working_directory = working_directory.into_inner().expect("still there");
+        let ((), token) = working_directory_pool
+            .process_in_working_directory(
+                working_directory_id,
+                &DateTimeWithOffset::now(None),
+                |working_directory| -> Result<()> {
+                    let working_directory = working_directory.into_inner().expect("still there");
 
-                // Fetch the tags so that comparing dataset versions
-                // can work. (Avoid the risk of an old working
-                // directory having an older HEAD than all dataset
-                // versions.)
-                working_directory
-                    .git_working_dir
-                    .git(&["fetch", "--tags"], true)?;
+                    // Fetch the tags so that comparing dataset versions
+                    // can work. (Avoid the risk of an old working
+                    // directory having an older HEAD than all dataset
+                    // versions.)
+                    working_directory
+                        .git_working_dir
+                        .git(&["fetch", "--tags"], true)?;
 
-                // XX capture all errors and return as Ok? Or is it OK
-                // to re-clone the repo on all such errors?
-                let head_commit_str = working_directory
-                    .git_working_dir
-                    .git_rev_parse("HEAD", true)?
-                    .ok_or_else(|| anyhow!("can't resolve HEAD"))?;
-                let head_commit: GitHash = head_commit_str.parse().map_err(|e| {
-                    anyhow!(
-                        "parsing commit id from HEAD from polling working dir: \
-                         {head_commit_str:?}: {e:#}"
-                    )
-                })?;
-                let lock = versioned_dataset_dir
-                    .updated_git_graph(&working_directory.git_working_dir, &head_commit)?;
-
-                for dataset_name_entry in std::fs::read_dir(&versioned_dataset_base_dir)
-                    .map_err(ctx!("can't open directory {versioned_dataset_base_dir:?}"))?
-                {
-                    let dataset_name_entry = dataset_name_entry?;
-                    let dataset_name = dataset_name_entry.file_name();
-                    let dataset_name_str = dataset_name.to_str().ok_or_else(|| {
-                        anyhow!("can't decode entry {:?}", dataset_name_entry.path())
+                    // XX capture all errors and return as Ok? Or is it OK
+                    // to re-clone the repo on all such errors?
+                    let head_commit_str = working_directory
+                        .git_working_dir
+                        .git_rev_parse("HEAD", true)?
+                        .ok_or_else(|| anyhow!("can't resolve HEAD"))?;
+                    let head_commit: GitHash = head_commit_str.parse().map_err(|e| {
+                        anyhow!(
+                            "parsing commit id from HEAD from polling working dir: \
+                             {head_commit_str:?}: {e:#}"
+                        )
                     })?;
-                    let x =
-                        lock.dataset_dir_for_commit(&versioned_dataset_base_dir, dataset_name_str)?;
-                    debug!(
+                    let lock = versioned_dataset_dir
+                        .updated_git_graph(&working_directory.git_working_dir, &head_commit)?;
+
+                    for dataset_name_entry in std::fs::read_dir(&versioned_dataset_base_dir)
+                        .map_err(ctx!("can't open directory {versioned_dataset_base_dir:?}"))?
+                    {
+                        let dataset_name_entry = dataset_name_entry?;
+                        let dataset_name = dataset_name_entry.file_name();
+                        let dataset_name_str = dataset_name.to_str().ok_or_else(|| {
+                            anyhow!("can't decode entry {:?}", dataset_name_entry.path())
+                        })?;
+                        let x = lock.dataset_dir_for_commit(
+                            &versioned_dataset_base_dir,
+                            dataset_name_str,
+                        )?;
+                        debug!(
                         "Test-run of versioned dataset search for HEAD commit {head_commit_str} \
-                     gave path: {x:?}"
-                    );
-                }
-                Ok(())
-            },
-            None,
-            "test-running versioned dataset search",
-            None,
-        ).context("while early-checking versioned datasets at startup")?;
+                         gave path: {x:?}"
+                        );
+                    }
+                    Ok(())
+                },
+                None,
+                "test-running versioned dataset search",
+                None,
+            )
+            .context("while early-checking versioned datasets at startup")?;
         working_directory_pool.working_directory_cleanup(token)?;
     }
 
