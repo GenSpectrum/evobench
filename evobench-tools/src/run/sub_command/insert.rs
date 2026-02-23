@@ -482,6 +482,7 @@ impl Insert {
                     more_reference_names.into_iter().collect();
                 reference_names.insert(branch_name.to_reference());
 
+                // Add a reason if there isn't one yet
                 insert_opts
                     .insert_benchmarking_job_opts
                     .reason
