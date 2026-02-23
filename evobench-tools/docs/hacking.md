@@ -1,23 +1,35 @@
 # Hacking guide
 
-Also see the [overview](overview.md).
+(Be sure to read the [tooling README](../README.md) for a general
+overview.)
 
 ## General
 
 ### Style / details
 
-* Types with names ending in "Opts" (or also "Opt" XX) are generally
-  (XX?) precursor types (at least if a sister type without the "Opts"
-  suffix exists): used for configuration or command line options, but
-  translated before use.
+* Types with names ending in "Opts" (or also "Opt") are generally
+  precursor types (at least if a sister type without the "Opts" suffix
+  exists) used for configuration or command line options, and
+  translated to another type before use. 
+  
+  In the case of the configuration file (deriving serde
+  Serialization/Deserialization), the name is overridden without the
+  "Opts" for the serialized form; e.g. the struct `RunConfigOpts` is
+  really what is serialzed from/to the config file, but named
+  `RunConfig` there, because that is also the type that the program
+  then actually uses after converting `RunConfigOpts` to an instance
+  of struct `RunConfig`.
 
-* Using `Arc` for the parts that come from the config or are derived
-  from it during load time, as that process is quite a bit convoluted,
-  and worse, there's config file reload, too. It might still be
-  feasible to use references instead, but so what. But, trying to use
-  `clone_arc()` (from `src/utillib/arc.rs`) consistently whenever an
-  `Arc` is cloned, for clarity and easy searching when interested
-  where it happens. Please keep this up.
+* `Arc` is only used where unavoidable due to statically non-decidable
+  life times (e.g. config file reload led to the need to make config
+  values generally use it) or where shared ownership makes code
+  evolution easier; i.e. as long as it's clear that a struct derives
+  its contents from one particular other place, references and
+  lifetime parameters on the struct are used.
+  
+  When cloning `Arc`, to make the fact visible that it's a cheap
+  clone, `clone_arc()` from [utillib/arc.rs](../src/utillib/arc.rs) is
+  generally used.
 
 
 ## Specifics
