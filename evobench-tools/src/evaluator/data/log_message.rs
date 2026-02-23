@@ -1,4 +1,9 @@
-//! Representation of benchmark log messages
+//! Representation of benchmark log messages in the "native evobench" format
+//!
+//! The protocol allows for versioning. Metadata and Start are
+//! separate so that the reader can change the parser version before
+//! reading the possibly changed Metadata. Start must never change
+//! structure, unlike what follows.
 
 use kstring::KString;
 use serde::{Deserialize, Serialize};

@@ -1,3 +1,8 @@
+//! Retrieve a history DAG from Git
+//!
+//! For tracking performance changes across the history. Should
+//! perhaps be moved to the `run-git` crate.
+
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
     fmt::{Debug, Display},

@@ -54,6 +54,7 @@ impl Debug for GitHash {
     }
 }
 
+/// Construct a `GitHash` instance (used as syntax in its `Debug` impl)
 #[macro_export]
 macro_rules! GitHash {
     {$hash:expr} => { GitHash::try_from($hash.as_bytes()).unwrap() }

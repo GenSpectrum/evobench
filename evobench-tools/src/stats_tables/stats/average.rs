@@ -1,4 +1,4 @@
-//! Can't find in std lib?
+//! Average trait (can't find in std lib?)
 
 pub trait Average {
     type Result;

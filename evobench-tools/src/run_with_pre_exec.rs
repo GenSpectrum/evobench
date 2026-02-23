@@ -1,3 +1,5 @@
+//! Run an external command after first executing some Bash code in-process
+
 use std::{borrow::Cow, ffi::OsStr, fmt::Display, path::Path, process::Command};
 
 use crate::io_utils::bash::bash_string_from_program_path_and_args;

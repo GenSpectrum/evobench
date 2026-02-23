@@ -1,3 +1,5 @@
+//! Various utilities that are not specific to evobench
+
 pub mod arc;
 pub mod ask;
 pub mod auto_vivify;

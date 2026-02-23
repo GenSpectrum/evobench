@@ -1,12 +1,16 @@
-//! Run-time "linear types"--warning in the `Drop` implementation in
-//! release builds, panic in debug builds. Attempts at using the idea
-//! of panicking in const does not work in practice (it appears that
-//! drop templates are instantiated before being optimized away, hence
-//! e.g. returning them in `Result::Ok` is not possible since it
-//! apparently unconditionally instantiates the drop for Result which
-//! instantiates the drop for the Ok value even if never used, but I
-//! did not manage to analyze the binary to detect drop use after the
-//! optimizer either).
+//! Run-time "linear types"
+//!
+//! They panic in the `Drop` implementation in debug builds,
+//! optionally only warning in release builds (depending on `fatal`
+//! runtime value in the type).
+//!
+//! Attempts at using the idea of panicking in const context does not
+//! work in practice (it appears that drop templates are instantiated
+//! before being optimized away, hence e.g. returning them in
+//! `Result::Ok` is not possible since it apparently unconditionally
+//! instantiates the drop for Result which instantiates the drop for
+//! the Ok value even if never used, but I did not manage to analyze
+//! the binary to detect drop use after the optimizer either).
 
 //! Only token types are supported: embedding such a token type inside
 //! a larger data structure makes the larger data structure run-time

@@ -1,6 +1,7 @@
-//! A representation of tables (and individual rows) as title row and
-//! body rows of strings and formatting instructions, independent of
-//! serialisation format.
+//! Trait abstraction for tables with headers and individual rows
+//!
+//! Allowing for independent backends / serialization formats. Has
+//! title row and body rows of strings and formatting instructions.
 
 use std::borrow::Cow;
 

@@ -1,3 +1,9 @@
+//! A value representing change, by pairing a from and to value
+//!
+//! With formatting indicating positive/negative change, used by the
+//! `change()` method on `Table` to produce a table that represents
+//! the change between two tables.
+
 use std::{borrow::Cow, marker::PhantomData};
 
 use super::table_view::{ColumnFormatting, Highlight, TableViewRow, Unit};

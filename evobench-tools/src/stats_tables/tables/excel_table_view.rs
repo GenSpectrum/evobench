@@ -1,3 +1,5 @@
+//! Convert a sequence of `TableView`s to workbooks in an Excel file
+
 use std::{borrow::Cow, path::Path};
 
 use anyhow::{Context, Result, anyhow};

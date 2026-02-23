@@ -1,10 +1,11 @@
-//! Build tree and index for making summaries.
-
-//! `Timing` and contextual info remains in the parsed log file
-//! (`Vec<LogMessage>`), the index just references into those.
-
+//! Recreated call tree representation for scoped probes
+//!
 //! `LogDataTree::from_logdata` both pairs the start and end timings
-//! and builds up a tree of all spans.
+//! and builds up a tree of all spans. Also indexes spans by probe name.
+//!
+//! `Timing` and contextual info remains in the parsed log file
+//! (sequence of `LogMessage`, now via `Box<[Box<[LogMessage]>]>`),
+//! the index just references into those.
 
 use std::{
     collections::{BTreeMap, HashMap, btree_map, hash_map::Entry},

@@ -1,3 +1,5 @@
+//! Easy lazily constructed values
+
 // (Didn't I have a lazy macro already?)
 
 // std::cell::LazyCell is an unstable feature; but also want to have
@@ -247,6 +249,9 @@ mod tests {
 // though, but then emacs indentation won't work right if using more
 // than 1 expr).
 
+/// Construct a value lazily (for expressions that return `Result`,
+/// use `lazyresult`) (Todo: update to not require &mut)
+///
 /// Construct a `Lazy` value that runs the code body given to the
 /// macro once on the first call to `force`. Moves the captured values
 /// if a `move` keyword is given as the first item in the body. If the
@@ -263,6 +268,9 @@ macro_rules! lazy {
     }
 }
 
+// XX: Should this be renamed to `try_lazy`, probably?
+/// Construct a value lazily, with the possibility for errors
+///
 /// Same as `lazy!` but `force` evaluates to a new `Result` each time,
 /// allowing `force()?` to work seamlessly; but since, currently,
 /// `force` consumes the captured closure when called the first time,

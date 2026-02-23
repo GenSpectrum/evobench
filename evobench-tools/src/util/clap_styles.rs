@@ -1,3 +1,5 @@
+//! Styles to make Clap version 4 look good
+
 use anstyle::{AnsiColor, Color, Style};
 
 pub fn clap_styles() -> clap::builder::Styles {

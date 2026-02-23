@@ -1,4 +1,8 @@
 //! Running benchmarking jobs
+//!
+//! The core `evobench` functionality (i.e. excl. more general
+//! library files, and excl. the main driver program at
+//! `src/bin/evobench.rs`)
 
 pub mod bench_tmp_dir;
 pub mod benchmarking_job;

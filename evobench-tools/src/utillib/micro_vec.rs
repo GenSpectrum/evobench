@@ -1,6 +1,8 @@
-/// Currently `size_of::<MicroVec<T>>()` is at least 2 machine
-/// words. Could optimize via tagged-pointer-as-enum, tagged-pointer,
-/// enum-ptr, tagged-box crates.
+//! A vector type that is optimized for storing 0 or 1 elements
+//!
+//! Currently `size_of::<MicroVec<T>>()` is at least 2 machine
+//! words. Could optimize via tagged-pointer-as-enum, tagged-pointer,
+//! enum-ptr, tagged-box crates.
 
 /// A vector that is optimized for storing 0 or 1 elements. >1
 /// elements are stored in a normal Vec, slowly.
@@ -74,6 +76,8 @@ impl<T> MicroVec<T> {
     }
 }
 
+/// Construct a `MicroVec` from a list of expressions (no support for
+/// `[val; N]`)
 #[macro_export]
 macro_rules! microvec {
     [] => {

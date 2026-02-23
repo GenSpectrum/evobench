@@ -1,3 +1,5 @@
+//! Utilities for working with serde
+
 pub mod json5_from_str;
 
 use std::{cell::RefCell, fmt::Display, path::Path};

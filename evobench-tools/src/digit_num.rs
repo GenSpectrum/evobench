@@ -1,4 +1,7 @@
-//! Numbers based on vectors of decimal digits for testing purposes
+//! Numbers based on vectors of decimal digits, for testing purposes
+//!
+//! These are for correctness and introspection, not performance. Useful
+//! for writing some kinds of tests.
 
 use std::{fmt::Display, io::Write};
 

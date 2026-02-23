@@ -1,3 +1,5 @@
+//! A table based representation for descriptive statistics
+
 pub mod change;
 pub mod excel_table_view;
 pub mod table;

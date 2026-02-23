@@ -1,3 +1,5 @@
+//! Various utilities in the area of I/O
+
 pub mod bash;
 pub mod div;
 pub mod lockable_file;

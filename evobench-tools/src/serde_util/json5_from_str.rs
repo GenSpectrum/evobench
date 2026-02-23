@@ -1,6 +1,9 @@
-//! The latest json5, 0.4.1, includes location info with errors, but
-//! its `Display` implementation does not show the location; also it
-//! does not offer a method to retrieve the location, only pattern
+//! Try to provide location information for errors from the `json5`
+//! crate
+//!
+//! The latest json5, 0.4.1, includes location info including errors,
+//! but its `Display` implementation does not show the location; also
+//! it does not offer a method to retrieve the location, only pattern
 //! matching which they indicate will break with future versions.
 
 use std::fmt::Display;

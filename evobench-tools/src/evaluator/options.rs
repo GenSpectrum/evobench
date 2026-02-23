@@ -17,6 +17,11 @@ pub const TILE_COUNT: usize = 101;
 pub struct EvaluationOpts {
     /// The width of the column with the probes path, in characters
     /// (as per Excel's definition of characters)
+    // (This is for Excel output only; could there be a better place?
+    // But the `OutputOpts` are just options on the same level (via
+    // flatten), currently, only subcommands would allow selective
+    // choice, and there may be no way to specify multiple subcommands
+    // in the same command invocation.)
     #[clap(short, long, default_value = "100")]
     pub key_width: f64,
 
@@ -46,7 +51,7 @@ pub struct OutputOpts {
     flame: Option<PathBuf>,
 }
 
-///  Do not use for level 0 (i.e. `single` subcommand), there sum must
+/// Do not use for level 0 (i.e. `single` subcommand), there sum must
 /// always be used!
 #[derive(clap::Args, Debug)]
 pub struct FlameFieldOpt {

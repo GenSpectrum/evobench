@@ -1,3 +1,14 @@
+//! `Table`: an implementation of `TableView` with keyed rows
+//!
+//! Rows pair a string key representing the
+//! first column with a value that implements `TableViewRow` and
+//! represents the remaining columns.
+//!
+//! `Table` is also parameterized with a `TableKind` type for type
+//! safety and to carry metadata (used to represent RealTime, CpuTime,
+//! SysTime and CtxSwitches tables, see
+//! [evaluator/all_field_tables.rs](../../evaluator/all_field_tables.rs)).
+
 use std::{borrow::Cow, fmt::Debug};
 
 use genawaiter::rc::Gen;

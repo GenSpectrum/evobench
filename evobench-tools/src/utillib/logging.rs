@@ -1,4 +1,4 @@
-// Use logging library instead?
+//! Simple logging infrastructure
 
 use std::{
     fmt::Display,
@@ -21,6 +21,8 @@ pub fn write_time(file: &str, line: u32, column: u32) -> BufWriter<StderrLock<'s
     lock
 }
 
+/// Logging in the medium verbosity level (warn < *info* < debug), if
+/// the expression in the first argument evaluates to true
 #[macro_export]
 macro_rules! info_if {
     { $verbose:expr, $($arg:tt)* } => {
@@ -293,16 +295,20 @@ impl Ord for LogLevel {
 
 pub static LOG_LEVEL: AtomicU8 = AtomicU8::new(1);
 
+/// Set the desired logging level (only messages with at least that
+/// importance will be logged). Changes the level for all threads.
 pub fn set_log_level(val: LogLevel) {
     LOG_LEVEL.store(val.level(), Ordering::SeqCst);
 }
 
+/// Get the current logging level.
 #[inline]
 pub fn log_level() -> LogLevel {
     let level = LOG_LEVEL.load(Ordering::Relaxed);
     LogLevel::from_level(level).expect("no possibility to store invalid u8")
 }
 
+/// Logging in the least verbose level (*warn* < info < debug)
 #[macro_export]
 macro_rules! warn {
     { $($arg:tt)* } => {
@@ -314,6 +320,7 @@ macro_rules! warn {
     }
 }
 
+/// Logging in the medium verbosity level (warn < *info* < debug)
 #[macro_export]
 macro_rules! info {
     { $($arg:tt)* } => {
@@ -325,6 +332,7 @@ macro_rules! info {
     }
 }
 
+/// Logging in the most verbose level (warn < info < *debug*)
 #[macro_export]
 macro_rules! debug {
     { $($arg:tt)* } => {
@@ -338,7 +346,7 @@ macro_rules! debug {
 
 // -----------------------------------------------------------------------------
 
-/// Same level as warn, prepending the message with `WARNING: unfinished`
+/// Logging like `warn!` but prepending the message with `WARNING: unfinished`
 #[macro_export]
 macro_rules! unfinished {
     { } => {
@@ -358,7 +366,7 @@ macro_rules! unfinished {
     }
 }
 
-/// Same level as warn, prepending the message with `WARNING: untested`
+/// Logging like `warn!` but prepending the message with `WARNING: untested`
 #[macro_export]
 macro_rules! untested {
     { } => {

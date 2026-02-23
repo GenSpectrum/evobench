@@ -1,5 +1,7 @@
-//! Weighted values, e.g. for measurements taken with gaps, where the
-//! same value is assumed to be valid for the gaps.
+//! Weighted values
+//!
+//! E.g. for measurements taken with gaps, where the same value is
+//! assumed to be valid for the gaps.
 
 use std::{
     collections::BTreeMap,

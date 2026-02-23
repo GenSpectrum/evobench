@@ -1,3 +1,5 @@
+//! ZSTD compression and transparent decompression for files
+
 use std::{
     ffi::{OsStr, OsString},
     fs::File,

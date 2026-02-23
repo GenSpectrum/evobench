@@ -1,3 +1,5 @@
+//! Helpers/templates for writing HTML output files
+
 use std::{path::Path, sync::Arc};
 
 use ahtml::{HtmlAllocator, att};

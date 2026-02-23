@@ -1,6 +1,8 @@
-//! Simple statistics (count, average, standard deviation, median and
-//! percentiles), with strong typing, and ability to handle weighted
-//! values.
+//! Type safe descriptive statistics
+//!
+//! Count, average, standard deviation, median and percentiles, with
+//! the number unit (`ViewType`) and tiles count verified in the type
+//! system, and ability to handle weighted values.
 
 pub mod average;
 pub mod weighted;
