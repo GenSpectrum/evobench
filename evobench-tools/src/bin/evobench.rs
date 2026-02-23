@@ -94,7 +94,7 @@ struct Opts {
 
     /// Alternative to --quiet / --verbose / --debug for setting the
     /// log-level (an error is reported if both are given and they
-    /// don't agree)
+    /// don't agree). (Default: "warn")
     #[clap(long)]
     log_level: Option<LogLevel>,
 
