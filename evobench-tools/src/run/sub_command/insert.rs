@@ -23,6 +23,7 @@ use crate::{
         polling_pool::PollingPool,
         run_queues::RunQueues,
         sub_command::open_polling_pool,
+        working_directory::REMOTE_NAME,
     },
     serde_types::{
         date_and_time::DateTimeWithOffset, git_branch_name::GitBranchName,
@@ -98,8 +99,11 @@ pub enum LocalOrRemoteGitWorkingDir {
 }
 
 impl LocalOrRemoteGitWorkingDir {
+    /// `remote_name` (e.g. "origin") is only used for
+    /// LocalOrRemoteGitWorkingDir::Remote
     pub fn resolve_references<R: AsRef<GitReference>>(
         &mut self,
+        remote_name: &str,
         references: impl IntoIterator<Item = R>,
     ) -> Result<Vec<Option<GitHash>>> {
         match self {
@@ -116,7 +120,7 @@ impl LocalOrRemoteGitWorkingDir {
                 .try_collect(),
             LocalOrRemoteGitWorkingDir::Remote { polling_pool } => {
                 let working_dir_id = polling_pool.updated_working_dir()?;
-                polling_pool.resolve_references(working_dir_id, references)
+                polling_pool.resolve_references(working_dir_id, Some(remote_name), references)
             }
         }
     }
@@ -345,7 +349,7 @@ fn insert_templates_with_references(
     let insert_benchmarking_job_opts = insert_benchmarking_job_opts
         .complete_with(&shareable_config.run_config.benchmarking_job_settings);
 
-    let commits: Vec<Option<GitHash>> = gwd.resolve_references(&reference_names)?;
+    let commits: Vec<Option<GitHash>> = gwd.resolve_references(REMOTE_NAME, &reference_names)?;
     let commits: BTreeSet<GitHash> = commits.into_iter().filter_map(|v| v).collect();
     debug!("reference_names {reference_names:?} resolve to commits {commits:?}");
 

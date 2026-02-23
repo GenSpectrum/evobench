@@ -189,10 +189,12 @@ impl PollingPool {
     }
 
     /// Runs git rev-parse on all references, returning None for those
-    /// that do not resolve.
+    /// that do not resolve. `remote_name`, if given (e.g. "origin"),
+    /// is prefixed to the references with a slash.
     pub fn resolve_references<R: AsRef<GitReference>>(
         &mut self,
         working_directory_id: WorkingDirectoryId,
+        remote_name: Option<&str>,
         references: impl IntoIterator<Item = R>,
     ) -> Result<Vec<Option<GitHash>>> {
         self.process_in_working_directory(
@@ -206,8 +208,16 @@ impl PollingPool {
                     .into_iter()
                     .map(|reference| -> Result<Option<GitHash>> {
                         let reference = reference.as_ref();
+                        let reference = reference.as_str();
+                        let tmp;
+                        let full_reference = if let Some(remote_name) = remote_name {
+                            tmp = format!("{remote_name}/{reference}");
+                            &*tmp
+                        } else {
+                            reference
+                        };
                         Ok(git_working_dir
-                            .git_rev_parse(reference.as_str(), true)?
+                            .git_rev_parse(full_reference, true)?
                             .map(|s| GitHash::from_str(&s).expect("git always returns git hashes")))
                     })
                     .try_collect()
