@@ -448,3 +448,20 @@ without in-depth knowledge carry out basic work.
   `target/debug/`) and run it with `RUST_BACKTRACE=1`. (You can also
   `cargo run` to build and run, as in `RUST_BACKTRACE=1 cargo run
   --bin evobench --`.)
+
+## Internals
+
+If you want to know how the evobench-tools work internally, see
+[docs/internals/index](docs/internals/index.md), and the code
+documentation via `cargo doc --open` (or currently at
+[silo-benchmarks.genspectrum.org/cargo-doc.html](https://silo-benchmarks.genspectrum.org/cargo-doc.html),
+once published to crates.io there / on docs.rs).
+
+(TODO/Note on the cargo docs: while the top-level for evobench-tools
+has been cleaned up, the lower levels and the individual tools still
+need work.)
+
+## Hacking
+
+If you're interested in contributing, see
+[docs/hacking](docs/hacking.md).
