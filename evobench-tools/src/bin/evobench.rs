@@ -576,7 +576,7 @@ fn run() -> Result<Option<ExecutionResult>> {
         SubCommand::Insert { opts, method } => {
             let (queues, regenerate_index_files) = queues.force()?;
             let n = method.run(opts, &run_config_bundle, &queues)?;
-            println!("Inserted {n} jobs.");
+            println!("Inserted {n} job{}.", if n == 1 { "" } else { "s" });
             regenerate_index_files.run_one();
             Ok(None)
         }
