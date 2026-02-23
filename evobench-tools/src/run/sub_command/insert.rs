@@ -248,6 +248,9 @@ pub enum Insert {
     /// references.
     #[command(after_help = "  Note: more job‑setting options are available in the parent command!")]
     Templates {
+        #[clap(flatten)]
+        opts: InsertOpts,
+
         /// The name of the entry in the `job_template_lists_name`
         /// field in the configuration file (RunConfig).
         job_template_lists_name: String,
@@ -267,6 +270,9 @@ pub enum Insert {
     /// you can use the `branch` subcommand instead).
     #[command(after_help = "  Note: more job‑setting options are available in the parent command!")]
     TemplatesOfBranch {
+        #[clap(flatten)]
+        opts: InsertOpts,
+
         branch_name: GitBranchName,
         #[clap(value_enum)]
         /// Whether to look up Git references in the remote repository
@@ -287,6 +293,9 @@ pub enum Insert {
     /// `template-of-branch` subcommand instead.
     #[command(after_help = "  Note: more job‑setting options are available in the parent command!")]
     Branch {
+        #[clap(flatten)]
+        opts: InsertOpts,
+
         /// Whether to look up Git references in the remote repository
         /// or in a local clone (in which case the current working dir
         /// must be inside it)
@@ -309,6 +318,9 @@ pub enum Insert {
     /// edit manually)
     #[command(after_help = "  Note: more job‑setting options are available in the parent command!")]
     JobFiles {
+        #[clap(flatten)]
+        opts: InsertOpts,
+
         #[clap(flatten)]
         force_invalid_opt: ForceInvalidOpt,
 
@@ -375,16 +387,12 @@ fn insert_templates_with_references(
 }
 
 impl Insert {
-    pub fn run(
-        self,
-        mut insert_opts: InsertOpts,
-        run_config_bundle: &RunConfigBundle,
-        queues: &RunQueues,
-    ) -> Result<usize> {
+    pub fn run(self, run_config_bundle: &RunConfigBundle, queues: &RunQueues) -> Result<usize> {
         let conf = &run_config_bundle.shareable.run_config;
 
         match self {
             Insert::Templates {
+                mut opts,
                 job_template_lists_name,
                 local_or_remote,
                 reference_names,
@@ -402,8 +410,7 @@ impl Insert {
 
                 let reference_names: BTreeSet<GitReference> = reference_names.into_iter().collect();
 
-                insert_opts
-                    .insert_benchmarking_job_opts
+                opts.insert_benchmarking_job_opts
                     .reason
                     .reason
                     .get_or_insert(format!("T {job_template_lists_name}"));
@@ -411,7 +418,7 @@ impl Insert {
                 let gwd = local_or_remote.load(&run_config_bundle.shareable)?;
                 insert_templates_with_references(
                     &run_config_bundle.shareable,
-                    insert_opts,
+                    opts,
                     queues,
                     gwd,
                     job_templates,
@@ -420,6 +427,7 @@ impl Insert {
             }
 
             Insert::TemplatesOfBranch {
+                mut opts,
                 branch_name,
                 local_or_remote,
                 reference_names,
@@ -439,8 +447,7 @@ impl Insert {
                 // Do *not* add branch_name to those!
                 let reference_names: BTreeSet<GitReference> = reference_names.into_iter().collect();
 
-                insert_opts
-                    .insert_benchmarking_job_opts
+                opts.insert_benchmarking_job_opts
                     .reason
                     .reason
                     .get_or_insert(format!("{} {branch_name}", local_or_remote.as_char()));
@@ -448,7 +455,7 @@ impl Insert {
                 let gwd = local_or_remote.load(&run_config_bundle.shareable)?;
                 insert_templates_with_references(
                     &run_config_bundle.shareable,
-                    insert_opts,
+                    opts,
                     queues,
                     gwd,
                     job_templates,
@@ -457,6 +464,7 @@ impl Insert {
             }
 
             Insert::Branch {
+                mut opts,
                 local_or_remote,
                 branch_name,
                 more_reference_names,
@@ -488,15 +496,14 @@ impl Insert {
                 reference_names.insert(branch_name.to_reference());
 
                 // Add a reason if there isn't one yet
-                insert_opts
-                    .insert_benchmarking_job_opts
+                opts.insert_benchmarking_job_opts
                     .reason
                     .reason
                     .get_or_insert(format!("{} {branch_name}", local_or_remote.as_char()));
 
                 insert_templates_with_references(
                     &run_config_bundle.shareable,
-                    insert_opts,
+                    opts,
                     queues,
                     gwd,
                     job_templates,
@@ -505,6 +512,7 @@ impl Insert {
             }
 
             Insert::JobFiles {
+                opts,
                 force_invalid_opt,
                 commit,
                 paths,
@@ -517,7 +525,7 @@ impl Insert {
                             dry_run_opt,
                         },
                     insert_benchmarking_job_opts,
-                } = insert_opts;
+                } = opts;
 
                 let mut benchmarking_jobs = Vec::new();
                 for path in &paths {

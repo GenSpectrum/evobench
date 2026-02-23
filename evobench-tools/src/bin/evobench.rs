@@ -47,7 +47,7 @@ use evobench_tools::{
         run_job::JobRunner,
         run_queues::RunQueues,
         sub_command::{
-            insert::{Insert, InsertBenchmarkingJobOpts, InsertOpts},
+            insert::{Insert, InsertBenchmarkingJobOpts},
             list::ListOpts,
             list_all::ListAllOpts,
             open_polling_pool, open_working_directory_pool,
@@ -133,9 +133,6 @@ enum SubCommand {
     /// automatic periodic insertion, see the `poll` sub-command
     /// instead. .
     Insert {
-        #[clap(flatten)]
-        opts: InsertOpts,
-
         #[clap(subcommand)]
         method: Insert,
     },
@@ -573,9 +570,9 @@ fn run() -> Result<Option<ExecutionResult>> {
             Ok(None)
         }
 
-        SubCommand::Insert { opts, method } => {
+        SubCommand::Insert { method } => {
             let (queues, regenerate_index_files) = queues.force()?;
-            let n = method.run(opts, &run_config_bundle, &queues)?;
+            let n = method.run(&run_config_bundle, &queues)?;
             println!("Inserted {n} job{}.", if n == 1 { "" } else { "s" });
             regenerate_index_files.run_one();
             Ok(None)
