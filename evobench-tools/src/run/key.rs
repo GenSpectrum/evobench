@@ -34,6 +34,7 @@ use std::{
 };
 
 use anyhow::{Result, bail};
+use derive_more::From;
 use itertools::Itertools;
 use kstring::KString;
 use serde::{Deserialize, Serialize};
@@ -100,14 +101,10 @@ pub struct EarlyContext {
 /// Same as `CustomParameters` but not checked against a config. Keys
 /// are checked for basic correctness but not whether usable for a
 /// particular benchmark, and the values are of unknown type.
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub struct UncheckedCustomParameters(BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, KString>);
-
-impl From<BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, KString>> for UncheckedCustomParameters {
-    fn from(value: BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, KString>) -> Self {
-        Self(value)
-    }
-}
+#[derive(Debug, PartialEq, Serialize, Deserialize, From)]
+pub struct UncheckedCustomParameters(
+    #[from] BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, KString>,
+);
 
 impl UncheckedCustomParameters {
     pub fn btree_map(&self) -> &BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, KString> {
@@ -118,7 +115,7 @@ impl UncheckedCustomParameters {
 /// Custom key/value pairings, passed on as environment variables when
 /// executing the benchmarking runner of the target project. These
 /// are checked for allowed and required values.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, From, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct CustomParameters(BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, CustomParameterValue>);
 
 /// Extend `path` with segments leading to the folder to use for
@@ -146,14 +143,6 @@ pub trait ExtendPath {
 impl ExtendPath for UncheckedCustomParameters {
     fn key_val_strs(&self) -> impl Iterator<Item = (&str, &str)> {
         self.0.iter().map(|(k, v)| (k.as_str(), v.as_str()))
-    }
-}
-
-impl From<BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, CustomParameterValue>>
-    for CustomParameters
-{
-    fn from(value: BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, CustomParameterValue>) -> Self {
-        Self(value)
     }
 }
 

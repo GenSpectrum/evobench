@@ -13,6 +13,7 @@ use std::{
 
 use anyhow::{Result, anyhow, bail};
 use chj_unix_util::polling_signals::PollingSignalsSender;
+use derive_more::From;
 use run_git::{
     git::{GitResetMode, GitWorkingDir, git_clone},
     path_util::add_extension,
@@ -149,14 +150,8 @@ impl WorkingDirectoryStatus {
 // since that's what `run-git` currently uses, should change that.)
 /// A path to a working directory. Has methods that only need a path,
 /// nothing else.
-#[derive(Clone)]
+#[derive(Clone, From)]
 pub struct WorkingDirectoryPath(Arc<PathBuf>);
-
-impl From<Arc<PathBuf>> for WorkingDirectoryPath {
-    fn from(value: Arc<PathBuf>) -> Self {
-        Self(value)
-    }
-}
 
 impl From<WorkingDirectoryPath> for Arc<PathBuf> {
     fn from(value: WorkingDirectoryPath) -> Self {

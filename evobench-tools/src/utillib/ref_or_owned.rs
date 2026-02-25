@@ -3,7 +3,9 @@
 
 use std::{fmt::Display, ops::Deref};
 
-#[derive(Clone, Debug)]
+use derive_more::From;
+
+#[derive(Clone, Debug, From)]
 pub enum RefOrOwned<'t, T> {
     Ref(&'t T),
     Owned(T),
@@ -25,18 +27,6 @@ impl<'t, T> RefOrOwned<'t, T> {
             RefOrOwned::Ref(borrowed) => borrowed.clone(),
             RefOrOwned::Owned(owned) => owned,
         }
-    }
-}
-
-impl<'t, T> From<&'t T> for RefOrOwned<'t, T> {
-    fn from(value: &'t T) -> Self {
-        Self::Ref(value)
-    }
-}
-
-impl<'t, T> From<T> for RefOrOwned<'t, T> {
-    fn from(value: T) -> Self {
-        Self::Owned(value)
     }
 }
 
