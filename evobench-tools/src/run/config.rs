@@ -30,7 +30,7 @@ use crate::{
         proper_filename::ProperFilename,
         regex::SerializableRegex,
         tilde_path::TildePath,
-        val_or_ref::{ValOrRef, ValOrRefTarget},
+        val_or_ref::{TargetDesc, ValOrRef},
     },
     util::grep_diff::LogExtract,
     utillib::arc::CloneArc,
@@ -661,7 +661,7 @@ pub struct RunConfigOpts {
 
 #[derive(Debug)]
 pub struct JobTemplateListsField;
-impl ValOrRefTarget for JobTemplateListsField {
+impl TargetDesc for JobTemplateListsField {
     fn target_desc() -> Cow<'static, str> {
         "`RunConfig.job_template_lists` field".into()
     }

@@ -6,7 +6,8 @@ use kstring::KString;
 use serde::{Deserialize, Serialize};
 use std::{borrow::Cow, collections::BTreeMap, fmt::Debug, marker::PhantomData};
 
-pub trait ValOrRefTarget {
+/// Human-readable description for the target type
+pub trait TargetDesc {
     fn target_desc() -> Cow<'static, str>;
 }
 
@@ -16,17 +17,18 @@ pub enum ValOrRefInner<T> {
     Ref(KString),
 }
 
+// Wrapper type to hide the enum to force access via
+// `value_with_backing`, to avoid accidental mis-use of the reference
+// names, and also to carry the TargetDesc phantom type parameter.
+
 /// A string naming an entry in another place, or holding a value directly.
-// Hiding the enum to force access via `value_with_backing`, to avoid
-// accidental mis-use of the reference names. Also need the wrapper to
-// allow the phantom type parameter.
 #[derive(Debug)]
-pub struct ValOrRef<RefTarget: ValOrRefTarget, T> {
+pub struct ValOrRef<TD: TargetDesc, T> {
     inner: ValOrRefInner<T>,
-    source: PhantomData<fn() -> RefTarget>,
+    source: PhantomData<fn() -> TD>,
 }
 
-impl<RefTarget: ValOrRefTarget, T> From<ValOrRefInner<T>> for ValOrRef<RefTarget, T> {
+impl<TD: TargetDesc, T> From<ValOrRefInner<T>> for ValOrRef<TD, T> {
     fn from(inner: ValOrRefInner<T>) -> Self {
         Self {
             inner,
@@ -35,7 +37,7 @@ impl<RefTarget: ValOrRefTarget, T> From<ValOrRefInner<T>> for ValOrRef<RefTarget
     }
 }
 
-impl<RefTarget: ValOrRefTarget, T: Clone> Clone for ValOrRef<RefTarget, T> {
+impl<TD: TargetDesc, T: Clone> Clone for ValOrRef<TD, T> {
     fn clone(&self) -> Self {
         let Self { inner, source: _ } = self;
         Self {
@@ -45,7 +47,7 @@ impl<RefTarget: ValOrRefTarget, T: Clone> Clone for ValOrRef<RefTarget, T> {
     }
 }
 
-impl<RefTarget: ValOrRefTarget, T> ValOrRef<RefTarget, T> {
+impl<TD: TargetDesc, T> ValOrRef<TD, T> {
     /// Returns a reference to the contained value, or the entry in
     /// the given map. Returns None if this is a Ref and the reference
     /// is not present in the map.
@@ -65,17 +67,14 @@ impl<RefTarget: ValOrRefTarget, T> ValOrRef<RefTarget, T> {
                 anyhow!(
                     "name {:?} is not present in {}",
                     r.as_str(),
-                    RefTarget::target_desc()
+                    TD::target_desc()
                 )
             }),
         }
     }
 
     /// Map to contain the different stored type, if necessary
-    pub fn into_try_map<U, E>(
-        self,
-        f: impl Fn(T) -> Result<U, E>,
-    ) -> Result<ValOrRef<RefTarget, U>, E> {
+    pub fn into_try_map<U, E>(self, f: impl Fn(T) -> Result<U, E>) -> Result<ValOrRef<TD, U>, E> {
         Ok(ValOrRef {
             inner: match self.inner {
                 ValOrRefInner::Val(v) => ValOrRefInner::Val(f(v)?),
@@ -86,10 +85,7 @@ impl<RefTarget: ValOrRefTarget, T> ValOrRef<RefTarget, T> {
     }
 
     /// Map to contain the different stored type, if necessary
-    pub fn try_map<U, E>(
-        &self,
-        f: impl Fn(&T) -> Result<U, E>,
-    ) -> Result<ValOrRef<RefTarget, U>, E> {
+    pub fn try_map<U, E>(&self, f: impl Fn(&T) -> Result<U, E>) -> Result<ValOrRef<TD, U>, E> {
         Ok(ValOrRef {
             inner: match &self.inner {
                 ValOrRefInner::Val(v) => ValOrRefInner::Val(f(v)?),
@@ -100,9 +96,7 @@ impl<RefTarget: ValOrRefTarget, T> ValOrRef<RefTarget, T> {
     }
 }
 
-impl<'de, RefTarget: ValOrRefTarget, T: Deserialize<'de>> Deserialize<'de>
-    for ValOrRef<RefTarget, T>
-{
+impl<'de, TD: TargetDesc, T: Deserialize<'de>> Deserialize<'de> for ValOrRef<TD, T> {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let inner = ValOrRefInner::deserialize(deserializer)?;
         Ok(Self {
@@ -112,11 +106,29 @@ impl<'de, RefTarget: ValOrRefTarget, T: Deserialize<'de>> Deserialize<'de>
     }
 }
 
-impl<RefTarget: ValOrRefTarget, T: Serialize> Serialize for ValOrRef<RefTarget, T> {
+impl<TD: TargetDesc, T: Serialize> Serialize for ValOrRef<TD, T> {
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
         self.inner.serialize(serializer)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct U32Desc;
+    impl TargetDesc for U32Desc {
+        fn target_desc() -> Cow<'static, str> {
+            "hi".into()
+        }
+    }
+
+    #[test]
+    fn t_() {
+        let inner = ValOrRefInner::<u32>::Val(120);
+        let whole: ValOrRef<U32Desc, u32> = inner.into();
     }
 }
