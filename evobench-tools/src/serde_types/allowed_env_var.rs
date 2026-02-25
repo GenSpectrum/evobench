@@ -1,3 +1,5 @@
+//! Environment variable names (strings with some constraints)
+
 use std::{ffi::OsStr, fmt::Display, marker::PhantomData, ops::Deref, str::FromStr};
 
 use anyhow::{Result, bail};

@@ -1,4 +1,4 @@
-//! The directory structure for output files.
+//! The directory structure for output files
 
 use std::{
     collections::BTreeMap,
@@ -85,8 +85,7 @@ pub enum OutputSubdir {
 // --- Their implementations ----------------------------------------------------
 
 pub trait ToPath {
-    /// May be slightly costly on first run but then cached in those
-    /// cases
+    /// May be slightly costly on first run but is then cached
     fn to_path(&self) -> &Arc<Path>;
 }
 
