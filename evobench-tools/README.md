@@ -10,7 +10,7 @@ that. The tools are using subcommands, sometimes (especially in the
 `evobench` tool) multiple levels deep. See
 [subcommands](docs/subcommands.md) for more information on this.
 
-## evobench-eval
+## `evobench-eval` tool
 
 This is a tool to evaluate the log files from benchmark runs using
 (currently) the [evobench-probes](../evobench-probes/README.md)
@@ -20,13 +20,14 @@ doesn't know on its own which log files belong together. It also
 doesn't execute new benchmarking runs. Run it with `--help`. Usually
 this is only run as a helper by the `evobench` tool.
 
-## evobench
+## `evobench` tool
 
-This is a tool to maintain a (currently single) pipeline of queues of
-benchmarking jobs that need execution now or at some particular time,
-and runs those when appropriate, only ever one at the same time (to
-avoid the jobs from interfering with each other and influencing the
-benchmarking results). The tool has various subcommands:
+This implements a batch processing system maintaining a (currently
+single) pipeline of queues of benchmarking jobs that need execution
+now or at some particular time, and running those when appropriate,
+only ever one at the same time (to avoid the jobs from interfering
+with each other and influencing the benchmarking results). The tool
+has various subcommands:
 
 <dl>
   <dt>insert</dt>
@@ -112,12 +113,12 @@ then include that file from `.bashrc`.
 
 To specify the many details about job running behaviour, `evobench`
 needs a configuration file. Unless given the `--config` argument, it
-expects it at `.evobench.*`, with various suffix alternatives (run
-`evobench config-formats` for the supported ones; RON is recommended
-as it is the most expressive of those formats (it allows to list the
-names of the types being filled in, distinguishes between fields and
-dictionaries, and has explicit tuple syntax), and is also close to
-Rust syntax).
+expects it at `~/.evobench.*`, with various suffix alternatives--run
+`evobench config-formats` for the supported ones. The RON format is
+recommended as it is the most expressive of those formats (it allows
+to list the names of the types being filled in, distinguishes between
+fields and dictionaries, and has explicit tuple syntax), and is also
+close to Rust syntax.
 
 Currently the best documentation of the configuration file is in the
 comments of the
@@ -408,7 +409,9 @@ The other tools are less directly useful:
 
 * `evobench-ndjson`: currently a way specific to LAPIS-SILO to work
   with API query sets, but could be generalized. Allows to cluster
-  queries according to similarity.
+  queries according to similarity. Could be interesting to look at for
+  implementing other needs, but should be split off into a separate
+  crate or even repository.
 
 * `jobqueue`: a generic job queue utility, based on the job queue
   library used in `evobench`. Perhaps useful outside `evobench`?
@@ -417,25 +420,81 @@ The other tools are less directly useful:
   during development.
 
 
-## Account setup
+## Installation
+
+### Account setup
 
 It can be useful to have a dedicated user account for evobench on the
-host where it runs, to interact with the system on the command line.
+host where it runs, to interact with the system on the command line,
+and add ssh pulic keys for all people who need to work with the
+system. At least this is how it is currently used (for LAPIS-SILO);
+alternatively using unix file permissions and pipes in a way that
+allows multiple unix users access the same job runner may be
+implemented in the future.
 
 The LAPIS-SILO-specific
 [silo-benchmark-ci](https://github.com/GenSpectrum/silo-benchmark-ci/)
 repository contains files to help with such an account, including
 welcome message and `help-benchmarking` command to enable users
-without in-depth knowledge carry out basic work.
+without in-depth knowledge carry out basic work. It will hopefully be
+easy to tweak for your own situation.
 
-## Debugging problems
+### Installation
 
-* Know where to look for the log files. `evobench status` shows the
-  log directory paths. `evobench run daemon logf` follows the newest
-  logfile. `evobench wd log D..` shows the last log for a working
-  directory for which a run failed.
+If you don't follow the docs in above "silo-benchmark-ci" repository,
+installation is just:
 
-* To get even more information about what the tools are doing, use the
+1. Install a recent stable Rust toolchain via [rustup](https://rustup.rs/)
+
+1. Clone this repository, then
+
+    cd evobench/evobench-tools
+    cargo install --locked --path .
+
+The `--locked` option is recommended both because it ensures the use
+of dependency versions that we have tested, but also since those
+versions are largely reviewed and a little older to lower the risk for
+supply chain attacks.
+
+Instead of the second point above, you can `cargo install --locked
+evobench-tools` once it is published to `crates.io`.
+
+Then, see the "Configuration" subsection under the "`evobench` tool"
+section for how to configure the system.
+
+### Service setup (daemons)
+
+The `evobench` tool comes with its own built-in service runner
+framework with start/stop style actions and timestamped log files with
+log rotation, accessible via the `daemon` subcommands under `poll` and
+`run`. We feel that this makes interacting with the daemon easier and
+more portable. To automatically start the daemon, on Linux a crontab
+can be used with a `@reboot` entry (or alternatively, an entry that
+runs every minute will work, too, since starting a daemon that is
+already running is silent). Use the `start-if-wanted` action rather
+than `start`, since that respects the last desired status before the
+reboot.
+
+If you prefer to run the daemon under a different service
+infrastructure like systemd, configure it to execute the `daemon`
+subcommand with the `run` argument, which runs the daemon in the
+foreground and makes it log to stdout/stderr. This latter use hasn't
+been tested yet in actual use, please let us know if there are
+problems.
+
+## How to track down problems
+
+To debug issues:
+
+* Know where to look for the log files.
+
+    * When using the built-in daemon system, `evobench status` shows the
+      log directory paths. `evobench run daemon logf` follows the currently active
+      logfile.
+    * `evobench wd log D..` shows the last log for a working directory
+      for which a run failed.
+
+* To get more information about what the tools are doing, use the
   `--verbose` or even more verbose `--debug` options (or alternatively
   `--log-level info|debug`). E.g. `evobench run daemon --debug
   restart` to restart that daemon to log more information. (The run
