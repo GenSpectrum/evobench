@@ -462,7 +462,7 @@ evobench-tools` once it is published to `crates.io`.
 Then, see the "Configuration" subsection under the "`evobench` tool"
 section for how to configure the system.
 
-### Service setup (daemons)
+### Service setup for the poll and run daemons
 
 The `evobench` tool comes with its own built-in service runner
 framework with start/stop style actions and timestamped log files with
@@ -479,8 +479,7 @@ If you prefer to run the daemon under a different service
 infrastructure like systemd, configure it to execute the `daemon`
 subcommand with the `run` argument, which runs the daemon in the
 foreground and makes it log to stdout/stderr. This latter use hasn't
-been tested yet in actual use, please let us know if there are
-problems.
+been properly tested yet, please let us know if there are problems.
 
 ## How to track down problems
 
