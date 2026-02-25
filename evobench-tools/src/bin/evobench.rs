@@ -486,6 +486,7 @@ impl<F: FnOnce(CheckExit) -> Result<()>> EvobenchDaemon<F> {
             other_restart_checks,
             run,
             local_time_default: LOCAL_TIME_DEFAULT,
+            daemon_state_accessor: Default::default(),
         })
     }
 }
