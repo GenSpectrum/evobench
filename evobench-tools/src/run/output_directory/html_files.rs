@@ -116,23 +116,28 @@ pub fn print_list(
 }
 
 fn print_run_list(conf: &RunConfig, html: &HtmlAllocator, out: impl Write) -> Result<()> {
-    let num_columns = 2; // TODO.TAE
+    let num_columns = 3; // TODO.TAE
     let mut table = HtmlTable::new(num_columns, &html);
 
     let mut run_dirs = get_all_run_dirs(&conf.output_dir.path)?;
 
-    run_dirs.sort_by_key(|run_dir| run_dir.timestamp().clone());
+    run_dirs.sort_by(|r1, r2| r2.timestamp().cmp(r1.timestamp()));
 
     let now = SystemTime::now();
 
     for run_dir in run_dirs {
+        let commit_id = run_dir.parent().commit_id().to_string();
         let path_string = run_dir.to_path().to_string_lossy();
-        let data_row: &[&str] = &[run_dir.timestamp().as_str(), path_string.as_ref()];
+        let data_row: &[&str] = &[
+            run_dir.timestamp().as_str(),
+            commit_id.as_str(),
+            path_string.as_ref(),
+        ];
 
         let system_time = run_dir.timestamp().to_systemtime();
         let is_older = {
             let age = now.duration_since(system_time.into())?;
-            age > Duration::from_secs(3600 * 24)
+            age > Duration::from_secs(3600 * 24 * 3)
         };
 
         table.write_data_row(
