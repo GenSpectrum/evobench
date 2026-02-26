@@ -128,11 +128,16 @@ fn print_run_list(conf: &RunConfig, html: &HtmlAllocator, out: impl Write) -> Re
     for run_dir in run_dirs {
         let commit_id = run_dir.parent().commit_id().to_string();
         let path_string = run_dir.to_path().to_string_lossy();
+        let path_url = &|| Some(path_string.clone());
         let data_row: &[WithUrlOnDemand] = &[
             run_dir.timestamp().as_str().into(),
             commit_id.as_str().into(),
             run_dir.parent().parent().target_name().as_str().into(),
-            path_string.as_ref().into(),
+            WithUrlOnDemand {
+                text: path_string.as_ref(),
+                gen_url: Some(path_url),
+                anchor_name: None,
+            },
         ];
 
         let system_time = run_dir.timestamp().to_systemtime();
