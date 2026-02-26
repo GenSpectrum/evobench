@@ -638,16 +638,23 @@ pub fn get_all_parameter_dirs(
         Peekable<impl Iterator<Item = Result<KeyDir>>>,
     )>,
 > {
-    let base_path_filename = get_filename_from_path(&base_path)?;
-    let target_name: ProperDirname = base_path_filename.parse().unwrap();
     let mut all_parameter_dirs = Vec::new();
     let mut directory_queue = Vec::<(
         Arc<Path>,
+        Arc<ProperDirname>,
         BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, KString>,
     )>::new();
-    directory_queue.push((base_path.clone_arc(), BTreeMap::new()));
+    for target_dir in fs::read_dir(&base_path)? {
+        let target_path: Arc<Path> = target_dir?.path().into_arc_path();
+        let target_filename = get_filename_from_path(&target_path);
+        let target = target_filename?
+            .parse()
+            .map_err(|err_str| anyhow!("{err_str}"))?;
+        directory_queue.push((target_path, Arc::new(target), BTreeMap::new()));
+    }
     while !directory_queue.is_empty() {
-        let (current_directory, current_parameters) = directory_queue.pop().unwrap();
+        let (current_directory, current_target, current_parameters) =
+            directory_queue.pop().unwrap();
         for subdir in fs::read_dir(&current_directory)? {
             let subdir_path = subdir?.path().into_arc_path();
             let subdir_filename = get_filename_from_path(subdir_path.deref())?;
@@ -655,12 +662,12 @@ pub fn get_all_parameter_dirs(
             if let Some((key, val)) = parse_filename_as_key_val(subdir_filename)? {
                 let mut subdir_parameters = current_parameters.clone();
                 subdir_parameters.insert(key, val);
-                directory_queue.push((subdir_path, subdir_parameters));
+                directory_queue.push((subdir_path, current_target.clone(), subdir_parameters));
             }
         }
         let parameter_dir = Arc::new(ParametersDir {
             base_path: base_path.clone_arc(),
-            target_name: target_name.clone(),
+            target_name: current_target.as_ref().to_owned(),
             custom_parameters: CheckedOrUncheckedCustomParameters::UncheckedCustomParameters(
                 Arc::new(UncheckedCustomParameters::from(current_parameters)),
             ),
