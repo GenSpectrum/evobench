@@ -5,6 +5,7 @@ use anyhow::{Result, bail};
 use cj_path_util::path_util::AppendToPath;
 use clap::Parser;
 
+use evobench_tools::utillib::arc::CloneArc;
 use evobench_tools::{
     ctx,
     git::GitHash,
@@ -270,7 +271,7 @@ fn main() -> Result<()> {
             let key_dir: Arc<_> = KeyDir::try_from(key_dir.into_arc_path())?.into();
 
             if single {
-                for run_dir in key_dir.sub_dirs()? {
+                for run_dir in key_dir.clone_arc().sub_dirs()? {
                     let run_dir = run_dir?;
                     post_process_single(&run_dir, conf, no_single_stats)?;
                 }
