@@ -2,17 +2,8 @@
 //! easy access of the outputs. This uses the same code as the
 //! `evobench list` subcommand, and some more.
 
-use std::{
-    borrow::Cow,
-    collections::{BTreeMap, BTreeSet, btree_map::Entry},
-    io::Write,
-    sync::Arc,
-};
-
-use ahtml::{ASlice, HtmlAllocator, Node, SerHtmlFrag};
-use anyhow::Result;
-use kstring::KString;
-
+use crate::output_table::OutputStyle;
+use crate::run::output_directory::structure::get_all_run_dirs;
 use crate::{
     io_utils::tempfile_utils::tempfile,
     output_table::{CellValue, OutputTable, OutputTableTitle, html::HtmlTable},
@@ -24,6 +15,16 @@ use crate::{
         working_directory_pool::WorkingDirectoryPoolBaseDir,
     },
     utillib::{arc::CloneArc, into_arc_path::IntoArcPath, invert_index::invert_index_by_ref},
+};
+use ahtml::{ASlice, AVec, HtmlAllocator, Node, SerHtmlFrag};
+use anyhow::Result;
+use kstring::KString;
+use std::time::{Duration, SystemTime};
+use std::{
+    borrow::Cow,
+    collections::{BTreeMap, BTreeSet, btree_map::Entry},
+    io::Write,
+    sync::Arc,
 };
 
 fn print_html_document(
@@ -111,6 +112,42 @@ pub fn print_list(
         working_directory_base_dir,
         queues,
     )?;
+    print_html_document(body.as_slice(), html, out)
+}
+
+fn print_run_list(conf: &RunConfig, html: &HtmlAllocator, out: impl Write) -> Result<()> {
+    let num_columns = 2; // TODO.TAE
+    let mut table = HtmlTable::new(num_columns, &html);
+
+    let mut run_dirs = get_all_run_dirs(&conf.output_dir.path)?;
+
+    run_dirs.sort_by_key(|run_dir| run_dir.timestamp().clone());
+
+    let now = SystemTime::now();
+
+    for run_dir in run_dirs {
+        let path_string = run_dir.to_path().to_string_lossy();
+        let data_row: &[&str] = &[run_dir.timestamp().as_str(), path_string.as_ref()];
+
+        let system_time = run_dir.timestamp().to_systemtime();
+        let is_older = {
+            let age = now.duration_since(system_time.into())?;
+            age > Duration::from_secs(3600 * 24)
+        };
+
+        table.write_data_row(
+            data_row,
+            if is_older {
+                Some(OutputStyle {
+                    faded: true,
+                    ..Default::default()
+                })
+            } else {
+                None
+            },
+        )?;
+    }
+    let body: AVec<Node> = table.finish()?;
     print_html_document(body.as_slice(), html, out)
 }
 
@@ -303,6 +340,13 @@ pub fn regenerate_index_files(
     // "list-all.html" since "list-all" is a different evobench
     // subcommand.
     write_jobs_list(&html, "list-unlimited.html", true, None)?;
+    html.clear();
+
+    {
+        let (tmp_file, out) = tempfile(conf.output_dir.path.join("run-list.html"), false)?;
+        print_run_list(conf, &html, out)?;
+        tmp_file.finish()?;
+    }
     html.clear();
 
     // parameter lists
