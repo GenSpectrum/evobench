@@ -645,12 +645,17 @@ pub fn get_all_parameter_dirs(
         BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, KString>,
     )>::new();
     for target_dir in fs::read_dir(&base_path)? {
-        let target_path: Arc<Path> = target_dir?.path().into_arc_path();
-        let target_filename = get_filename_from_path(&target_path);
-        let target = target_filename?
-            .parse()
-            .map_err(|err_str| anyhow!("{err_str}"))?;
-        directory_queue.push((target_path, Arc::new(target), BTreeMap::new()));
+        let target_dir = target_dir?;
+        if target_dir.file_type()?.is_dir() {
+            let target_path: Arc<Path> = target_dir.path().into_arc_path();
+            let target_filename = get_filename_from_path(&target_path);
+            let target = target_filename?.parse().map_err(|err_str| {
+                anyhow!(
+                    "parsing potential target path {target_path:?} as a proper dir name: {err_str}"
+                )
+            })?;
+            directory_queue.push((target_path, Arc::new(target), BTreeMap::new()));
+        }
     }
     while !directory_queue.is_empty() {
         let (current_directory, current_target, current_parameters) =
