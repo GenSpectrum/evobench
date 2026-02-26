@@ -3,7 +3,7 @@
 //! `evobench list` subcommand, and some more.
 
 use crate::output_table::{OutputStyle, WithUrlOnDemand};
-use crate::run::output_directory::structure::get_all_run_dirs;
+use crate::run::output_directory::structure::{ReplaceBasePath, get_all_run_dirs};
 use crate::{
     io_utils::tempfile_utils::tempfile,
     output_table::{CellValue, OutputTable, OutputTableTitle, html::HtmlTable},
@@ -125,9 +125,11 @@ fn print_run_list(conf: &RunConfig, html: &HtmlAllocator, out: impl Write) -> Re
 
     let now = SystemTime::now();
 
+    let url_base = "".into_arc_path();
     for run_dir in run_dirs {
         let commit_id = run_dir.parent().commit_id().to_string();
-        let path_string = run_dir.to_path().to_string_lossy();
+        let run_dir_relative = run_dir.replace_base_path(url_base.clone());
+        let path_string = run_dir_relative.to_path().to_string_lossy();
         let path_url = &|| Some(path_string.clone());
         let data_row: &[WithUrlOnDemand] = &[
             run_dir.timestamp().as_str().into(),
