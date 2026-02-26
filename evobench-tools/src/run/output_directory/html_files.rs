@@ -116,7 +116,7 @@ pub fn print_list(
 }
 
 fn print_run_list(conf: &RunConfig, html: &HtmlAllocator, out: impl Write) -> Result<()> {
-    let num_columns = 3; // TODO.TAE
+    let num_columns = 4; // TODO.TAE
     let mut table = HtmlTable::new(num_columns, &html);
 
     let mut run_dirs = get_all_run_dirs(&conf.output_dir.path)?;
@@ -131,6 +131,7 @@ fn print_run_list(conf: &RunConfig, html: &HtmlAllocator, out: impl Write) -> Re
         let data_row: &[WithUrlOnDemand] = &[
             run_dir.timestamp().as_str().into(),
             commit_id.as_str().into(),
+            run_dir.parent().parent().target_name().as_str().into(),
             path_string.as_ref().into(),
         ];
 
