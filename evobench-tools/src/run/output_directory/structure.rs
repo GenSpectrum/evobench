@@ -2,8 +2,10 @@
 
 use std::{
     collections::BTreeMap,
-    ffi::OsStr,
     fmt::Display,
+    fs,
+    iter::Peekable,
+    ops::Deref,
     path::{Path, PathBuf},
     str::FromStr,
     sync::{Arc, OnceLock},
@@ -96,11 +98,11 @@ pub trait SubDirs: ToPath {
 
     /// Skips non-directory entries, but requires all directory entries to
     /// be convertible to `T`.
-    fn sub_dirs(self: &Arc<Self>) -> Result<impl Iterator<Item = Result<Self::Target>>> {
+    fn sub_dirs(self: Arc<Self>) -> Result<impl Iterator<Item = Result<Self::Target>>> {
         let dir_path = self.to_path().to_owned();
-        Ok(std::fs::read_dir(&dir_path)
+        Ok(fs::read_dir(&dir_path)
             .map_err(ctx!("opening dir {dir_path:?}"))?
-            .map(|entry| -> Result<Option<Self::Target>> {
+            .map(move |entry| -> Result<Option<Self::Target>> {
                 let entry: std::fs::DirEntry = entry?;
                 let ft = entry.file_type()?;
                 if ft.is_dir() {
@@ -139,23 +141,42 @@ pub trait ReplaceBasePath {
     fn replace_base_path(&self, base_path: Arc<Path>) -> Self;
 }
 
+fn get_filename_from_path(path: &Path) -> Result<&str> {
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| anyhow!("path is missing a file name"))?;
+    file_name.to_str().ok_or_else(|| {
+        let lossy1 = file_name.to_string_lossy();
+        let lossy: &str = lossy1.as_ref();
+        anyhow!("can't decode dir name to string: {lossy:?}")
+    })
+}
+
 /// Parse the file name part of a path. You should provide context
 /// around this call for the full path or similar.
-fn parse_filename<T: FromStr>(file_name: &OsStr) -> Result<T>
+fn parse_filename<T: FromStr>(file_name_str: &str) -> Result<T>
 where
     T::Err: Display,
 {
-    if let Ok(file_name_str) = file_name.to_owned().into_string() {
-        T::from_str(&file_name_str).map_err(|e| {
-            anyhow!(
-                "dir name {file_name_str:?} does not parse as {}: {e:#}",
-                type_name_short::<T>()
-            )
-        })
+    T::from_str(&file_name_str).map_err(|e| {
+        anyhow!(
+            "dir name {file_name_str:?} does not parse as {}: {e:#}",
+            type_name_short::<T>()
+        )
+    })
+}
+
+/// Try to parse filename as key-value pair, return none if it can be a different directory than a key-value setting.
+/// Returns an error if the syntax for a key-value pair is invalid in spite of containing an equal sign.
+fn parse_filename_as_key_val(
+    dir_name: &str,
+) -> Result<Option<(AllowedEnvVar<AllowableCustomEnvVar>, KString)>> {
+    if let Some((var_name, val)) = dir_name.split_once('=') {
+        let key = AllowedEnvVar::from_str(var_name)?;
+        let val = KString::from_ref(val);
+        Ok(Some((key, val)))
     } else {
-        let lossy1 = file_name.to_string_lossy();
-        let lossy: &str = lossy1.as_ref();
-        bail!("can't decode dir name to string: {lossy:?}");
+        Ok(None)
     }
 }
 
@@ -164,9 +185,7 @@ fn parse_path_filename<T: FromStr>(path: &Path) -> Result<(T, &Path)>
 where
     T::Err: Display,
 {
-    let file_name = path
-        .file_name()
-        .ok_or_else(|| anyhow!("path is missing a file name"))?;
+    let file_name = get_filename_from_path(path)?;
     let dir = path
         .parent()
         .ok_or_else(|| anyhow!("path is missing a parent dir"))?;
@@ -277,49 +296,34 @@ impl TryFrom<Arc<Path>> for ParametersDir {
             let mut current_path = &*path;
             let mut current_vars = BTreeMap::new();
             loop {
-                if let Some(dir_name) = current_path.file_name() {
-                    let dir_name_str = dir_name.to_str().ok_or_else(|| {
-                        anyhow!(
-                            "directory segment can't be decoded as string: {:?} in {:?}",
-                            dir_name.to_string_lossy().as_ref(),
-                            path
-                        )
-                    })?;
-                    if let Some((var_name, val)) = dir_name_str.split_once('=') {
-                        let key = AllowedEnvVar::from_str(var_name)?;
-                        let val = KString::from_ref(val);
-                        current_vars.insert(key, val);
+                let current_filename = get_filename_from_path(current_path)?;
+                if let Some((key, val)) = parse_filename_as_key_val(current_filename)? {
+                    current_vars.insert(key, val);
 
-                        if let Some(parent) = current_path.parent() {
-                            if parent.is_top() {
-                                bail!(
-                                    "parsing {} {:?}: missing target segment left of the var segments",
-                                    type_name_short::<Self>(),
-                                    path
-                                );
-                            }
-                            current_path = parent;
-                        } else {
-                            unreachable!("because file_name() above already failed, right?")
+                    if let Some(parent) = current_path.parent() {
+                        if parent.is_top() {
+                            bail!(
+                                "parsing {} {:?}: missing target segment left of the var segments",
+                                type_name_short::<Self>(),
+                                path
+                            );
                         }
+                        current_path = parent;
                     } else {
-                        target_name = ProperDirname::from_str(dir_name_str).map_err(|msg| {
-                            anyhow!("not a proper directory name: {dir_name_str:?}: {msg}")
-                        })?;
-                        custom_env_vars = current_vars;
-                        if let Some(parent) = current_path.parent() {
-                            base_path = parent.into();
-                        } else {
-                            // This never happens, right?
-                            bail!("path is missing a base_dir part (1): {path:?}")
-                        }
-                        break;
+                        unreachable!("because file_name() above already failed, right?")
                     }
                 } else {
-                    if current_path.is_top() {
-                        bail!("path is missing a target or base_dir part: {path:?}")
+                    target_name = ProperDirname::from_str(current_filename).map_err(|msg| {
+                        anyhow!("not a proper directory name: {current_filename:?}: {msg}")
+                    })?;
+                    custom_env_vars = current_vars;
+                    if let Some(parent) = current_path.parent() {
+                        base_path = parent.into();
+                    } else {
+                        // This never happens, right?
+                        bail!("path is missing a base_dir part (1): {path:?}")
                     }
-                    bail!("path {path:?} contains a '..' or '.' part: {current_path:?}")
+                    break;
                 }
             }
         }
@@ -624,6 +628,64 @@ impl OutputSubdir {
             OutputSubdir::RunDir(_) => "RunDir",
         }
     }
+}
+
+pub fn get_all_parameter_dirs(
+    base_path: &Arc<Path>,
+) -> Result<
+    Vec<(
+        Arc<ParametersDir>,
+        Peekable<impl Iterator<Item = Result<KeyDir>>>,
+    )>,
+> {
+    let base_path_filename = get_filename_from_path(&base_path)?;
+    let target_name: ProperDirname = base_path_filename.parse().unwrap();
+    let mut all_parameter_dirs = Vec::new();
+    let mut directory_queue = Vec::<(
+        Arc<Path>,
+        BTreeMap<AllowedEnvVar<AllowableCustomEnvVar>, KString>,
+    )>::new();
+    directory_queue.push((base_path.clone_arc(), BTreeMap::new()));
+    while !directory_queue.is_empty() {
+        let (current_directory, current_parameters) = directory_queue.pop().unwrap();
+        for subdir in fs::read_dir(&current_directory)? {
+            let subdir_path = subdir?.path().into_arc_path();
+            let subdir_filename = get_filename_from_path(subdir_path.deref())?;
+
+            if let Some((key, val)) = parse_filename_as_key_val(subdir_filename)? {
+                let mut subdir_parameters = current_parameters.clone();
+                subdir_parameters.insert(key, val);
+                directory_queue.push((subdir_path, subdir_parameters));
+            }
+        }
+        let parameter_dir = Arc::new(ParametersDir {
+            base_path: base_path.clone_arc(),
+            target_name: target_name.clone(),
+            custom_parameters: CheckedOrUncheckedCustomParameters::UncheckedCustomParameters(
+                Arc::new(UncheckedCustomParameters::from(current_parameters)),
+            ),
+            path_cache: current_directory.into(),
+        });
+        let mut subdir_iterator = parameter_dir.clone_arc().sub_dirs()?.peekable();
+        if subdir_iterator.peek().is_some() {
+            all_parameter_dirs.push((parameter_dir, subdir_iterator));
+        }
+    }
+    Ok(all_parameter_dirs)
+}
+
+pub fn get_all_run_dirs(base_path: &Arc<Path>) -> Result<Vec<RunDir>> {
+    let all_parameter_dirs = get_all_parameter_dirs(&base_path)?;
+
+    let mut all_run_dirs = Vec::<RunDir>::default();
+    for (_, key_dirs) in all_parameter_dirs {
+        for key_dir in key_dirs {
+            for run_dir in Arc::new(key_dir?).sub_dirs()? {
+                all_run_dirs.push(run_dir?);
+            }
+        }
+    }
+    Ok(all_run_dirs)
 }
 
 /// Attempt to parse as all levels, with the deepest type first.

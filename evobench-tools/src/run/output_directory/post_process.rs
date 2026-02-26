@@ -12,6 +12,7 @@ use std::{
 use anyhow::{Result, bail};
 use cj_path_util::{path_util::AppendToPath, unix::polyfill::add_extension};
 
+use crate::utillib::arc::CloneArc;
 use crate::{
     ctx, info,
     io_utils::zstd_file::compress_file,
@@ -214,7 +215,7 @@ impl KeyDir {
         let key_dir = self.to_path();
         info!("(re-)evaluating the summary files across all results in key dir {key_dir:?}");
 
-        let run_dirs = self.sub_dirs()?.collect::<Result<Vec<_>>>()?;
+        let run_dirs = self.clone_arc().sub_dirs()?.collect::<Result<Vec<_>>>()?;
 
         if !no_summary_stats {
             generate_all_summaries_for_situation(None, key_dir, &run_dirs)?;
