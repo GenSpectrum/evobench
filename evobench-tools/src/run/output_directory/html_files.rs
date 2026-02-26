@@ -2,7 +2,7 @@
 //! easy access of the outputs. This uses the same code as the
 //! `evobench list` subcommand, and some more.
 
-use crate::output_table::OutputStyle;
+use crate::output_table::{OutputStyle, WithUrlOnDemand};
 use crate::run::output_directory::structure::get_all_run_dirs;
 use crate::{
     io_utils::tempfile_utils::tempfile,
@@ -128,10 +128,10 @@ fn print_run_list(conf: &RunConfig, html: &HtmlAllocator, out: impl Write) -> Re
     for run_dir in run_dirs {
         let commit_id = run_dir.parent().commit_id().to_string();
         let path_string = run_dir.to_path().to_string_lossy();
-        let data_row: &[&str] = &[
-            run_dir.timestamp().as_str(),
-            commit_id.as_str(),
-            path_string.as_ref(),
+        let data_row: &[WithUrlOnDemand] = &[
+            run_dir.timestamp().as_str().into(),
+            commit_id.as_str().into(),
+            path_string.as_ref().into(),
         ];
 
         let system_time = run_dir.timestamp().to_systemtime();
