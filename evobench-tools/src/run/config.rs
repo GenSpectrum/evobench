@@ -30,7 +30,7 @@ use crate::{
         proper_filename::ProperFilename,
         regex::SerializableRegex,
         tilde_path::TildePath,
-        val_or_ref::{TargetDesc, ValOrRef},
+        val_or_ref::{ContextDesc, ValOrRef},
     },
     util::grep_diff::LogExtract,
     utillib::arc::CloneArc,
@@ -358,7 +358,7 @@ impl RemoteRepositoryOpts {
                                 .collect()
                         },
                     )?;
-                let job_templates = job_templates.value_with_backing(job_template_lists)?;
+                let job_templates = job_templates.value_with_context(job_template_lists)?;
                 Ok((branch_name.clone(), job_templates.clone_arc()))
             })
             .collect::<Result<_>>()?;
@@ -661,8 +661,8 @@ pub struct RunConfigOpts {
 
 #[derive(Debug)]
 pub struct JobTemplateListsField;
-impl TargetDesc for JobTemplateListsField {
-    fn target_desc() -> Cow<'static, str> {
+impl ContextDesc for JobTemplateListsField {
+    fn context_desc() -> Cow<'static, str> {
         "`RunConfig.job_template_lists` field".into()
     }
 }
