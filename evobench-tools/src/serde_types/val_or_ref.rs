@@ -129,6 +129,6 @@ mod tests {
     #[test]
     fn t_() {
         let inner = ValOrRefInner::<u32>::Val(120);
-        let whole: ValOrRef<U32Desc, u32> = inner.into();
+        let _whole: ValOrRef<U32Desc, u32> = inner.into();
     }
 }
