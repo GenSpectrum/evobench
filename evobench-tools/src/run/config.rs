@@ -30,7 +30,7 @@ use crate::{
         proper_filename::ProperFilename,
         regex::SerializableRegex,
         tilde_path::TildePath,
-        val_or_ref::{ContextDesc, ValOrRef},
+        val_or_ref::{ContextDesc, ValOrRef, ValOrRefContext},
     },
     util::grep_diff::LogExtract,
     utillib::arc::CloneArc,
@@ -338,7 +338,7 @@ pub struct RemoteRepository {
 impl RemoteRepositoryOpts {
     fn check(
         &self,
-        job_template_lists: &BTreeMap<KString, Arc<[JobTemplate]>>,
+        job_template_lists: &ValOrRefContext<JobTemplateListsField, Arc<[JobTemplate]>>,
         targets: &BTreeMap<ProperDirname, Arc<BenchmarkingTarget>>,
     ) -> Result<RemoteRepository> {
         let Self {
@@ -681,7 +681,7 @@ pub struct RunConfig {
     pub working_directory_pool: Arc<WorkingDirectoryPoolOpts>,
     pub target_pre_exec_bash_code: Option<Arc<str>>,
     // targets: BTreeMap<ProperDirname, Arc<BenchmarkingTarget>>,
-    pub job_template_lists: BTreeMap<KString, Arc<[JobTemplate]>>,
+    pub job_template_lists: ValOrRefContext<JobTemplateListsField, Arc<[JobTemplate]>>,
     pub benchmarking_job_settings: Arc<BenchmarkingJobSettingsOpts>,
     pub eval_settings: Arc<EvalSettings>,
     pub remote_repository: RemoteRepository,
@@ -731,20 +731,22 @@ impl RunConfigOpts {
                 .collect::<Result<_>>()?
         };
 
-        let job_template_lists: BTreeMap<KString, Arc<[JobTemplate]>> = job_template_lists
-            .iter()
-            .map(
-                |(template_list_name, template_list)| -> Result<(KString, Arc<[JobTemplate]>)> {
-                    Ok((
-                        template_list_name.clone(),
-                        template_list
-                            .iter()
-                            .map(|job_template_opts| job_template_opts.check(&targets))
-                            .collect::<Result<_>>()?,
-                    ))
-                },
-            )
-            .collect::<Result<_>>()?;
+        let job_template_lists: ValOrRefContext<JobTemplateListsField, Arc<[JobTemplate]>> =
+            job_template_lists
+                .iter()
+                .map(
+                    |(template_list_name, template_list)| -> Result<(KString, Arc<[JobTemplate]>)> {
+                        Ok((
+                            template_list_name.clone(),
+                            template_list
+                                .iter()
+                                .map(|job_template_opts| job_template_opts.check(&targets))
+                                .collect::<Result<_>>()?,
+                        ))
+                    },
+                )
+                .collect::<Result<BTreeMap<_, _>>>()?
+                .into();
 
         let remote_repository = remote_repository.check(&job_template_lists, &targets)?;
 

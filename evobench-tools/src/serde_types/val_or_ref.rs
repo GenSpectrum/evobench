@@ -6,7 +6,25 @@
 use anyhow::{Result, anyhow};
 use kstring::KString;
 use serde::{Deserialize, Serialize};
-use std::{borrow::Cow, collections::BTreeMap, fmt::Debug, marker::PhantomData};
+use std::{borrow::Cow, collections::BTreeMap, fmt::Debug, marker::PhantomData, ops::Deref};
+
+/// A context for a `ValOrRef` to look up values in
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValOrRefContext<TD: ContextDesc, T>(BTreeMap<KString, T>, PhantomData<fn() -> TD>);
+
+impl<TD: ContextDesc, T> Deref for ValOrRefContext<TD, T> {
+    type Target = BTreeMap<KString, T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<TD: ContextDesc, T> From<BTreeMap<KString, T>> for ValOrRefContext<TD, T> {
+    fn from(value: BTreeMap<KString, T>) -> Self {
+        Self(value, PhantomData)
+    }
+}
 
 /// Human-readable description for the context; provided statically so
 /// that it can be shown at config deserialisation time
@@ -56,7 +74,7 @@ impl<TD: ContextDesc, T> ValOrRef<TD, T> {
     /// is not present in the map.
     pub fn get_value_with_context<'s>(
         &'s self,
-        context: &'s BTreeMap<KString, T>,
+        context: &'s ValOrRefContext<TD, T>,
     ) -> Option<&'s T> {
         match &self.inner {
             ValOrRefInner::Val(v) => Some(v),
@@ -66,7 +84,7 @@ impl<TD: ContextDesc, T> ValOrRef<TD, T> {
 
     /// Same as `get_value_with_context` but returns an error if the
     /// reference cannot be resolved
-    pub fn value_with_context<'s>(&'s self, context: &'s BTreeMap<KString, T>) -> Result<&'s T> {
+    pub fn value_with_context<'s>(&'s self, context: &'s ValOrRefContext<TD, T>) -> Result<&'s T> {
         match &self.inner {
             ValOrRefInner::Val(v) => Ok(v),
             ValOrRefInner::Ref(r) => context.get(r).ok_or_else(|| {

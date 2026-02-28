@@ -309,7 +309,7 @@ pub fn regenerate_index_files(
     if let Some(base_url) = &conf.output_dir.url {
         let paths_with_names = {
             let mut paths_with_names = BTreeMap::new();
-            for (name, templates) in &conf.job_template_lists {
+            for (name, templates) in conf.job_template_lists.iter() {
                 for template in &**templates {
                     let dir = ParametersCellValue::from(
                         template.to_parameters_dir(base_url.into_arc_path()),
